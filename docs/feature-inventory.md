@@ -47,15 +47,28 @@
 | BR-11 timestamps | AC-14,15 | FLOW-005–007 |
 | BR-12 transaction integrity | AC-09,12,16 | CONCURRENCY-001–003 |
 
+## NFR traceability
+
+| NFR | Feature / system responsibility | Sprint / issue | Expected verification |
+|---|---|---|---|
+| NFR-01 | F-02 Authentication and session design; system-wide secret handling | 1 / #3 | Auth integration tests; code review of password hash and session storage |
+| NFR-02 | F-02 Authentication and RBAC; system-wide API security contract | 1 / #3 | Auth regression and RBAC integration tests; cookie/CSRF policy review |
+| NFR-03 | F-03 queue numbering; F-05 operator lifecycle; F-06 integration validation | 1 / #4,#6,#7 | Concurrency tests for numbers, duplicate joins and call-next claims |
+| NFR-04 | F-03 queue allocation; F-05 operator workflow; F-06 integration/performance checks | 1 / #4,#6,#7 | Local load/performance checks on seeded dataset, to be approved before release |
+| NFR-05 | F-01 persistence; F-03 queue allocation; F-05 lifecycle actions | 1 / #2,#4,#6 | DB integration tests assert committed writes survive restart and no pre-commit success |
+| NFR-06 | F-04 customer flows; F-05 operator dashboard; F-06 UI validation | 1 / #5,#6,#7 | Responsive E2E checks at 360px and 1280px; no page-level overflow |
+| NFR-07 | F-01 repository foundation; F-06 integration automation | 1 / #2,#7 | Local setup reproducibility and seed verification |
+| NFR-08 | Cross-cutting quality, requirement and error contract | 1 / #1,#7 | Review of IDs, contracts and status/error vocabulary |
+
 ## Later sprint (excluded from Sprint 1 contract)
 
-| Feature | Scope | Sprint/issue |
+| Feature | Scope | Planned sprint / issue |
 |---|---|---|
-| FUT-01 | Customer cancellation | Later sprint; unassigned |
-| FUT-02 | No-show handling | Later sprint; unassigned |
-| FUT-03 | Multiple service counters | Later sprint; unassigned |
-| FUT-04 | Priority policy | Later sprint; unassigned |
-| FUT-05 | Analytics/advanced summaries | Later sprint; unassigned |
-| FUT-06 | Advance appointment booking | Later sprint; unassigned |
+| FUT-01 | Customer cancellation | Sprint 2; unassigned |
+| FUT-02 | No-show handling | Sprint 2; unassigned |
+| FUT-03 | Multiple service counters | Sprint 2; unassigned |
+| FUT-04 | Priority policy | Sprint 2; unassigned |
+| FUT-05 | Analytics/advanced summaries | Sprint 3; unassigned |
+| FUT-06 | Advance appointment booking | Sprint 3; unassigned |
 
-These are exclusions only; this inventory does not define their data, UI or behavior.
+These are future-sprint exclusions only; this inventory defines their planned allocation but not the detailed data, UI or behavior contracts for those later features.

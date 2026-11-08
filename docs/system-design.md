@@ -105,7 +105,11 @@ Only users with role OPERATOR may be assigned; enforce in provisioning/domain va
 
 Foreign keys restrict deletion of referenced users/queues while history exists; queue/user deactivation is preferred. Add a race-safe uniqueness mechanism for `(customerId,serviceQueueId)` among statuses `WAITING`,`CALLED`,`SERVING` (partial unique index if supported, otherwise locked transaction/guard table). Add `(serviceQueueId,status,joinedAt,id)` and `(customerId,joinedAt DESC)` indexes. A separate audit table is not required for Sprint 1; lifecycle timestamps and immutable completed row are the history contract.
 
-### 3.5 Relationships
+### 3.5 Migration and seed strategy
+
+Database setup is intentionally explicit: schema changes are performed through migration files checked into the repository, with each migration adding or altering tables and constraints in a reversible order. The design requires migration scripts to create the user, queue, assignment and queue-entry tables, add the required uniqueness and status constraints, and preserve the queue-number and active-entry invariants. Local seed data must be idempotent and must create at least one `OPEN` queue and one assigned operator plus a sample customer account for manual validation; seed output must never print cleartext passwords or user secrets.
+
+### 3.6 Relationships
 
 ```mermaid
 erDiagram

@@ -114,6 +114,18 @@ This file plus `system-design.md`, `features/sprint-1-core-queue.md`, `api-spec.
 | AC-16 | Malformed IDs, conflicts, invalid states and unexpected failures follow common status/envelope mapping. | FR-12 | QUEUE-003, FLOW-008, RBAC-007 |
 | AC-17 | The six specified screens expose only role-authorized actions, provide loading/empty/error/success feedback, and support the documented responsive layout. | FR-01–11 | FLOW-009/010 |
 
-## 9. Issue #1 Definition of Done
+## 9. Three-sprint product plan
+
+The product baseline is delivered across three sprints. The dates below are the documented milestone checkpoints for this course handout and must be retained unless the team formally records a change with a rationale.
+
+| Sprint | Planned window | Goal | Included feature IDs | Dependencies | Expected completion outcome |
+|---|---|---|---|---|---|
+| Sprint 1 | 2026-11-08 | Small working domain slice: authentication, authorization, queue discovery, join, status and FIFO operator workflow | F-01, F-02, F-03, F-04, F-05, F-06 | F-01 foundation before F-02–F-06; authentication and queue rules must be approved before dependent workflow work | Fully validated Sprint 1 slice with persistent queue state, role restrictions and lifecycle transitions |
+| Sprint 2 | 2026-11-29 | Expansion of queue operations under the engineering contract; operational edge cases and queue variants | FUT-01, FUT-02, FUT-03, FUT-04 | Depends on Sprint 1 completion and any approved pending decisions (e.g., queue numbering/reset policy and cross-queue semantics) | Completed core expansion with cancellation, no-show handling, multi-counter support and priority handling covered by approved contracts |
+| Sprint 3 | Checkpoint 2026-11-29; completion 2026-12-13 | Remaining feature set, integration and product hardening | FUT-05, FUT-06, plus remaining product integration items | Depends on Sprint 2 stabilization and completion of remaining approved backlog items | Final integration, system hardening, analytics/booking readiness and product-level verification |
+
+This plan covers the whole product baseline, not only the Sprint 1 slice. No feature is moved between sprints without a documented reason and contract update.
+
+## 10. Issue #1 Definition of Done
 
 All seven required files exist and agree on IDs, states, permissions, API/data shapes and approval status; every FR maps to feature, AC and tests and every AC has a test; proposals are not misrepresented as approved; review confirms clarity and scope. Diff is documentation-only. Team review precedes merge; this task does not authorize direct merge.
