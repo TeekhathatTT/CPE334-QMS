@@ -10,12 +10,12 @@ Deliver a working vertical slice for queue-based service management with persist
 
 ### In-scope features
 
-- F-01: Service foundation and database persistence
-- F-02: Customer and operator authentication with role-based access control
-- F-03: Queue catalog and concurrency-safe queue numbering
-- F-04: Customer queue join and private status retrieval
-- F-05: Operator call, start, and complete lifecycle management
-- F-06: Integration, authorization, and workflow verification
+- F-01: Foundation and persistence baseline
+- F-02: Authentication and RBAC
+- F-03: Queue catalog and number allocation
+- F-04: Customer queue join and own-state retrieval
+- F-05: Operator lifecycle management
+- F-06: Integration and regression verification
 
 ### Why this scope is selected
 
@@ -37,10 +37,10 @@ Expand the core queue management workflow to handle operational edge cases and r
 
 ### Planned features
 
-- F-07: Customer cancellation and queue withdrawal flows
-- F-08: No-show handling and re-entry policy
-- F-09: Multi-counter support and queue routing changes
-- F-10: Priority queue policy and deterministic ordering beyond FIFO
+- F-07: Customer cancellation and queue withdrawal
+- F-08: No-show handling and recovery
+- F-09: Multi-counter support
+- F-10: Priority queue policy
 
 ### Expected output
 
@@ -56,9 +56,9 @@ Complete product hardening, analytics, and advanced readiness for broader operat
 
 ### Planned features
 
-- F-11: Analytics and operational reporting
-- F-12: Appointment and service scheduling support
-- F-13: End-to-end product hardening and launch readiness
+- F-11: Operational analytics
+- F-12: Advance appointment booking
+- F-13: Product hardening and launch readiness
 
 ### Expected output
 
