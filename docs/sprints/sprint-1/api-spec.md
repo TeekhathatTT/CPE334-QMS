@@ -7,7 +7,9 @@
 - Timestamps are RFC 3339 UTC
 - Authentication uses an HTTP-only session cookie
 - CSRF protection is required for state-changing requests
-- Errors follow the standardized envelope: `{"error":{"code":"INVALID_ARGUMENT","message":"Request is invalid.","requestId":"..."}}`
+- Successful responses with a JSON body use a `data` envelope; list payloads are contained in `data`, and no pagination contract is defined for Sprint 1
+- Responses with status `204 No Content` have no body
+- Errors with a response body follow the standardized envelope: `{"error":{"code":"INVALID_ARGUMENT","message":"Request is invalid.","requestId":"..."}}`
 - The API does not reveal another customer's private data
 
 ## 2. Standard error contract
