@@ -38,13 +38,13 @@ Use the standard API error envelope and the Sprint 1 contract in [../srs.md](../
 | QUEUE-006 | Privacy enforcement | customer can access only own entry | API integration |
 | QUEUE-007 | FIFO operator listing | entries ordered according to FIFO rule | API integration |
 | QUEUE-008 | Customer joins multiple queues | one active entry per customer per queue is allowed across distinct queues | API integration |
-| NUMBER-001 | Queue-number uniqueness | numbers remain unique within the queue | Database integration |
+| NUMBER-001 | Queue-number uniqueness and sequential order | successful sequential joins receive the next positive number without duplicates within the queue | API integration / Database integration |
 | NUMBER-002 | Number allocation rollback | failed transaction does not persist a queue number | Database integration |
 | API-001 | Malformed request rejection | malformed payloads and identifiers return `400 INVALID_ARGUMENT` without mutation | API integration |
 | FLOW-001 | Call next selects oldest WAITING | oldest eligible row is moved to `CALLED` | Database integration |
-| FLOW-002 | Call next transition | timestamp set and state moves to `CALLED` | API integration |
+| FLOW-002 | Call next successfully transitions WAITING to CALLED | selected WAITING entry changes to `CALLED` and `calledAt` is set | API integration / Database integration |
 | FLOW-003 | Empty call next | `204 No Content` and no mutation | API integration |
-| FLOW-004 | Start transition | `CALLED -> SERVING` and timestamp set | API integration |
+| FLOW-004 | Start service successfully transitions CALLED to SERVING | selected called entry changes to `SERVING` and `serviceStartedAt` is set | API integration / Database integration |
 | FLOW-005 | Invalid lifecycle transition rejection | repeated or out-of-order transitions fail with `409 INVALID_STATE_TRANSITION` | API integration |
 | FLOW-006 | Complete transition | `SERVING -> COMPLETED` and timestamp set | API integration |
 | FLOW-007 | Completed terminal guard | repeated completion attempts fail | API integration |
@@ -53,7 +53,7 @@ Use the standard API error envelope and the Sprint 1 contract in [../srs.md](../
 | RBAC-003 | Customer cannot complete | `403 FORBIDDEN` | API integration |
 | RBAC-004 | Operator assignment enforcement | unassigned queue access fails | API integration |
 | RBAC-005 | Cross-owner entry access denied | customer request to another customer's entry fails | API integration |
-| CONCURRENCY-001 | Parallel queue join race | all queue numbers remain unique under concurrent join attempts | Database integration |
+| CONCURRENCY-001 | Parallel queue join race condition | concurrent join requests preserve unique queue numbers and consistent active entries | Database concurrency / API integration |
 | CONCURRENCY-002 | Duplicate active entry race | only one active row survives under concurrent duplicate joins | Database integration |
 | CONCURRENCY-003 | Call-next race | concurrent call-next requests claim different entries correctly | Database integration |
 | CONCURRENCY-004 | Stale concurrent mutation | stale mutation returns conflict response without corrupting state | Database integration |
@@ -219,6 +219,46 @@ Use the standard API error envelope and the Sprint 1 contract in [../srs.md](../
 **Pass Criteria:**
 - Customer A receives the same privacy-safe response as an unknown or missing resource, and no other customer data is revealed.
 
+### FLOW-002 — Call Next Successfully Transitions WAITING to CALLED
+**Test Level:** API Integration Test / Database Integration Test
+
+**Preconditions:**
+- An authenticated operator is assigned to Queue Q.
+- Queue Q is `OPEN`.
+- Queue Q contains at least one entry with status `WAITING`.
+- The target entry is the earliest eligible waiting entry according to FIFO ordering.
+- The entry does not already have a `calledAt` timestamp.
+
+**Input:**
+- `POST /api/operator/queues/{queueId}/call-next` with `Request Body: None`.
+
+**Execution Steps:**
+1. Authenticate as the assigned operator.
+2. Prepare at least two waiting entries with distinct `joinedAt` values.
+3. Send the call-next request for Queue Q.
+4. Inspect the HTTP status and response body.
+5. Query the database to verify the affected entry and remaining entries.
+
+**Expected HTTP Status:**
+- `200 OK`
+
+**Expected Response Body:**
+- Response matches the success schema in `api-spec.md`.
+- The selected entry’s status changes from `WAITING` to `CALLED`.
+- `calledAt` is set to a valid RFC 3339 UTC timestamp.
+- Other waiting entries remain unchanged.
+
+**Expected Database Side Effects:**
+- Exactly one row transitions from `WAITING` to `CALLED`.
+- The selected row gets a non-null `calledAt` timestamp.
+- No duplicate queue entries are created.
+
+**Pass Criteria:**
+- The correct FIFO entry is selected.
+- The status transition is persisted.
+- `calledAt` is populated and uses the documented timestamp format.
+- The response matches the persisted database state.
+
 ### FLOW-003 — Empty Call Next Returns 204 No Content
 **Test Level:** API Integration Test
 
@@ -248,35 +288,117 @@ Use the standard API error envelope and the Sprint 1 contract in [../srs.md](../
 **Pass Criteria:**
 - The call-next operation is idempotent when the queue is empty and leaves the queue state unchanged.
 
-### NUMBER-001 — Queue Number Uniqueness Under Parallel Join Requests
-**Test Level:** Database Integration Test
+### FLOW-004 — Start Service Successfully Transitions CALLED to SERVING
+**Test Level:** API Integration Test / Database Integration Test
+
+**Preconditions:**
+- An authenticated operator is assigned to Queue Q.
+- Queue Q contains an entry with status `CALLED`.
+- The entry was successfully called previously and is eligible to start service.
+
+**Input:**
+- `POST /api/operator/queue-entries/{entryId}/start` with `Request Body: None`.
+
+**Execution Steps:**
+1. Authenticate as the assigned operator.
+2. Prepare an entry in `CALLED` status.
+3. Send the start-service request for that entry.
+4. Inspect the HTTP response.
+5. Query the database to verify the row state.
+
+**Expected HTTP Status:**
+- `200 OK`
+
+**Expected Response Body:**
+- Response matches the success schema in `api-spec.md`.
+- The entry status changes from `CALLED` to `SERVING`.
+- `serviceStartedAt` is populated.
+- `calledAt` remains unchanged.
+
+**Expected Database Side Effects:**
+- The target row transitions to `SERVING`.
+- `serviceStartedAt` is set to a valid RFC 3339 UTC timestamp.
+- No unrelated queue-entry rows are modified.
+
+**Pass Criteria:**
+- The transition is persisted correctly.
+- `serviceStartedAt` is not null.
+- Existing `calledAt` remains unchanged.
+- The API response matches the database record.
+
+### NUMBER-001 — Queue Number Uniqueness and Sequential Order
+**Test Level:** API Integration Test / Database Integration Test
 
 **Preconditions:**
 - Queue Q exists and is `OPEN`.
-- Multiple customers attempt to join Q concurrently.
+- No active entries are pending for the same queue during the initial sequence validation.
+- The queue-number counter follows the rule documented in `system-sds.md` and `srs.md`.
 
 **Input:**
-- Parallel `POST /api/queues/{queueId}/entries` requests from distinct customers.
+- Sequential `POST /api/queues/{queueId}/entries` requests for Q from valid customers.
 
 **Execution Steps:**
-1. Launch concurrent join requests for Q.
-2. Wait for all transactions to complete.
-3. Query `QueueEntry` rows for Q and inspect `queueNumber` values.
+1. Authenticate as a valid customer.
+2. Create a first join request and record the returned `queueNumber`.
+3. Create subsequent join requests in sequence.
+4. Inspect API responses and query the database for all queue entries in Q.
 
 **Expected HTTP Status:**
-- Each successful request returns `201 Created`.
-- Any rejected requests return the appropriate `409` conflict code.
+- Each successful join returns `201 Created`.
 
 **Expected Response Body:**
-- Successful requests include unique `queueNumber` values.
-- Failed requests follow the standard error envelope.
+- Each successful response contains a positive integer `queueNumber`.
+- The returned queue numbers match the sequential order defined by the queue contract.
+- No duplicate queue numbers are present within the same queue.
 
 **Expected Database Side Effects:**
-- All inserted rows for Q have unique `queueNumber` values within the queue.
-- `lastQueueNumber` is incremented safely and remains non-decreasing.
+- Every joined queue entry in Q has a positive integer `queueNumber`.
+- Queue numbers increase in the documented sequence and do not reset during Sprint 1.
+- No duplicate `(serviceQueueId, queueNumber)` values exist.
 
 **Pass Criteria:**
-- No duplicate queue numbers are persisted under concurrent access.
+- All successful entries have positive integer queue numbers.
+- Sequential joins produce the expected sequence.
+- No duplicate queue numbers exist within the same queue.
+- Database records match the API responses.
+
+### CONCURRENCY-001 — Parallel Queue Join Race Condition
+**Test Level:** Database Concurrency / API Integration Test
+
+**Preconditions:**
+- Queue Q exists and is `OPEN`.
+- Several authenticated customers are prepared to join Q concurrently.
+- Database transaction and locking behavior is enabled as described in `system-sds.md`.
+
+**Input:**
+- Concurrent `POST /api/queues/{queueId}/entries` requests from multiple customers for the same Q.
+
+**Execution Steps:**
+1. Authenticate as multiple valid customers.
+2. Trigger concurrent join requests for Q.
+3. Wait for all requests to complete.
+4. Query the database for rows in Q and inspect `queueNumber` values and active-entry uniqueness.
+
+**Expected HTTP Status:**
+- Successful requests return `201 Created`.
+- Rejected requests return the documented conflict or validation error for the contract.
+
+**Expected Response Body:**
+- Successful responses include unique queue numbers.
+- Failed responses follow the standard error envelope.
+
+**Expected Database Side Effects:**
+- Successful requests receive unique queue numbers within Q.
+- No duplicate `(serviceQueueId, queueNumber)` records exist.
+- No inconsistent or partially created active entries remain.
+- `lastQueueNumber` remains consistent with the transaction and lock contract.
+
+**Pass Criteria:**
+- Successful requests receive unique queue numbers.
+- No duplicate `(serviceQueueId, queueNumber)` records exist.
+- Queue-number allocation follows the documented transaction and locking strategy.
+- Any rejected request returns the documented error response.
+- Database state remains consistent after all requests finish.
 
 ### API-001 — Malformed UUID Rejected With 400 INVALID_ARGUMENT
 **Test Level:** API Integration Test
@@ -306,6 +428,56 @@ Use the standard API error envelope and the Sprint 1 contract in [../srs.md](../
 
 **Pass Criteria:**
 - A malformed identifier is rejected as invalid input and not treated as a missing-resource case.
+
+### UI-001 — Responsive Layout at Required Viewport Widths
+**Test Level:** End-to-End / Browser UI Test
+
+**Tool:** Playwright
+
+**Preconditions:**
+- The application is available in the test environment.
+- Test users and required queue data are available.
+- The customer and operator pages can be accessed.
+- The responsive layout requirements are documented in [ui-spec.md](./ui-spec.md).
+
+**Test Viewports:**
+- Mobile: `360 × 800`
+- Desktop: `1280 × 800`
+
+**Execution Steps:**
+1. Launch the application using Playwright.
+2. Set the viewport to `360 × 800`.
+3. Open the customer queue catalog at `/customer`.
+4. Inspect the available-queues tab and my-active-tickets tab.
+5. Open a customer ticket detail page at `/customer/entries/:id`.
+6. Sign in as an operator.
+7. Open the operator dashboard at `/operator` and a queue detail view at `/operator/queues/:id`.
+8. Inspect the mobile layout and action controls.
+9. Change the viewport to `1280 × 800`.
+10. Repeat the relevant page checks.
+11. Inspect horizontal overflow and visibility of interactive elements.
+
+**Expected Result:**
+
+At `360px`:
+- Main content uses a single-column layout.
+- Queue cards and entry cards remain readable and do not overflow horizontally.
+- Primary action buttons remain visible and usable.
+- Navigation adapts to the mobile layout.
+- No required content is clipped.
+
+At `1280px`:
+- Desktop layouts remain readable and no unnecessary horizontal overflow occurs.
+- Queue information and operator actions remain readable.
+- Tables or multi-column workspaces appear where specified.
+- No overlapping or clipped critical UI elements.
+
+**Pass Criteria:**
+- All required screens render correctly at both viewport widths.
+- `document.documentElement.scrollWidth` does not exceed `window.innerWidth` for layouts that are required to fit the viewport.
+- Required buttons and inputs are visible and usable.
+- No overlapping or clipped critical UI elements.
+- Playwright assertions pass at both viewport sizes.
 
 ## 4. Verification conditions
 

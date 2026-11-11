@@ -17,10 +17,50 @@ The Sprint 1 user interface supports the minimum viable queue workflow for two r
 | Screen | Role | Purpose |
 |---|---|---|
 | `/login` | Anonymous | Sign-in screen for CUSTOMER and OPERATOR users |
-| `/customer` | CUSTOMER | View OPEN queues and current queue membership |
+| `/customer` | CUSTOMER | View OPEN queues and current queue membership; split into two sections: Available Queues and My Active Tickets |
 | `/customer/entries/:id` | CUSTOMER | Read the customer’s own queue entry and lifecycle state |
 | `/operator` | OPERATOR | View assigned queues and queue activity overview |
 | `/operator/queues/:id` | OPERATOR | Manage queue lifecycle actions: call next, start, complete |
+
+### `/customer` screen structure
+
+The `/customer` page must contain two clearly separated sections:
+
+#### Tab 1 — Available Queues
+Purpose: discover queues that are currently `OPEN` and allow the customer to join.
+
+API mapping:
+- `GET /api/queues`
+- Join action uses `POST /api/queues/{queueId}/entries`
+
+UI components:
+- queue cards
+- queue name
+- queue availability status
+- Join Queue button
+
+Behavior:
+- Display only queues eligible for joining according to the API contract.
+- Disable the Join Queue button while the request is in flight.
+- Show clear success or error feedback after the request resolves.
+
+#### Tab 2 — My Active Tickets
+Purpose: show the current customer’s queue entries.
+
+API mapping:
+- `GET /api/me/queue-entries`
+
+UI components:
+- queue entry cards or list
+- queue number badge
+- queue name
+- current status
+- relevant timestamps
+- View Details link
+
+Navigation:
+- Selecting an entry opens `/customer/entries/:id`.
+- The detail page must call `GET /api/me/queue-entries/{entryId}` and enforce customer ownership.
 
 ## 4. Interaction rules
 
@@ -32,6 +72,36 @@ The Sprint 1 user interface supports the minimum viable queue workflow for two r
 - The queue number and lifecycle status must be visible to the user after successful queue join.
 - The UI must show neutral empty states instead of throwing server errors when a queue has no eligible waiting entry.
 - Errors must be presented as user-safe messages without stack traces, SQL messages, or internal server details.
+
+### Submission Loading State and Double Submission Prevention
+
+Every action button (`Login`, `Join Queue`, `Call Next`, `Start`, and `Complete`) must enter a disabled state with a visible spinner immediately upon submission and remain disabled until the corresponding API request resolves.
+
+Normative behavior:
+1. On the first user submission, immediately set the relevant action to a pending state.
+2. Disable the corresponding button immediately.
+3. Display a visible loading spinner.
+4. Prevent repeated clicks from creating duplicate requests.
+5. Restore the button state when the request resolves.
+6. Display success or error feedback according to the API response.
+7. Preserve the existing form or queue state when the request fails, unless the API contract requires a refresh.
+
+Action-specific behavior:
+
+| Action | Pending text | Disabled condition |
+|---|---|---|
+| Login | `Signing in...` | Authentication request pending |
+| Join Queue | `Joining queue...` | Join request pending |
+| Call Next | `Calling next...` | Call-next request pending |
+| Start | `Starting service...` | Start request pending |
+| Complete | `Completing service...` | Complete request pending |
+
+Additional rules:
+- Prevent duplicate submission at the component/action level.
+- Do not disable unrelated actions unnecessarily.
+- Keep existing business-state restrictions.
+- Backend validation and concurrency protection remain authoritative.
+- A frontend disabled button must never be treated as the only duplicate-prevention mechanism.
 
 ## 5. Role-specific screens and flows
 
@@ -95,6 +165,24 @@ The UI must use text and icons, not color alone, to indicate status. The display
 | Closed queue join attempt | Show a queue unavailable message and keep the form enabled |
 | Duplicate active entry | Show a “you already have an active entry in this queue” message |
 
+### Session Expiry Handling (401 UNAUTHORIZED)
+
+When any authenticated API request returns HTTP `401` with the error code `UNAUTHORIZED`, the UI must clear client-side session state and immediately redirect the user to `/login` with the informational banner:
+
+`Session expired. Please sign in again.`
+
+Required behavior:
+1. Detect an authenticated API response with HTTP `401`.
+2. Clear the client-side authenticated user/session state.
+3. Prevent access to protected screens using stale client-side state.
+4. Redirect the user to `/login`.
+5. Display the exact informational message: `Session expired. Please sign in again.`
+6. Do not repeatedly redirect if the user is already on `/login`.
+7. Do not show sensitive server details in the banner.
+8. Allow the user to authenticate again.
+
+This redirect applies only to authenticated requests returning `401 UNAUTHORIZED`. Login failures continue to show their appropriate authentication error instead of being mistaken for a session-expiry event.
+
 ## 8. Accessibility and responsiveness
 
 ### 8.1 Accessibility requirements
@@ -120,6 +208,8 @@ The UI must use text and icons, not color alone, to indicate status. The display
 - Do not allow a customer to attempt a queue join for a closed queue
 - Do not allow an operator to start or complete a queue entry that is not in the correct lifecycle state
 - Keep customer and operator views separate and do not reveal private customer data to other customers
+- Preserve the loading-state and double-submission rules defined in Section 4
+- Apply the session-expiry handling defined in Section 7 to authenticated requests returning `401 UNAUTHORIZED`
 
 ## 10. Quality bar for Sprint 1
 
