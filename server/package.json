@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.test.json --noEmit",
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -24,7 +25,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "uuid": "^10.0.0"
+    "uuid": "^10.0.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
@@ -41,4 +43,3 @@
     "vitest": "^2.1.8"
   }
 }
-

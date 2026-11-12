@@ -28,7 +28,7 @@ CREATE TABLE "ServiceQueue" (
     "id" UUID NOT NULL,
     "name" VARCHAR(120) NOT NULL,
     "description" VARCHAR(500),
-    "availability" "QueueAvailability" NOT NULL DEFAULT 'OPEN',
+    "availability" "QueueAvailability" NOT NULL,
     "lastQueueNumber" BIGINT NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ NOT NULL,
@@ -70,10 +70,10 @@ ALTER TABLE "OperatorAssignment" ADD CONSTRAINT "OperatorAssignment_operatorId_f
 ALTER TABLE "OperatorAssignment" ADD CONSTRAINT "OperatorAssignment_serviceQueueId_fkey" FOREIGN KEY ("serviceQueueId") REFERENCES "ServiceQueue"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "QueueEntry" ADD CONSTRAINT "QueueEntry_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "QueueEntry" ADD CONSTRAINT "QueueEntry_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "QueueEntry" ADD CONSTRAINT "QueueEntry_serviceQueueId_fkey" FOREIGN KEY ("serviceQueueId") REFERENCES "ServiceQueue"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "QueueEntry" ADD CONSTRAINT "QueueEntry_serviceQueueId_fkey" FOREIGN KEY ("serviceQueueId") REFERENCES "ServiceQueue"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- SDS Required Database Constraints and Indexes
 ALTER TABLE "ServiceQueue"
@@ -95,4 +95,3 @@ CREATE UNIQUE INDEX "QueueEntry_active_customer_queue_uidx"
 
 CREATE INDEX "QueueEntry_customer_joinedAt_idx"
   ON "QueueEntry" ("customerId", "joinedAt" DESC);
-

@@ -45,7 +45,7 @@ model ServiceQueue {
   id              String               @id @default(uuid()) @db.Uuid
   name            String               @db.VarChar(120)
   description     String?              @db.VarChar(500)
-  availability    QueueAvailability    @default(OPEN)
+  availability    QueueAvailability
   lastQueueNumber BigInt               @default(0)
   createdAt       DateTime             @default(now()) @db.Timestamptz
   updatedAt       DateTime             @updatedAt @db.Timestamptz
@@ -73,11 +73,10 @@ model QueueEntry {
   calledAt         DateTime?     @db.Timestamptz
   serviceStartedAt DateTime?     @db.Timestamptz
   completedAt      DateTime?     @db.Timestamptz
-  customer         User          @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  serviceQueue     ServiceQueue  @relation(fields: [serviceQueueId], references: [id], onDelete: Cascade)
+  customer         User          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  serviceQueue     ServiceQueue  @relation(fields: [serviceQueueId], references: [id], onDelete: Restrict)
 
   @@unique([serviceQueueId, queueNumber], map: "QueueEntry_serviceQueueId_queueNumber_key")
   @@index([serviceQueueId, joinedAt(sort: Asc), id(sort: Asc)], map: "QueueEntry_fifo_idx")
   @@index([customerId, joinedAt(sort: Desc)], map: "QueueEntry_customer_joinedAt_idx")
 }
-
