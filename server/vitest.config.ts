@@ -10,6 +10,9 @@ export default defineConfig({
     environment: 'node',
     testTimeout: 15000,
     hookTimeout: 15000,
+    // Every suite resets and re-seeds the shared test database, so test files must
+    // run one at a time; parallel files would delete each other's fixtures.
+    fileParallelism: false,
     env: {
       NODE_ENV: 'test',
     },

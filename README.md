@@ -53,10 +53,7 @@ Follow these steps to run a clean checkout and verify the foundational setup:
 ### 2. Clone and Configure Environment
 Clone the repository and copy the environment configuration:
 ```bash
-# Clone the repository and switch to feature branch
-git checkout feature/sprint1/2-project-foundation
-
-# Configure environment variables
+# Configure environment variables (run from the repository root after cloning)
 cp .env.example .env
 cp .env.example server/.env
 cp .env.example server/.env.test
@@ -75,7 +72,17 @@ NODE_ENV=development
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/qms_db?schema=public
 TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/qms_test_db?schema=public
 SESSION_SECRET=<YOUR_GENERATED_SECURE_RANDOM_SESSION_SECRET_AT_LEAST_32_CHARS>
+CORS_ORIGIN=
 ```
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `PORT` | No (default `3000`) | HTTP API listen port |
+| `NODE_ENV` | Yes | `development`, `test`, or `production` |
+| `DATABASE_URL` | Yes | PostgreSQL connection string for the app, migrations, and seed. There is no built-in default; the server refuses to start without it. |
+| `TEST_DATABASE_URL` | For tests | Separate database used when `NODE_ENV=test`. Tests delete all rows, so they refuse to run if this is missing or equals `DATABASE_URL`. |
+| `SESSION_SECRET` | Yes | At least 32 characters. The server refuses to start with a missing, short, or placeholder value. |
+| `CORS_ORIGIN` | No | Comma-separated origins allowed to call the API cross-origin. Empty means same-origin only (the Vite dev proxy is same-origin). |
 
 ### 3. Start PostgreSQL Database
 Using Docker Compose:
@@ -83,6 +90,8 @@ Using Docker Compose:
 docker compose up -d
 ```
 Verify PostgreSQL is ready to accept connections on port `5432`.
+
+On first start, the container creates both `qms_db` (development) and `qms_test_db` (tests) via `docker/postgres-init/`. Init scripts only run on an empty volume; if you created the volume before this script existed, run `docker compose down -v` and start again, or create the database manually with `docker exec qms-postgres createdb -U postgres qms_test_db`.
 
 ### 4. Install Dependencies & Generate Prisma Client
 From the repository root:
@@ -97,8 +106,8 @@ Run the initial migration containing all database models, foreign keys, CHECK co
 # Apply migrations to development database
 npm run migrate
 
-# Apply migrations to test database (if using separate database)
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/qms_test_db?schema=public npm run migrate
+# Apply migrations to the isolated test database (reads TEST_DATABASE_URL; works in bash and PowerShell)
+npm run migrate:test
 ```
 
 ### 6. Seed Initial Data (Idempotent)
@@ -155,6 +164,8 @@ npm run build
 # Start production server
 npm start --workspace=server
 ```
+
+Tests require `server/.env.test` with `TEST_DATABASE_URL` and a migrated test database (`npm run migrate:test`). Every test file resets and re-seeds that database, so test files run sequentially.
 
 ---
 

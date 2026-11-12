@@ -12,7 +12,32 @@ import { errorHandler } from '../src/middleware/errorHandler';
 import { validateUuidParam } from '../src/middleware/validateUuid';
 import { validateRequest } from '../src/middleware/validateRequest';
 import { requireAuth, requireRole } from '../src/middleware/auth';
-import { Role } from '@prisma/client';
+import { Prisma, Role } from '@prisma/client';
+
+/**
+ * Asserts that a database operation fails because of a specific constraint, not for an
+ * unrelated reason (e.g. a typo in a column name). Unique violations from the Prisma client
+ * surface as P2002; raw-query failures surface as P2010 carrying the PostgreSQL SQLSTATE.
+ */
+async function expectConstraintViolation(
+  operation: Promise<unknown>,
+  expected: { prismaCode: 'P2002' } | { prismaCode: 'P2010'; sqlState: string; constraint: string }
+): Promise<void> {
+  const error = await operation.then(
+    () => null,
+    (err: unknown) => err
+  );
+  expect(error, 'operation was expected to violate a database constraint').toBeInstanceOf(
+    Prisma.PrismaClientKnownRequestError
+  );
+  const known = error as Prisma.PrismaClientKnownRequestError;
+  expect(known.code).toBe(expected.prismaCode);
+  if (expected.prismaCode === 'P2010') {
+    const details = `${known.message} ${JSON.stringify(known.meta ?? {})}`;
+    expect(details).toContain(expected.sqlState);
+    expect(details).toContain(expected.constraint);
+  }
+}
 
 describe('Project Foundation & Database Integration Tests', () => {
   // Test-only Express wrapper to mount and verify middleware without polluting production app.ts
@@ -256,7 +281,7 @@ describe('Project Foundation & Database Integration Tests', () => {
       expect(entry1.id).toBeDefined();
 
       // 2. Attempting second active entry (WAITING) for same customer & queue violates partial unique index
-      await expect(
+      await expectConstraintViolation(
         prisma.queueEntry.create({
           data: {
             customerId,
@@ -264,11 +289,12 @@ describe('Project Foundation & Database Integration Tests', () => {
             queueNumber: BigInt(2),
             status: 'WAITING',
           },
-        })
-      ).rejects.toThrow();
+        }),
+        { prismaCode: 'P2002' }
+      );
 
       // 3. Attempting second active entry with CALLED status also violates partial unique index
-      await expect(
+      await expectConstraintViolation(
         prisma.queueEntry.create({
           data: {
             customerId,
@@ -276,8 +302,9 @@ describe('Project Foundation & Database Integration Tests', () => {
             queueNumber: BigInt(3),
             status: 'CALLED',
           },
-        })
-      ).rejects.toThrow();
+        }),
+        { prismaCode: 'P2002' }
+      );
 
       // Clean up
       await prisma.queueEntry.deleteMany({ where: { customerId, serviceQueueId } });
@@ -312,21 +339,26 @@ describe('Project Foundation & Database Integration Tests', () => {
     });
 
     it('enforces CHECK constraint: ServiceQueue.lastQueueNumber cannot be negative', async () => {
-      await expect(
+      await expectConstraintViolation(
         prisma.$executeRawUnsafe(
           `INSERT INTO "ServiceQueue" ("id", "name", "availability", "lastQueueNumber", "updatedAt")
            VALUES (gen_random_uuid(), 'Invalid Queue', 'OPEN', -1, CURRENT_TIMESTAMP)`
-        )
-      ).rejects.toThrow();
+        ),
+        { prismaCode: 'P2010', sqlState: '23514', constraint: 'ServiceQueue_lastQueueNumber_nonnegative_chk' }
+      );
     });
 
     it('enforces CHECK constraint: QueueEntry.queueNumber must be strictly positive (> 0)', async () => {
-      await expect(
+      // QueueEntry has no "updatedAt" column; inserting only real columns ensures the
+      // failure comes from the CHECK constraint rather than from an invalid statement.
+      await prisma.queueEntry.deleteMany({ where: { customerId, serviceQueueId } });
+      await expectConstraintViolation(
         prisma.$executeRawUnsafe(
-          `INSERT INTO "QueueEntry" ("id", "customerId", "serviceQueueId", "queueNumber", "status", "updatedAt")
-           VALUES (gen_random_uuid(), '${customerId}', '${serviceQueueId}', 0, 'WAITING', CURRENT_TIMESTAMP)`
-        )
-      ).rejects.toThrow();
+          `INSERT INTO "QueueEntry" ("id", "customerId", "serviceQueueId", "queueNumber", "status")
+           VALUES (gen_random_uuid(), '${customerId}', '${serviceQueueId}', 0, 'WAITING')`
+        ),
+        { prismaCode: 'P2010', sqlState: '23514', constraint: 'QueueEntry_queueNumber_positive_chk' }
+      );
     });
 
     it('enforces UNIQUE constraint on (serviceQueueId, queueNumber)', async () => {
@@ -345,7 +377,7 @@ describe('Project Foundation & Database Integration Tests', () => {
       });
 
       // Customer 2 attempts to take duplicate queue number 50 in the same queue
-      await expect(
+      await expectConstraintViolation(
         prisma.queueEntry.create({
           data: {
             customerId: customer2Id,
@@ -353,8 +385,9 @@ describe('Project Foundation & Database Integration Tests', () => {
             queueNumber: BigInt(50),
             status: 'WAITING',
           },
-        })
-      ).rejects.toThrow();
+        }),
+        { prismaCode: 'P2002' }
+      );
 
       await prisma.queueEntry.deleteMany({ where: { serviceQueueId } });
     });

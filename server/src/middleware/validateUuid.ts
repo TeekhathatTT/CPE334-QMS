@@ -16,14 +16,3 @@ export function validateUuidParam(paramName: string) {
   };
 }
 
-export function validateUuidMiddleware(req: Request, res: Response, next: NextFunction): void {
-  for (const [key, value] of Object.entries(req.params)) {
-    if ((key === 'queueId' || key === 'entryId' || key.toLowerCase().endsWith('id')) && typeof value === 'string') {
-      if (!isValidUuidV4(value)) {
-        return next(new AppError(400, 'INVALID_ARGUMENT', `Malformed ${key} parameter. Must be a valid UUIDv4.`));
-      }
-    }
-  }
-  next();
-}
-

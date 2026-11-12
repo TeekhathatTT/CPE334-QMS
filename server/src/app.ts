@@ -9,8 +9,17 @@ import { AppError } from './errors/AppError';
 
 export const app = express();
 
+// CORS is opt-in. The browser client is served same-origin (Vite proxy in development),
+// so no cross-origin access is granted unless CORS_ORIGIN lists explicit origins.
+const corsOrigins = (process.env.CORS_ORIGIN ?? '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+if (corsOrigins.length > 0) {
+  app.use(cors({ origin: corsOrigins, credentials: true }));
+}
+
 // Base middleware
-app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
 app.use(requestIdMiddleware);

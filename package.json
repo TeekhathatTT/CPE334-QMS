@@ -17,6 +17,7 @@
     "test:server": "npm run test --workspace=server",
     "seed": "npm run seed --workspace=server",
     "migrate": "npm run migrate --workspace=server",
+    "migrate:test": "npm run migrate:test --workspace=server",
     "prisma:generate": "npm run prisma:generate --workspace=server"
   }
 }

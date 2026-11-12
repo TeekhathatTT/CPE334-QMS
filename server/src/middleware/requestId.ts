@@ -9,9 +9,13 @@ declare global {
   }
 }
 
+// Accept a caller-supplied correlation ID only if it is short and uses a safe character set,
+// so it cannot inject content into logs or response headers.
+const SAFE_REQUEST_ID = /^[A-Za-z0-9._-]{1,128}$/;
+
 export function requestIdMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const incomingRequestId = req.header('X-Request-Id');
-  const requestId = incomingRequestId && incomingRequestId.trim() !== ''
+  const incomingRequestId = req.header('X-Request-Id')?.trim();
+  const requestId = incomingRequestId && SAFE_REQUEST_ID.test(incomingRequestId)
     ? incomingRequestId
     : randomUUID();
 

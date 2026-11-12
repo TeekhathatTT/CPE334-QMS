@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "seed": "tsx prisma/seed.ts",
     "migrate": "prisma migrate deploy",
+    "migrate:test": "tsx scripts/migrate-test.ts",
     "migrate:dev": "prisma migrate dev",
     "prisma:generate": "prisma generate"
   },
