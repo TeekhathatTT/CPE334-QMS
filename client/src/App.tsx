@@ -3,6 +3,9 @@ import { homePathFor } from './api/client';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 import { LoadingScreen } from './components/LoadingScreen';
+import { CustomerLayout } from './components/customer/CustomerLayout';
+import { CustomerHomePage } from './pages/CustomerHomePage';
+import { EntryDetailPage } from './pages/EntryDetailPage';
 import { LoginPage } from './pages/LoginPage';
 import { RoleHomePlaceholder } from './pages/RoleHomePlaceholder';
 
@@ -18,9 +21,12 @@ export function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
 
-      {/* ui-spec §3. Later issues add /customer/entries/:id and /operator/queues/:id under these guards. */}
+      {/* ui-spec §3. Issue #6 adds /operator/queues/:id under the operator guard. */}
       <Route path="/customer" element={<ProtectedRoute allowedRoles={['CUSTOMER']} />}>
-        <Route index element={<RoleHomePlaceholder title="Customer" replacedBy="Issue #5 (customer queue screens)" />} />
+        <Route element={<CustomerLayout />}>
+          <Route index element={<CustomerHomePage />} />
+          <Route path="entries/:id" element={<EntryDetailPage />} />
+        </Route>
       </Route>
       <Route path="/operator" element={<ProtectedRoute allowedRoles={['OPERATOR']} />}>
         <Route index element={<RoleHomePlaceholder title="Operator" replacedBy="Issue #6 (operator queue screens)" />} />
