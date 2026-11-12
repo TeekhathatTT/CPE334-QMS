@@ -5,6 +5,7 @@ import { seed } from '../../prisma/seed';
 
 export const SEED_PASSWORD = 'Password123!';
 export const CUSTOMER1 = { id: '11111111-1111-4111-8111-111111111111', email: 'customer1@example.com' };
+export const CUSTOMER2 = { id: '22222222-2222-4222-8222-222222222222', email: 'customer2@example.com' };
 export const OPERATOR1 = { id: '33333333-3333-4333-8333-333333333333', email: 'operator1@example.com' };
 export const OPERATOR2 = { id: '44444444-4444-4444-8444-444444444444', email: 'operator2@example.com' };
 export const OPEN_QUEUE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';

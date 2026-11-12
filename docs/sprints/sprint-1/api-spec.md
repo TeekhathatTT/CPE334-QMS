@@ -64,7 +64,8 @@ Important privacy rule: a customer lookup of another customer’s queue entry mu
   "joinedAt": "2026-11-09T09:00:00Z",
   "calledAt": null,
   "serviceStartedAt": null,
-  "completedAt": null
+  "completedAt": null,
+  "aheadCount": 3
 }
 ```
 
@@ -73,6 +74,9 @@ Rules:
 - `status` is one of `WAITING`, `CALLED`, `SERVING`, `COMPLETED`
 - `customerId` is included only in authorized responses; a customer only sees their own entry data, and an operator sees queue entries for assigned queues
 - Timestamp fields that are not yet set are `null`
+- `aheadCount` is an integer field present on customer entry detail retrieval (`GET /api/me/queue-entries/:entryId`):
+  - When `status === 'WAITING'`: non-negative integer representing the count of active `WAITING` entries in the same `serviceQueueId` ordered strictly ahead by `(joinedAt ASC, id ASC)`.
+  - When `status !== 'WAITING'` (`CALLED`, `SERVING`, `COMPLETED`): returns `0` (not `null` and never omitted), representing zero waiting entries ahead of the customer.
 
 ### 3.4 `ErrorResponse`
 
@@ -364,15 +368,20 @@ Success response:
       "serviceQueueId": "0bfe6fd8-7f32-44b1-987e-23ef3f2a7d17",
       "customerId": "550e8400-e29b-41d4-a716-446655440000",
       "queueNumber": 12,
-      "status": "CALLED",
+      "status": "WAITING",
       "joinedAt": "2026-11-09T09:00:00Z",
-      "calledAt": "2026-11-09T09:02:00Z",
+      "calledAt": null,
       "serviceStartedAt": null,
-      "completedAt": null
+      "completedAt": null,
+      "aheadCount": 3
     }
   }
 }
 ```
+
+- Field `aheadCount`: Non-negative integer indicating queue position:
+  - When `status === 'WAITING'`: count of active `WAITING` entries in the same queue ordered strictly ahead by FIFO `(joinedAt ASC, id ASC)`.
+  - When `status !== 'WAITING'` (`CALLED`, `SERVING`, `COMPLETED`): returns `0` (not `null` and never omitted), representing zero waiting entries ahead of the customer.
 
 Error responses:
 - `400 INVALID_ARGUMENT` for malformed `entryId`
