@@ -147,12 +147,26 @@ npm run dev:client
 
 ---
 
+## Authentication (local development)
+
+- Sign in at `http://localhost:5173/login` with a seeded account from `server/prisma/seed.ts`: `customer1@example.com`, `customer2@example.com` (CUSTOMER) or `operator1@example.com`, `operator2@example.com` (OPERATOR). The development-only password is `Password123!` (see step 6). Never use it outside local development.
+- Customers land on `/customer`, operators on `/operator`. Both pages are placeholders until Issues #5 and #6.
+- A successful `POST /api/auth/login` sets two cookies, both valid for 8 hours:
+  - `qms_session`: the session token (`HttpOnly`, `SameSite=Lax`, `Secure` in production). The database stores only an HMAC of it.
+  - `qms_csrf`: the CSRF token for that session (`SameSite=Lax`, readable by JavaScript).
+- The client reads `qms_csrf` and sends it as the `X-CSRF-Token` header on every non-GET request (logout and all later mutations). `GET /api/auth/me` re-issues the cookie after a page reload. Missing or wrong token: `403 FORBIDDEN`; missing or expired session: `401 UNAUTHORIZED`.
+
+---
+
 ## Running Tests & Typechecks
 
 Execute tests across the test suite:
 ```bash
 # Run Vitest test suite against real isolated test database (qms_test_db)
 npm run test
+
+# Run the client (React) test suite: Vitest + jsdom + React Testing Library, no database needed
+npm run test:client
 
 # Run TypeScript type checking across both production and test files
 npm run typecheck --workspace=server
