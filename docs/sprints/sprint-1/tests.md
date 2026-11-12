@@ -362,6 +362,37 @@ Use the standard API error envelope and the Sprint 1 contract in [../srs.md](../
 - No duplicate queue numbers exist within the same queue.
 - Database records match the API responses.
 
+### NUMBER-002 — Number Allocation Rollback on Transaction Failure
+**Test Level:** Database Integration / Transactional Atomicity Test
+
+**Preconditions:**
+- Queue Q exists and is `OPEN` with `lastQueueNumber = 0`.
+- An entry with `queueNumber = 1` already exists in Q for a different customer while `lastQueueNumber` is left at `0` to force a unique constraint conflict (`QueueEntry_serviceQueueId_queueNumber_key`) when a new customer registers.
+
+**Input:**
+- Customer sends `POST /api/queues/{queueId}/entries` with valid credentials and CSRF token.
+
+**Execution Steps:**
+1. Authenticate as a customer.
+2. Send join-queue request for Queue Q.
+3. Observe the atomic execution inside `prisma.$transaction`: `lastQueueNumber` is incremented to `1`, but `queueEntry.create` fails on unique constraint violation.
+4. Verify the API response status and error body.
+5. Query the database to verify whether `ServiceQueue.lastQueueNumber` rolled back.
+
+**Expected HTTP Status:**
+- `500 Internal Server Error` (the unique constraint conflict on `queueNumber` is not a customer duplicate entry and bubbles up as an internal error per discriminator rules).
+
+**Expected Response Body:**
+- Error code `INTERNAL_ERROR`.
+- Response follows the standard error envelope.
+
+**Expected Database Side Effects:**
+- `ServiceQueue.lastQueueNumber` rolls back to its initial value (`0`) atomically.
+- No new queue-entry row is persisted for the calling customer.
+
+**Pass Criteria:**
+- The transaction rolls back completely; `lastQueueNumber` does not remain at the incremented value, guaranteeing that no counter gaps or leaked numbers occur on mid-transaction failures.
+
 ### CONCURRENCY-001 — Parallel Queue Join Race Condition
 **Test Level:** Database Concurrency / API Integration Test
 
@@ -579,3 +610,35 @@ This test plan maps to FR-01 through FR-13, BR-01 through BR-12, and NFR-01 thro
 #### Manual smoke check
 - HTTP through the Vite dev proxy (`npm run dev:server`, `npm run dev:client`): customer and operator login `200` with both cookies, `/api/auth/me` `200`, logout without token `403`, logout with token `204`, wrong password `401`; the server log contained no password, cookie, or hash
 - Not performed: the in-browser check (role redirect, reload of `/customer` after logout). No browser automation was available; the same behavior is covered only by the jsdom client tests above
+
+## 8. Execution Evidence and Automated Test Results (Issue #4 Core Queue Generation)
+
+**Execution Date:** 2026-11-12  
+**Server suite:** Vitest v2.1.9 (`npm test --workspace=server`) against isolated PostgreSQL test database (`qms_test_db`)  
+**Server result:** **85 passed / 85 total (100% Pass)**  
+**Typecheck & Build:** `tsc --noEmit && tsc --project tsconfig.test.json --noEmit` (exit 0), `npm run build` (exit 0)
+
+#### Server: `tests/queue-registration.test.ts` (25 passed)
+- `[PASS]` (`QUEUE-001`) `GET /api/queues`: returns only `OPEN` queues sorted by `createdAt ASC` for authenticated users; rejects unauthenticated with `401 UNAUTHORIZED`
+- `[PASS]` (`QUEUE-002`, `NUMBER-001`) `POST /api/queues/:queueId/entries`: successfully joins an OPEN queue and allocates monotonic positive queue numbers starting at 1
+- `[PASS]` (`QUEUE-004`) rejects join request for `CLOSED` queue with `409 QUEUE_NOT_AVAILABLE`
+- `[PASS]` returns `404 RESOURCE_NOT_FOUND` when joining a non-existent queue
+- `[PASS]` returns `400 INVALID_ARGUMENT` when `:queueId` is not a valid UUIDv4
+- `[PASS]` (`NUMBER-002`) atomic rollback: when `queueEntry.create` fails on a unique constraint violation after `lastQueueNumber` was updated, the transaction rolls back `lastQueueNumber` cleanly to its initial value (0) and returns `500 INTERNAL_ERROR`
+- `[PASS]` (`RBAC-001`) rejects operator role from joining a queue with `403 FORBIDDEN`
+- `[PASS]` (`SEC-002`) rejects join request with missing `X-CSRF-Token` with `403 FORBIDDEN`
+- `[PASS]` returns `401 UNAUTHORIZED` for unauthenticated join requests
+- `[PASS]` (`QUEUE-003`) duplicate active join rejection: second active join returns `409 DUPLICATE_ACTIVE_ENTRY` without incrementing `lastQueueNumber`
+- `[PASS]` rejects duplicate join when customer already has an entry in `CALLED` or `SERVING` status (`409 DUPLICATE_ACTIVE_ENTRY`)
+- `[PASS]` (`QUEUE-005`) permits rejoin after previous entry is `COMPLETED` and allocates next monotonic queue number
+- `[PASS]` (`QUEUE-008`) permits a customer to hold active entries across distinct queues simultaneously
+- `[PASS]` (`CONCURRENCY-001`) parallel join requests from 8 concurrent customers produce strictly contiguous unique queue numbers (1..8) without duplicates, gaps, or lost updates
+- `[PASS]` (`CONCURRENCY-002`) concurrent duplicate join requests by the same customer: exactly 1 succeeds (201) and the rest fail with `409 DUPLICATE_ACTIVE_ENTRY`
+- `[PASS]` `GET /api/me/queue-entries`: lists customer entries in `joinedAt DESC` order including completed history
+- `[PASS]` `GET /api/me/queue-entries`: orders entries with identical `joinedAt` deterministically by `id DESC`
+- `[PASS]` `GET /api/me/queue-entries/:entryId`: calculates deterministic FIFO `aheadCount` accurately for `WAITING` entries
+- `[PASS]` `GET /api/me/queue-entries/:entryId`: returns `aheadCount: 0` for all non-WAITING statuses (`CALLED`, `SERVING`, `COMPLETED`)
+- `[PASS]` `GET /api/me/queue-entries/:entryId`: enforces tie-breaker `id ASC` ordering when `joinedAt` timestamps are identical
+- `[PASS]` (`RBAC-005`, `QUEUE-006`) cross-owner entry lookup is masked as `404 RESOURCE_NOT_FOUND`
+- `[PASS]` returns `400 INVALID_ARGUMENT` when `:entryId` is malformed
+- `[PASS]` rejects operator role on `/api/me/queue-entries` with `403 FORBIDDEN`

@@ -7,12 +7,13 @@ import {
   resetAndSeed,
   login,
   CUSTOMER1,
+  CUSTOMER2,
   OPERATOR1,
   OPEN_QUEUE_ID,
   CLOSED_QUEUE_ID,
   SEED_PASSWORD,
 } from './helpers/auth';
-import { Role, AccountStatus, QueueStatus } from '@prisma/client';
+import { Role, AccountStatus, QueueStatus, QueueAvailability } from '@prisma/client';
 
 describe('Issue #4: Service Queue Creation & Queue Number Generation', () => {
   beforeAll(async () => {
@@ -158,6 +159,57 @@ describe('Issue #4: Service Queue Creation & Queue Number Generation', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('INVALID_ARGUMENT');
+    });
+
+    it('rolls back lastQueueNumber atomically when entry creation fails inside the transaction (NUMBER-002)', async () => {
+      const custAuth = await login(app, CUSTOMER1.email);
+
+      // Setup a fresh queue with lastQueueNumber = 0
+      const testQueue = await prisma.serviceQueue.create({
+        data: {
+          name: 'Atomic Rollback Test Queue',
+          availability: QueueAvailability.OPEN,
+          lastQueueNumber: 0n,
+        },
+      });
+
+      // Directly insert an existing entry with queueNumber = 1 for a DIFFERENT customer (CUSTOMER2)
+      // while leaving ServiceQueue.lastQueueNumber at 0.
+      // When CUSTOMER1 calls joinQueue, ServiceQueue.lastQueueNumber will be incremented to 1,
+      // but tx.queueEntry.create will fail on unique constraint "QueueEntry_serviceQueueId_queueNumber_key".
+      await prisma.queueEntry.create({
+        data: {
+          customerId: CUSTOMER2.id,
+          serviceQueueId: testQueue.id,
+          queueNumber: 1n,
+          status: QueueStatus.COMPLETED,
+        },
+      });
+
+      // Verify initial state
+      const initialQueue = await prisma.serviceQueue.findUniqueOrThrow({ where: { id: testQueue.id } });
+      expect(initialQueue.lastQueueNumber).toBe(0n);
+
+      // Attempt to join the queue as CUSTOMER1
+      const res = await request(app)
+        .post(`/api/queues/${testQueue.id}/entries`)
+        .set('Cookie', custAuth.cookieHeader)
+        .set('X-CSRF-Token', custAuth.csrfToken);
+
+      // Because the failure is on QueueEntry_serviceQueueId_queueNumber_key (NOT customer duplicate),
+      // it must NOT be masked as 409 DUPLICATE_ACTIVE_ENTRY, but bubble up as 500 INTERNAL_ERROR (Fix #1)
+      expect(res.status).toBe(500);
+      expect(res.body.error.code).toBe('INTERNAL_ERROR');
+
+      // CRITICAL ASSERTION (NUMBER-002): ServiceQueue.lastQueueNumber must roll back to 0n (NOT 1n)
+      const rolledBackQueue = await prisma.serviceQueue.findUniqueOrThrow({ where: { id: testQueue.id } });
+      expect(rolledBackQueue.lastQueueNumber).toBe(0n);
+
+      // Verify no entry was created for CUSTOMER1
+      const customer1Entries = await prisma.queueEntry.count({
+        where: { serviceQueueId: testQueue.id, customerId: CUSTOMER1.id },
+      });
+      expect(customer1Entries).toBe(0);
     });
 
     it('rejects operator role from joining a queue with 403 FORBIDDEN (RBAC-001)', async () => {
@@ -622,6 +674,73 @@ describe('Issue #4: Service Queue Creation & Queue Number Generation', () => {
 
       expect(res.status).toBe(403);
       expect(res.body.error.code).toBe('FORBIDDEN');
+    });
+
+    it('orders entries with identical joinedAt deterministically by id DESC in listCustomerEntries', async () => {
+      const custAuth = await login(app, CUSTOMER1.email);
+      const sameTime = new Date('2026-11-12T15:00:00.000Z');
+
+      const idLower = '11111111-cccc-4111-8111-111111111111';
+      const idHigher = '22222222-dddd-4222-8222-222222222222';
+
+      await prisma.queueEntry.create({
+        data: {
+          id: idLower,
+          customerId: CUSTOMER1.id,
+          serviceQueueId: OPEN_QUEUE_ID,
+          queueNumber: 101n,
+          status: QueueStatus.COMPLETED,
+          joinedAt: sameTime,
+        },
+      });
+
+      await prisma.queueEntry.create({
+        data: {
+          id: idHigher,
+          customerId: CUSTOMER1.id,
+          serviceQueueId: OPEN_QUEUE_ID,
+          queueNumber: 102n,
+          status: QueueStatus.COMPLETED,
+          joinedAt: sameTime,
+        },
+      });
+
+      const res = await request(app)
+        .get('/api/me/queue-entries')
+        .set('Cookie', custAuth.cookieHeader);
+
+      expect(res.status).toBe(200);
+      const entries = res.body.data.entries;
+      const filtered = entries.filter((e: any) => e.id === idLower || e.id === idHigher);
+      expect(filtered).toHaveLength(2);
+      expect(filtered[0].id).toBe(idHigher);
+      expect(filtered[1].id).toBe(idLower);
+    });
+
+    it('returns aheadCount: 0 for all non-WAITING statuses (CALLED, SERVING, COMPLETED)', async () => {
+      const custAuth = await login(app, CUSTOMER1.email);
+
+      for (const testStatus of [QueueStatus.CALLED, QueueStatus.SERVING, QueueStatus.COMPLETED]) {
+        const entry = await prisma.queueEntry.create({
+          data: {
+            customerId: CUSTOMER1.id,
+            serviceQueueId: OPEN_QUEUE_ID,
+            queueNumber: BigInt(Math.floor(Math.random() * 1000) + 100),
+            status: testStatus,
+            joinedAt: new Date(),
+          },
+        });
+
+        const res = await request(app)
+          .get(`/api/me/queue-entries/${entry.id}`)
+          .set('Cookie', custAuth.cookieHeader);
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.entry.status).toBe(testStatus);
+        expect(res.body.data.entry.aheadCount).toBe(0);
+
+        await prisma.queueEntry.delete({ where: { id: entry.id } });
+      }
     });
   });
 });
