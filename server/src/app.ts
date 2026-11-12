@@ -7,6 +7,8 @@ import { errorHandler } from './middleware/errorHandler';
 import { validateUuidParam } from './middleware/validateUuid';
 import { loadSession } from './middleware/session';
 import { authRouter } from './routes/auth';
+import { queuesRouter } from './routes/queues';
+import { meRouter } from './routes/me';
 import { AppError } from './errors/AppError';
 
 export const app = express();
@@ -37,6 +39,8 @@ app.param('entryId', validateUuidParam('entryId'));
 // API routes
 const apiRouter = express.Router();
 apiRouter.use('/auth', authRouter);
+apiRouter.use('/queues', queuesRouter);
+apiRouter.use('/me', meRouter);
 app.use('/api', apiRouter);
 
 // Catch-all for undefined routes conforming to SDS §5.1 / §5.3

@@ -29,18 +29,18 @@ Use the standard API error envelope and the Sprint 1 contract in [../srs.md](../
 | AUTH-004 | Invalid credentials | generic `401 UNAUTHORIZED` response | API integration | **PASSED** (#3, `tests/auth.test.ts`) |
 | AUTH-005 | Authenticated identity and expired session | `/auth/me` returns identity; expired sessions cannot access protected routes | API integration | **PASSED** (#3, `tests/auth.test.ts`) |
 | SEC-001 | Password and secret handling | passwords are salted and never returned to the UI or API; secrets remain absent from logs | Security / API integration | **PASSED** (Verified in `tests/seed.test.ts`, `tests/config.test.ts`) |
-| SEC-002 | CSRF enforcement | missing or invalid CSRF tokens are rejected before mutation | Security / API integration | **PARTIALLY VERIFIED** (#3: CSRF middleware on logout and a test-only mutation route, `tests/csrf.test.ts`; the join-queue scenario defined below must be re-run in #5) |
-| QUEUE-001 | OPEN queue listing | only OPEN queues are returned | API integration | Pending (#4) |
-| QUEUE-002 | Join queue success | a `WAITING` entry is created with queue number and join timestamp | API integration | Pending (#5) |
-| QUEUE-003 | Duplicate active join rejected | second active join returns `409 DUPLICATE_ACTIVE_ENTRY` | Database integration | **PASSED** (Verified in `tests/foundation.test.ts`) |
-| QUEUE-004 | Closed queue rejection | closed queue join returns `409 QUEUE_NOT_AVAILABLE` | API integration | Pending (#5) |
-| QUEUE-005 | Rejoin after completion | completed entry may be rejoined later | Database integration | **PASSED** (Verified in `tests/foundation.test.ts`) |
-| QUEUE-006 | Privacy enforcement | customer can access only own entry | API integration | Pending (#5) |
+| SEC-002 | CSRF enforcement | missing or invalid CSRF tokens are rejected before mutation | Security / API integration | **PASSED** (Verified in `tests/csrf.test.ts`, `tests/queue-registration.test.ts`) |
+| QUEUE-001 | OPEN queue listing | only OPEN queues are returned | API integration | **PASSED** (#4, `tests/queue-registration.test.ts`) |
+| QUEUE-002 | Join queue success | a `WAITING` entry is created with queue number and join timestamp | API integration | **PASSED** (#4, `tests/queue-registration.test.ts`) |
+| QUEUE-003 | Duplicate active join rejected | second active join returns `409 DUPLICATE_ACTIVE_ENTRY` | Database integration | **PASSED** (Verified in `tests/foundation.test.ts`, `tests/queue-registration.test.ts`) |
+| QUEUE-004 | Closed queue rejection | closed queue join returns `409 QUEUE_NOT_AVAILABLE` | API integration | **PASSED** (#4, `tests/queue-registration.test.ts`) |
+| QUEUE-005 | Rejoin after completion | completed entry may be rejoined later | Database integration | **PASSED** (Verified in `tests/foundation.test.ts`, `tests/queue-registration.test.ts`) |
+| QUEUE-006 | Privacy enforcement | customer can access only own entry | API integration | **PASSED** (#4, `tests/queue-registration.test.ts`) |
 | QUEUE-007 | FIFO operator listing | entries ordered according to FIFO rule | API integration | Pending (#6) |
-| QUEUE-008 | Customer joins multiple queues | one active entry per customer per queue is allowed across distinct queues | API integration | Pending (#5) |
-| NUMBER-001 | Queue-number uniqueness and sequential order | successful sequential joins receive the next positive number without duplicates within the queue | API integration / Database integration | **PASSED** (Verified in `tests/foundation.test.ts`) |
-| NUMBER-002 | Number allocation rollback | failed transaction does not persist a queue number | Database integration | Pending (#4) |
-| API-001 | Malformed request rejection | malformed payloads and identifiers return `400 INVALID_ARGUMENT` without mutation | API integration | **PASSED** (Verified in `tests/foundation.test.ts`) |
+| QUEUE-008 | Customer joins multiple queues | one active entry per customer per queue is allowed across distinct queues | API integration | **PASSED** (#4, `tests/queue-registration.test.ts`) |
+| NUMBER-001 | Queue-number uniqueness and sequential order | successful sequential joins receive the next positive number without duplicates within the queue | API integration / Database integration | **PASSED** (Verified in `tests/foundation.test.ts`, `tests/queue-registration.test.ts`) |
+| NUMBER-002 | Number allocation rollback | failed transaction does not persist a queue number | Database integration | **PASSED** (#4, `tests/queue-registration.test.ts`) |
+| API-001 | Malformed request rejection | malformed payloads and identifiers return `400 INVALID_ARGUMENT` without mutation | API integration | **PASSED** (Verified in `tests/foundation.test.ts`, `tests/queue-registration.test.ts`) |
 | FLOW-001 | Call next selects oldest WAITING | oldest eligible row is moved to `CALLED` | Database integration | Pending (#6) |
 | FLOW-002 | Call next successfully transitions WAITING to CALLED | selected WAITING entry changes to `CALLED` and `calledAt` is set | API integration / Database integration | Pending (#6) |
 | FLOW-003 | Empty call next | `204 No Content` and no mutation | API integration | Pending (#6) |
@@ -52,9 +52,9 @@ Use the standard API error envelope and the Sprint 1 contract in [../srs.md](../
 | RBAC-002 | Customer cannot start | `403 FORBIDDEN` | API integration | Pending (#6) |
 | RBAC-003 | Customer cannot complete | `403 FORBIDDEN` | API integration | Pending (#6) |
 | RBAC-004 | Operator assignment enforcement | unassigned queue access fails | API integration | Pending (#6) |
-| RBAC-005 | Cross-owner entry access denied | customer request to another customer's entry fails | API integration | Pending (#5) |
-| CONCURRENCY-001 | Parallel queue join race condition | concurrent join requests preserve unique queue numbers and consistent active entries | Database concurrency / API integration | Pending (#4) |
-| CONCURRENCY-002 | Duplicate active entry race | only one active row survives under concurrent duplicate joins | Database integration | Pending (#5) |
+| RBAC-005 | Cross-owner entry access denied | customer request to another customer's entry fails | API integration | **PASSED** (#4, `tests/queue-registration.test.ts`) |
+| CONCURRENCY-001 | Parallel queue join race condition | concurrent join requests preserve unique queue numbers and consistent active entries | Database concurrency / API integration | **PASSED** (#4, `tests/queue-registration.test.ts`) |
+| CONCURRENCY-002 | Duplicate active entry race | only one active row survives under concurrent duplicate joins | Database integration | **PASSED** (#4, `tests/queue-registration.test.ts`) |
 | CONCURRENCY-003 | Call-next race | concurrent call-next requests claim different entries correctly | Database integration | Pending (#6) |
 | CONCURRENCY-004 | Stale concurrent mutation | stale mutation returns conflict response without corrupting state | Database integration | Pending (#6) |
 | PERF-001 | Local performance targets | p95 read and mutation timings meet Sprint 1 local targets | Performance | Pending |
