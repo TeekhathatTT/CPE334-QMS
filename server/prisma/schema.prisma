@@ -1,0 +1,82 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  CUSTOMER
+  OPERATOR
+}
+
+enum AccountStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum QueueAvailability {
+  OPEN
+  CLOSED
+}
+
+enum QueueStatus {
+  WAITING
+  CALLED
+  SERVING
+  COMPLETED
+}
+
+model User {
+  id            String               @id @default(uuid()) @db.Uuid
+  email         String               @unique @db.VarChar(254)
+  passwordHash  String               @db.VarChar(255)
+  role          Role
+  accountStatus AccountStatus
+  createdAt     DateTime             @default(now()) @db.Timestamptz
+  updatedAt     DateTime             @updatedAt @db.Timestamptz
+  assignments   OperatorAssignment[]
+  queueEntries  QueueEntry[]
+}
+
+model ServiceQueue {
+  id              String               @id @default(uuid()) @db.Uuid
+  name            String               @db.VarChar(120)
+  description     String?              @db.VarChar(500)
+  availability    QueueAvailability
+  lastQueueNumber BigInt               @default(0)
+  createdAt       DateTime             @default(now()) @db.Timestamptz
+  updatedAt       DateTime             @updatedAt @db.Timestamptz
+  assignments     OperatorAssignment[]
+  queueEntries    QueueEntry[]
+}
+
+model OperatorAssignment {
+  operatorId     String       @db.Uuid
+  serviceQueueId String       @db.Uuid
+  assignedAt     DateTime     @default(now()) @db.Timestamptz
+  operator       User         @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  serviceQueue   ServiceQueue @relation(fields: [serviceQueueId], references: [id], onDelete: Cascade)
+
+  @@id([operatorId, serviceQueueId])
+}
+
+model QueueEntry {
+  id               String        @id @default(uuid()) @db.Uuid
+  customerId       String        @db.Uuid
+  serviceQueueId   String        @db.Uuid
+  queueNumber      BigInt
+  status           QueueStatus   @default(WAITING)
+  joinedAt         DateTime      @default(now()) @db.Timestamptz
+  calledAt         DateTime?     @db.Timestamptz
+  serviceStartedAt DateTime?     @db.Timestamptz
+  completedAt      DateTime?     @db.Timestamptz
+  customer         User          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  serviceQueue     ServiceQueue  @relation(fields: [serviceQueueId], references: [id], onDelete: Restrict)
+
+  @@unique([serviceQueueId, queueNumber], map: "QueueEntry_serviceQueueId_queueNumber_key")
+  @@index([serviceQueueId, joinedAt(sort: Asc), id(sort: Asc)], map: "QueueEntry_fifo_idx")
+  @@index([customerId, joinedAt(sort: Desc)], map: "QueueEntry_customer_joinedAt_idx")
+}
