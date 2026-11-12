@@ -2,12 +2,12 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { Role, AccountStatus, QueueAvailability, PrismaClient } from '@prisma/client';
-import bcrypt from 'bcrypt';
 import { prisma } from '../src/db';
+import { hashPassword } from '../src/auth/password';
 
 export async function seed(client: PrismaClient = prisma) {
-  const saltRounds = 10;
-  const passwordHash = await bcrypt.hash('Password123!', saltRounds);
+  // Development-only password for every seeded account (documented in README).
+  const passwordHash = await hashPassword('Password123!');
 
   // 1. Customers (RFC 4122 UUIDv4)
   const customer1 = await client.user.upsert({

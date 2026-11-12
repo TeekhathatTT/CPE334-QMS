@@ -1,23 +1,42 @@
-import React from 'react';
+import { Navigate, Route, Routes } from 'react-router-dom';
+import { homePathFor } from './api/client';
+import { AuthProvider, useAuth } from './auth/AuthContext';
+import { ProtectedRoute } from './auth/ProtectedRoute';
+import { LoadingScreen } from './components/LoadingScreen';
+import { LoginPage } from './pages/LoginPage';
+import { RoleHomePlaceholder } from './pages/RoleHomePlaceholder';
 
-/**
- * Foundation placeholder screen (Issue #2).
- *
- * It intentionally calls no API: the Sprint 1 API specification defines no health endpoint,
- * and the login and queue screens are delivered by later Sprint 1 issues.
- */
-export const App: React.FC = () => {
+/** Sends `/` and unknown paths to the signed-in user's home, or to `/login`. */
+function HomeRedirect() {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
+  return <Navigate to={user ? homePathFor(user.role) : '/login'} replace />;
+}
+
+export function AppRoutes() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-4 bg-slate-100">
-      <div className="max-w-md w-full bg-white shadow-md rounded-xl p-8 border border-slate-200">
-        <h1 className="text-2xl font-bold text-slate-800 mb-2">QMS</h1>
-        <p className="text-slate-600 text-sm">Queue and Service Management System</p>
-        <p className="text-slate-500 text-sm mt-4">
-          Project foundation is running. Customer and operator workflows are added in later Sprint 1 issues.
-        </p>
-      </div>
-    </main>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+
+      {/* ui-spec §3. Later issues add /customer/entries/:id and /operator/queues/:id under these guards. */}
+      <Route path="/customer" element={<ProtectedRoute allowedRoles={['CUSTOMER']} />}>
+        <Route index element={<RoleHomePlaceholder title="Customer" replacedBy="Issue #5 (customer queue screens)" />} />
+      </Route>
+      <Route path="/operator" element={<ProtectedRoute allowedRoles={['OPERATOR']} />}>
+        <Route index element={<RoleHomePlaceholder title="Operator" replacedBy="Issue #6 (operator queue screens)" />} />
+      </Route>
+
+      <Route path="*" element={<HomeRedirect />} />
+    </Routes>
   );
-};
+}
+
+export function App() {
+  return (
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
+  );
+}
 
 export default App;

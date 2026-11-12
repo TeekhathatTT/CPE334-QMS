@@ -23,13 +23,13 @@ Use the standard API error envelope and the Sprint 1 contract in [../srs.md](../
 
 | ID | Name | Expected result | Level | Status |
 |---|---|---|---|---|
-| AUTH-001 | Customer login success | valid CUSTOMER session created | API integration | Pending (#3) |
-| AUTH-002 | Operator login success | valid OPERATOR session created | API integration | Pending (#3) |
-| AUTH-003 | Logout revokes session | protected requests fail after logout | API integration | Pending (#3) |
-| AUTH-004 | Invalid credentials | generic `401 UNAUTHORIZED` response | API integration | Pending (#3) |
-| AUTH-005 | Authenticated identity and expired session | `/auth/me` returns identity; expired sessions cannot access protected routes | API integration | Pending (#3) |
+| AUTH-001 | Customer login success | valid CUSTOMER session created | API integration | **PASSED** (#3, `tests/auth.test.ts`) |
+| AUTH-002 | Operator login success | valid OPERATOR session created | API integration | **PASSED** (#3, `tests/auth.test.ts`) |
+| AUTH-003 | Logout revokes session | protected requests fail after logout | API integration | **PASSED** (#3, `tests/auth.test.ts`) |
+| AUTH-004 | Invalid credentials | generic `401 UNAUTHORIZED` response | API integration | **PASSED** (#3, `tests/auth.test.ts`) |
+| AUTH-005 | Authenticated identity and expired session | `/auth/me` returns identity; expired sessions cannot access protected routes | API integration | **PASSED** (#3, `tests/auth.test.ts`) |
 | SEC-001 | Password and secret handling | passwords are salted and never returned to the UI or API; secrets remain absent from logs | Security / API integration | **PASSED** (Verified in `tests/seed.test.ts`, `tests/config.test.ts`) |
-| SEC-002 | CSRF enforcement | missing or invalid CSRF tokens are rejected before mutation | Security / API integration | Pending (#3) |
+| SEC-002 | CSRF enforcement | missing or invalid CSRF tokens are rejected before mutation | Security / API integration | **PARTIALLY VERIFIED** (#3: CSRF middleware on logout and a test-only mutation route, `tests/csrf.test.ts`; the join-queue scenario defined below must be re-run in #5) |
 | QUEUE-001 | OPEN queue listing | only OPEN queues are returned | API integration | Pending (#4) |
 | QUEUE-002 | Join queue success | a `WAITING` entry is created with queue number and join timestamp | API integration | Pending (#5) |
 | QUEUE-003 | Duplicate active join rejected | second active join returns `409 DUPLICATE_ACTIVE_ENTRY` | Database integration | **PASSED** (Verified in `tests/foundation.test.ts`) |
@@ -537,3 +537,45 @@ This test plan maps to FR-01 through FR-13, BR-01 through BR-12, and NFR-01 thro
 - `[PASS]` rejects a short `SESSION_SECRET` (< 32 chars)
 - `[PASS]` rejects a missing `DATABASE_URL` and a non-numeric `PORT`
 
+## 7. Execution Evidence and Automated Test Results (Issue #3 Authentication & RBAC)
+
+**Execution Date:** 2026-11-12  
+**Server suite:** Vitest v2.1.9 (`npm test`) against the isolated PostgreSQL 16 test database (`qms_test_db`, Docker container)  
+**Server result:** **60 passed / 60 total** (27 Issue #2 baseline + 33 new)  
+**Client suite:** Vitest v2.1.9 + jsdom + React Testing Library (`npm run test:client`)  
+**Client result:** **15 passed / 15 total**  
+**Also run:** `npm run migrate:test` (2 migrations, none pending), `npm run typecheck --workspace=server` (exit 0), `npm run build` (server `tsc` and client `tsc && vite build` succeeded)
+
+#### Server: `tests/auth.test.ts` (18 passed)
+- `[PASS]` `AUTH-001` / `AUTH-002`: customer and operator login return `200` with `data.user` (`id`, `email`, `role`) and no `passwordHash`; `qms_session` is `HttpOnly; SameSite=Lax; Path=/` (no `Secure` outside production); `qms_csrf` is not `HttpOnly`; one `Session` row whose `tokenHash` is the HMAC of, and not equal to, the cookie value; 8-hour lifetime; `/api/auth/me` returns the same identity
+- `[PASS]` `AUTH-001`: email is trimmed and lower-cased before lookup; a new login deletes the session presented with the request
+- `[PASS]` `AUTH-003`: logout returns `204` with an empty body, deletes the row, and clears both cookies; the old cookie then gets `401` on `/me`; a second logout gets `401`
+- `[PASS]` `AUTH-004`: wrong password, unknown email, and `DISABLED` account return identical `401 UNAUTHORIZED` bodies (ignoring `requestId`) and set no cookie; 7 missing/malformed payloads and malformed JSON return `400 INVALID_ARGUMENT`
+- `[PASS]` `AUTH-005`: a session with `expiresAt` in the past gets `401` and is deleted; missing, tampered, and oversized cookies get `401`; the session of a user later set to `DISABLED` gets `401`
+- `[PASS]` `SEC-001` (regression): a distinctive password, its stored hash, the session token, and the token HMAC appear in no response body and no captured log line, with the request logger switched on
+
+#### Server: `tests/csrf.test.ts` (6 passed) — `SEC-002` partially verified
+- `[PASS]` logout without `X-CSRF-Token` returns `403 FORBIDDEN` and the session stays valid
+- `[PASS]` logout with a wrong token or another session's token returns `403`; the correct token returns `204`
+- `[PASS]` on a test-only mutation route the handler is not invoked when the token is missing or wrong
+- `[PASS]` an anonymous mutation gets `401` (authentication is checked before CSRF)
+- `[PASS]` `GET` requests and `POST /api/auth/login` need no token
+- Not yet run: the `SEC-002` scenario above uses `POST /api/queues/{queueId}/entries`, which is delivered in Issue #5 and must be re-run there
+
+#### Server: `tests/rbac-middleware.test.ts` (9 passed) — middleware level only
+- `[PASS]` unauthenticated `401`; `loadSession` sets `req.user` from a real session; customer on an operator-only route `403`; operator allowed
+- `[PASS]` `requireQueueAssignment`: assigned operator passes; unassigned operator `403 FORBIDDEN` (both an unassigned queue and an unassigned operator); unknown queue `404 RESOURCE_NOT_FOUND`; customer `403`
+- These do not replace `RBAC-001` to `RBAC-004`, which remain Pending (#6)
+
+#### Server: unchanged Issue #2 suites
+- `tests/foundation.test.ts` 16 passed, `tests/seed.test.ts` 2 passed, `tests/config.test.ts` 9 passed
+
+#### Client: `src/test/auth.test.tsx` (15 passed)
+- `[PASS]` required-field validation before submit; generic `Invalid email or password.` alert on `401` with no session-expired banner and no server message; submit disabled with `Signing in...` while in flight (second click sends nothing)
+- `[PASS]` customer goes to `/customer`, operator to `/operator`; anonymous visitors are sent to `/login`; wrong role is sent to its own home; a signed-in user opening `/login` is sent home
+- `[PASS]` a `401 UNAUTHORIZED` from an authenticated request clears state, goes to `/login`, and shows exactly `Session expired. Please sign in again.`; no redirect or repeated requests when already on `/login`; a `403` does not trigger it
+- `[PASS]` logout sends `X-CSRF-Token` from the `qms_csrf` cookie and returns to `/login` without the banner; `GET` requests send no CSRF header
+
+#### Manual smoke check
+- HTTP through the Vite dev proxy (`npm run dev:server`, `npm run dev:client`): customer and operator login `200` with both cookies, `/api/auth/me` `200`, logout without token `403`, logout with token `204`, wrong password `401`; the server log contained no password, cookie, or hash
+- Not performed: the in-browser check (role redirect, reload of `/customer` after logout). No browser automation was available; the same behavior is covered only by the jsdom client tests above

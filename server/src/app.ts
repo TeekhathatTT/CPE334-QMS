@@ -5,6 +5,8 @@ import { requestIdMiddleware } from './middleware/requestId';
 import { requestLogger } from './middleware/requestLogger';
 import { errorHandler } from './middleware/errorHandler';
 import { validateUuidParam } from './middleware/validateUuid';
+import { loadSession } from './middleware/session';
+import { authRouter } from './routes/auth';
 import { AppError } from './errors/AppError';
 
 export const app = express();
@@ -25,9 +27,17 @@ app.use(cookieParser());
 app.use(requestIdMiddleware);
 app.use(requestLogger);
 
+// Resolves the session cookie into req.user; never rejects by itself (requireAuth does).
+app.use(loadSession);
+
 // Automatic UUIDv4 validation for route parameters
 app.param('queueId', validateUuidParam('queueId'));
 app.param('entryId', validateUuidParam('entryId'));
+
+// API routes
+const apiRouter = express.Router();
+apiRouter.use('/auth', authRouter);
+app.use('/api', apiRouter);
 
 // Catch-all for undefined routes conforming to SDS §5.1 / §5.3
 app.use((req: Request, res: Response, next: NextFunction) => {

@@ -39,6 +39,7 @@ model User {
   updatedAt     DateTime             @updatedAt @db.Timestamptz
   assignments   OperatorAssignment[]
   queueEntries  QueueEntry[]
+  sessions      Session[]
 }
 
 model ServiceQueue {
@@ -79,4 +80,18 @@ model QueueEntry {
   @@unique([serviceQueueId, queueNumber], map: "QueueEntry_serviceQueueId_queueNumber_key")
   @@index([serviceQueueId, joinedAt(sort: Asc), id(sort: Asc)], map: "QueueEntry_fifo_idx")
   @@index([customerId, joinedAt(sort: Desc)], map: "QueueEntry_customer_joinedAt_idx")
+}
+
+// Server-side login session (Issue #3, AD-01). Only an HMAC of the session token is stored.
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  tokenHash String   @unique @db.VarChar(64)
+  csrfToken String   @db.VarChar(64)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  expiresAt DateTime @db.Timestamptz
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
