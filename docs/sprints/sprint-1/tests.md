@@ -59,7 +59,7 @@ Use the standard API error envelope and the Sprint 1 contract in [../srs.md](../
 | CONCURRENCY-004 | Stale concurrent mutation | stale mutation returns conflict response without corrupting state | Database integration | Pending (#6) |
 | PERF-001 | Local performance targets | p95 read and mutation timings meet Sprint 1 local targets | Performance | Pending |
 | REL-001 | Commit durability | successful mutation persists after commit and survives restart validation | Database integration | Pending |
-| UI-001 | Responsive core workflows | pages remain usable at 360 px and 1280 px without horizontal overflow | Browser E2E | Pending |
+| UI-001 | Responsive core workflows | pages remain usable at 360 px and 1280 px without horizontal overflow | Browser E2E | **PASSED — customer screens** (#5, scripted browser run 2026-11-13, §11); operator screens Pending (#6) |
 | SETUP-001 | Reproducible local setup | clean checkout can provision required test accounts and queues | Manual verification | **PASSED** (Verified in `tests/seed.test.ts` & clean checkout) |
 | FLOW-009 | Customer E2E flow | login, join queue, view own detail | E2E | Pending |
 | FLOW-010 | Operator E2E flow | login, call, start, complete | E2E | Pending |
@@ -676,3 +676,58 @@ This test plan maps to FR-01 through FR-13, BR-01 through BR-12, and NFR-01 thro
 #### Manual smoke check (HTTP through the Vite dev proxy, development database)
 - `customer1` login `200`; `GET /api/queues` `200` with only "General Inquiry Desk"; join without or with a wrong token `403 FORBIDDEN`; join with the token `201` (`WAITING`, number 1); join again `409 DUPLICATE_ACTIVE_ENTRY`; closed queue `409 QUEUE_NOT_AVAILABLE`; `GET /api/me/queue-entries` `200` without `aheadCount`; own detail `200` with `aheadCount: 0`; malformed id `400`; `customer2` reading that entry `404` with no data; operator on `/api/me/queue-entries` `403`; anonymous `401`; `/customer/entries/:id` served by Vite `200`. No cookie or token values were printed
 - Not performed: any in-browser check. `UI-001` remains Pending. Checks left for a human: no horizontal scrolling at 360 px and 1280 px; keyboard-only use of the tabs, Join buttons, and detail page; screen-reader announcement of a status change; touch size of the buttons
+
+## 10. UI-001 Browser Verification Attempt
+
+**Execution Date:** 2026-11-13  
+**Result:** **BLOCKED — no browser checks completed; UI-001 remains Pending**
+
+- The Vite client started at `http://localhost:5173/`.
+- The API development server did not start: Node.js 22.20.0 / tsx exited with `uv_os_get_passwd returned ENOMEM` before serving requests.
+- Browser inspection could not proceed: the available browser-control session reported that it could not determine the current Brave URL with enough confidence and stopped. A browser access host was also unavailable in the initial browser inventory.
+- No viewport measurements, keyboard-only run, live screen-reader announcement, or touch-target measurements were obtained. Do not treat the existing component tests or source markup as substitutes for these browser checks.
+- Required follow-up before closing UI-001: rerun in a browser at 360 px and 1280 px; verify no horizontal overflow; navigate from the tabs through Join Queue to the entry detail using only the keyboard; verify the queue status announcement with a screen reader; and measure interactive touch targets.
+
+## 11. UI-001 Browser Verification (Customer Screens, Issue #5)
+
+**Execution Date:** 2026-11-13  
+**Result:** **PASSED for the customer screens.** The operator screens (`/operator`, `/operator/queues/:id`; UI-001 steps 6–7) do not exist yet, so that part of UI-001 stays **Pending (#6)**. Section 10's blockers were worked around as described below.
+
+**Environment**
+- API: `npm run build:server`, then `node dist/server.js` (port 3000). Running the compiled output avoids the `tsx` `uv_os_get_passwd ENOMEM` failure from section 10.
+- Database: the `qms-postgres` development container (port 5433) had stopped and was started with `docker start qms-postgres`. No migration, seed, or manual SQL was run.
+- Client: Vite dev server at `http://localhost:5173` (proxy to `:3000`).
+- Browser: headless Chromium 153.0.8010.12 (the local Playwright `chromium-1243` build), driven by a throwaway `playwright-core` 1.49.1 script outside the repository. Account: `customer2@example.com`, which had no active entry before the run.
+- Side effect on the development database: one real join. `customer2` received queue number 2 in "General Inquiry Desk" (`WAITING`).
+
+**1. Viewports, 360 × 800 and 1280 × 800: [PASS]**
+
+| Screen | 360 px `scrollWidth` / `innerWidth` | 1280 px `scrollWidth` / `innerWidth` | Elements extending past the right edge |
+|---|---|---|---|
+| `/login` | 360 / 360 | 1280 / 1280 | none |
+| `/customer`, Available Queues tab | 360 / 360 | 1280 / 1280 | none |
+| `/customer`, My Active Tickets tab | 360 / 360 | 1280 / 1280 | none |
+| `/customer/entries/:id` | 360 / 360 | 1280 / 1280 | none |
+
+- On every screen, `document.documentElement.scrollWidth` ≤ `window.innerWidth`, and no element's bounding box crosses the viewport edge.
+- Full-page screenshots were reviewed. At 360 px the layout is a single column, Logout and Join Queue are full width, and the two tabs split the row. At 1280 px the content is centered and the detail card shows the number, status, and message side by side. No clipped or overlapping content was seen.
+
+**2. Keyboard-only flow (360 px): [PASS], with one finding**
+- Tab order on `/customer`: Logout → "Available Queues" tab → tab panel → "Join queue: General Inquiry Desk". Every focused element matched `:focus-visible` and showed a visible ring.
+- Tabs: ArrowRight moves to "My Active Tickets" and shows its panel. ArrowRight again wraps back to "Available Queues". End and Home select the last and first tab. Inactive tabs have `tabindex=-1` (roving focus). Enter on a focused tab activates it.
+- Pressing Enter on Join Queue created the entry. The `role="status"` confirmation read "You joined General Inquiry Desk … Queue number 2 … Waiting".
+- From there, the keyboard reached "View details", and Enter opened `/customer/entries/:id`. That page showed queue number 2 and the message "Currently waiting. 1 person ahead of you."
+- Tab order on the detail page: "Back to my queues" → Refresh. Enter on the back link returned to `/customer`. The ticket's link has the accessible name "View details for queue number 2 in General Inquiry Desk".
+- **Finding (not blocking):** after Join succeeds, focus falls back to `<body>`. The Join button becomes disabled while the request is pending, and focus is not restored afterwards. Keyboard users have to Tab or Shift+Tab again to reach "View details". A screen reader still hears the confirmation through `role="status"`. ui-spec §8 only requires visible focus, so this does not fail UI-001. A follow-up could move focus to the confirmation or to its "View details" link.
+
+**3. Screen-reader announcement of a status change: [PASS] (verified through the accessibility tree, not with a real screen reader)**
+- The operator lifecycle endpoints are not implemented yet (#6). To simulate a status change, the browser intercepted `GET /api/me/queue-entries/:id` and changed the real response from `WAITING` to `CALLED`. The database was not changed. The Refresh button was then pressed.
+- The live region (`aria-live="polite"`, `aria-atomic="true"`, `sr-only`) was empty on load. It then contained: "Queue number 2 in General Inquiry Desk is now Called. Please go to the service desk." The visible message changed to "Please go to the service desk."
+- Chromium's accessibility tree (CDP `Accessibility.getFullAXTree`) exposes this node with `live=polite`, `atomic=true`, `relevant=additions text`. These are the properties a screen reader uses to announce the change.
+- **Not performed:** a listening test with NVDA, JAWS, VoiceOver, or TalkBack. A spoken-output check is still recommended once #6 provides real status changes.
+
+**4. Touch-target size (360 px viewport, `hasTouch`): [PASS]**
+- Every visible interactive element measured **44 px high or more**. Widths: Logout 328, tabs 164 each, Join Queue 294, Refresh 328 (on the tickets tab) or 294 (on the detail page), ticket "View details" 294, "Back to my queues" 155, login inputs and Sign in 278.
+- At 1280 px the heights are also 44 px. The smallest width is 86 px (Logout).
+- This meets WCAG 2.5.5 (44 × 44 CSS px) and therefore 2.5.8 (24 × 24).
+- Not performed: testing on a physical touch device.
