@@ -64,6 +64,7 @@ export function mockApi(routes: Record<string, RouteHandler>): Mock {
     'GET /api/auth/me': () => errorResponse(401, 'UNAUTHORIZED', 'Authentication is required.'),
     'GET /api/queues': () => queuesResponse([]),
     'GET /api/me/queue-entries': () => entriesResponse([]),
+    'GET /api/operator/queues': () => queuesResponse([]),
     ...routes,
   };
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {

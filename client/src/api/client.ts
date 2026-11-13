@@ -23,12 +23,14 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly serverMessage?: string;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, serverMessage?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.serverMessage = serverMessage;
   }
 }
 
@@ -92,10 +94,16 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 
   if (!response.ok) {
-    const error = (payload as { error?: { code?: unknown } } | null)?.error;
+    const error = (payload as { error?: { code?: unknown; message?: unknown } } | null)?.error;
     const code = typeof error?.code === 'string' ? error.code : 'INTERNAL_ERROR';
+    const serverMessage = typeof error?.message === 'string' ? error.message : undefined;
     // The server message is deliberately not surfaced; screens map codes to their own safe text.
-    const apiError = new ApiError(response.status, code, `Request failed with status ${response.status}.`);
+    const apiError = new ApiError(
+      response.status,
+      code,
+      `Request failed with status ${response.status}.`,
+      serverMessage
+    );
 
     if (response.status === 401 && code === 'UNAUTHORIZED' && path !== LOGIN_PATH && !options.anonymousProbe) {
       sessionExpiredHandler?.();
