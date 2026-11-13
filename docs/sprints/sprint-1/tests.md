@@ -675,18 +675,18 @@ This test plan maps to FR-01 through FR-13, BR-01 through BR-12, and NFR-01 thro
 
 #### Manual smoke check (HTTP through the Vite dev proxy, development database)
 - `customer1` login `200`; `GET /api/queues` `200` with only "General Inquiry Desk"; join without or with a wrong token `403 FORBIDDEN`; join with the token `201` (`WAITING`, number 1); join again `409 DUPLICATE_ACTIVE_ENTRY`; closed queue `409 QUEUE_NOT_AVAILABLE`; `GET /api/me/queue-entries` `200` without `aheadCount`; own detail `200` with `aheadCount: 0`; malformed id `400`; `customer2` reading that entry `404` with no data; operator on `/api/me/queue-entries` `403`; anonymous `401`; `/customer/entries/:id` served by Vite `200`. No cookie or token values were printed
-- Not performed: any in-browser check. `UI-001` remains Pending. Checks left for a human: no horizontal scrolling at 360 px and 1280 px; keyboard-only use of the tabs, Join buttons, and detail page; screen-reader announcement of a status change; touch size of the buttons
+- Browser verification was not completed during the initial attempt; see §10. The later browser run in §11 verified the customer screens: UI-001 is PASSED for customer screens; operator screens remain Pending (#6). The live-region announcement was checked through Chromium's accessibility tree, not with spoken output from a screen reader; testing on a physical touch device was also not performed.
 
-## 10. UI-001 Browser Verification Attempt
+## 10. UI-001 Browser Verification Attempt (Initial Attempt — Superseded by §11)
 
 **Execution Date:** 2026-11-13  
-**Result:** **BLOCKED — no browser checks completed; UI-001 remains Pending**
+**Result:** **BLOCKED — this initial attempt was superseded by the customer-screen verification in §11**
 
 - The Vite client started at `http://localhost:5173/`.
 - The API development server did not start: Node.js 22.20.0 / tsx exited with `uv_os_get_passwd returned ENOMEM` before serving requests.
 - Browser inspection could not proceed: the available browser-control session reported that it could not determine the current Brave URL with enough confidence and stopped. A browser access host was also unavailable in the initial browser inventory.
 - No viewport measurements, keyboard-only run, live screen-reader announcement, or touch-target measurements were obtained. Do not treat the existing component tests or source markup as substitutes for these browser checks.
-- Required follow-up before closing UI-001: rerun in a browser at 360 px and 1280 px; verify no horizontal overflow; navigate from the tabs through Join Queue to the entry detail using only the keyboard; verify the queue status announcement with a screen reader; and measure interactive touch targets.
+- This initial attempt did not complete the browser checks. The later results are recorded in §11: customer screens passed; operator screens remain Pending for Issue #6.
 
 ## 11. UI-001 Browser Verification (Customer Screens, Issue #5)
 
