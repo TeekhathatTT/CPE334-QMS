@@ -150,11 +150,22 @@ npm run dev:client
 ## Authentication (local development)
 
 - Sign in at `http://localhost:5173/login` with a seeded account from `server/prisma/seed.ts`: `customer1@example.com`, `customer2@example.com` (CUSTOMER) or `operator1@example.com`, `operator2@example.com` (OPERATOR). The development-only password is `Password123!` (see step 6). Never use it outside local development.
-- Customers land on `/customer`, operators on `/operator`. Both pages are placeholders until Issues #5 and #6.
+- Customers land on `/customer` (customer queue screens, Issue #5), operators on `/operator` (a placeholder until Issue #6).
 - A successful `POST /api/auth/login` sets two cookies, both valid for 8 hours:
   - `qms_session`: the session token (`HttpOnly`, `SameSite=Lax`, `Secure` in production). The database stores only an HMAC of it.
   - `qms_csrf`: the CSRF token for that session (`SameSite=Lax`, readable by JavaScript).
 - The client reads `qms_csrf` and sends it as the `X-CSRF-Token` header on every non-GET request (logout and all later mutations). `GET /api/auth/me` re-issues the cookie after a page reload. Missing or wrong token: `403 FORBIDDEN`; missing or expired session: `401 UNAUTHORIZED`.
+
+---
+
+## Customer flow (local development)
+
+1. Start the API and the client (`npm run dev:server`, `npm run dev:client`) and open `http://localhost:5173/login`.
+2. Sign in as `customer1@example.com` (development password from step 6). You land on `/customer`.
+3. **Available Queues** (default tab) lists only `OPEN` queues. Select **Join Queue** on "General Inquiry Desk". The button shows `Joining queue...` until the request finishes, then a panel shows the queue name, your queue number, and the status `Waiting`. "Specialized Consultation" is `CLOSED` and is not listed.
+4. Select **View details** (or open **My Active Tickets** and select **View details** on the ticket) to open `/customer/entries/:id`. It shows the queue number, queue name, status, timestamps, and a message such as "You are next" or "Currently waiting. 2 people ahead of you."
+5. Status refreshes automatically every 10 seconds while the page is visible (My Active Tickets tab and the detail page; the detail page stops once the entry is `Completed`). Use **Refresh** to re-fetch at any time. Until the operator screens (Issue #6) exist, status changes can only be seen by changing the row in the development database.
+6. Joining the same queue again shows "You already have an active entry in this queue." Opening another customer's entry id shows only "We couldn't find that queue entry."
 
 ---
 
