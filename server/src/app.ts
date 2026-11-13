@@ -9,6 +9,7 @@ import { loadSession } from './middleware/session';
 import { authRouter } from './routes/auth';
 import { queuesRouter } from './routes/queues';
 import { meRouter } from './routes/me';
+import { operatorRouter } from './routes/operator';
 import { AppError } from './errors/AppError';
 
 export const app = express();
@@ -41,6 +42,7 @@ const apiRouter = express.Router();
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/queues', queuesRouter);
 apiRouter.use('/me', meRouter);
+apiRouter.use('/operator', operatorRouter);
 app.use('/api', apiRouter);
 
 // Catch-all for undefined routes conforming to SDS §5.1 / §5.3
