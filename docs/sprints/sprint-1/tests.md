@@ -59,10 +59,10 @@ Use the standard API error envelope and the Sprint 1 contract in [../srs.md](../
 | CONCURRENCY-004 | Stale concurrent mutation | stale mutation returns conflict response without corrupting state | Database integration | **PASSED** (#6, `tests/operator-workflow.test.ts`) |
 | PERF-001 | Local performance targets | p95 read and mutation timings meet Sprint 1 local targets | Performance | Pending |
 | REL-001 | Commit durability | successful mutation persists after commit and survives restart validation | Database integration | Pending |
-| UI-001 | Responsive core workflows | pages remain usable at 360 px and 1280 px without horizontal overflow | Browser E2E | **PASSED — customer screens** (#5, scripted browser run 2026-11-13, §11); operator screens covered by RTL integration tests in `src/test/operator.test.tsx` (#6, §12) |
+| UI-001 | Responsive core workflows | pages remain usable at 360 px and 1280 px without horizontal overflow | Browser E2E | Pending — customer screens verified in browser at 360 px / 1280 px (#5, §11); operator screens have jsdom component coverage in `src/test/operator.test.tsx` (#6, §12), full browser viewport E2E verification pending |
 | SETUP-001 | Reproducible local setup | clean checkout can provision required test accounts and queues | Manual verification | **PASSED** (Verified in `tests/seed.test.ts` & clean checkout) |
 | FLOW-009 | Customer E2E flow | login, join queue, view own detail | E2E | Pending |
-| FLOW-010 | Operator E2E flow | login, call, start, complete | E2E | **PASSED** (#6, `tests/operator-workflow.test.ts` & `src/test/operator.test.tsx`) |
+| FLOW-010 | Operator E2E flow | login, call, start, complete | E2E | Pending — API integration verified in `tests/operator-workflow.test.ts` and jsdom component coverage in `src/test/operator.test.tsx` (#6, §12); full browser E2E pending |
 
 ## 3. Detailed test cases for critical behaviors
 
@@ -736,40 +736,43 @@ This test plan maps to FR-01 through FR-13, BR-01 through BR-12, and NFR-01 thro
 
 **Execution Date:** 2026-11-13  
 **Server suite:** Vitest v2.1.9 (`npm test`) against the isolated PostgreSQL 16 test database (`qms_test_db` on `localhost:5432`)  
-**Server result:** **108 passed / 108 total (100% Pass across 9 test files)** (91 Issue #5 baseline + 17 new Issue #6 operator tests)  
+**Server result:** **109 passed / 109 total (100% Pass across 9 test files)** (91 Issue #5 baseline + 18 new Issue #6 operator tests)  
 **Client suite:** Vitest v2.1.9 + jsdom + React Testing Library (`npm run test:client`)  
-**Client result:** **69 passed / 69 total (100% Pass across 4 test files)** (58 Issue #5 baseline + 11 new Issue #6 operator UI tests)  
+**Client result:** **71 passed / 71 total (100% Pass across 4 test files)** (58 Issue #5 baseline + 13 new Issue #6 operator UI tests)  
 **Typecheck & Build:** `npm run typecheck --workspace=server` (exit 0), `npm run build` (server `tsc` and client `tsc && vite build`, exit 0)
 
-#### Server: `tests/operator-workflow.test.ts` (17 passed)
+#### Server: `tests/operator-workflow.test.ts` (18 passed)
 - `[PASS]` `GET /api/operator/queues`: returns only service queues assigned to the authenticated operator via `OperatorAssignment` (`operator1` receives assigned queue; `operator2` receives `[]`)
 - `[PASS]` `GET /api/operator/queues`: includes `CLOSED` queues when assigned to the operator (allowing operators to finish active entries in a closed queue)
 - `[PASS]` `GET /api/operator/queues`: rejects `CUSTOMER` role with `403 FORBIDDEN` and anonymous callers with `401 UNAUTHORIZED`
 - `[PASS]` (`QUEUE-007`) `GET /api/operator/queues/:queueId/entries`: returns all queue entries for an assigned queue ordered deterministically by FIFO (`joinedAt ASC, id ASC`), verifying tie-breaker `id ASC` when `joinedAt` timestamps are equal
 - `[PASS]` (`API-001`) `GET /api/operator/queues/:queueId/entries`: returns `404 RESOURCE_NOT_FOUND` for a non-existent queue and `400 INVALID_ARGUMENT` for a malformed `:queueId` UUID
 - `[PASS]` (`FLOW-001`, `FLOW-002`) `POST /api/operator/queues/:queueId/call-next`: selects the oldest eligible `WAITING` entry in strict FIFO order (`joinedAt ASC, id ASC`), transitions its status to `CALLED`, sets `calledAt`, and leaves later `WAITING` entries unchanged
-- `[PASS]` (`FLOW-003`) `POST /api/operator/queues/:queueId/call-next`: returns `204 No Content` with an empty response body and performs no database mutation when the queue has no `WAITING` entries (empty queue or only `CALLED`/`SERVING`/`COMPLETED` entries)
-- `[PASS]` (`FLOW-004`, `FLOW-006`, `FLOW-010`) Full operator lifecycle `WAITING -> CALLED -> SERVING -> COMPLETED`: `POST /api/operator/queue-entries/:entryId/start` transitions `CALLED -> SERVING` and sets `serviceStartedAt`; `POST /api/operator/queue-entries/:entryId/complete` transitions `SERVING -> COMPLETED` and sets `completedAt`, with monotonically non-decreasing timestamps (`joinedAt <= calledAt <= serviceStartedAt <= completedAt`)
-- `[PASS]` (`FLOW-005`, `FLOW-007`) Invalid and out-of-order lifecycle transitions: rejects `WAITING -> SERVING`, repeated `CALLED -> SERVING`, `WAITING -> COMPLETED`, `CALLED -> COMPLETED`, `COMPLETED -> SERVING`, and repeated `COMPLETED -> COMPLETED` with `409 INVALID_STATE_TRANSITION` without mutating status or timestamps
+- `[PASS]` (`FLOW-003`) `POST /api/operator/queues/:queueId/call-next`: returns `204 No Content` with an empty response body and performs no database mutation when the queue has no `WAITING` entries (empty queue or only `CALLED` entries)
+- `[PASS]` (`FLOW-004`, `FLOW-006`) Full operator lifecycle `WAITING -> CALLED -> SERVING -> COMPLETED`: `POST /api/operator/queue-entries/:entryId/start` transitions `CALLED -> SERVING` and sets `serviceStartedAt`; `POST /api/operator/queue-entries/:entryId/complete` transitions `SERVING -> COMPLETED` and sets `completedAt`, with persisted database state matching API responses
+- `[PASS]` (`FLOW-005`, `FLOW-007`) Invalid and out-of-order lifecycle transitions: rejects `WAITING -> SERVING`, `WAITING -> COMPLETED`, `CALLED -> COMPLETED`, duplicate `SERVING -> SERVING`, `COMPLETED -> SERVING`, and repeated `COMPLETED -> COMPLETED` with `409 INVALID_STATE_TRANSITION` without mutating status or timestamps
 - `[PASS]` (`API-001`) Returns `404 RESOURCE_NOT_FOUND` for unknown `:entryId` and `400 INVALID_ARGUMENT` for malformed `:entryId` on both `/start` and `/complete`
+- `[PASS]` (`API-001`) `POST /api/operator/queues/:queueId/call-next`: returns `404 RESOURCE_NOT_FOUND` for a non-existent valid UUIDv4 `:queueId` and `400 INVALID_ARGUMENT` for a malformed `:queueId`, leaving existing queue entries and database state completely unchanged
 - `[PASS]` (`RBAC-001`) Customer cannot call next on any queue (`403 FORBIDDEN`, entry remains `WAITING`)
 - `[PASS]` (`RBAC-002`) Customer cannot start service (`403 FORBIDDEN`, entry remains `CALLED`)
 - `[PASS]` (`RBAC-003`) Customer cannot complete service (`403 FORBIDDEN`, entry remains `SERVING`)
 - `[PASS]` (`RBAC-004`) Operator cannot list entries, call next, start service, or complete service on an unassigned queue (`403 FORBIDDEN` across all four endpoints with zero state mutation)
-- `[PASS]` (`SEC-002`) Rejects `call-next`, `start`, and `complete` mutations with missing or wrong `X-CSRF-Token` with `403 FORBIDDEN` before any state change
-- `[PASS]` (`CONCURRENCY-003`) Concurrent `call-next` race condition: 4 parallel `call-next` requests on a queue with 2 `WAITING` entries return two `200 OK` responses claiming distinct entries (`queueNumber` 1 and 2) and two `204 No Content` responses (`FOR UPDATE SKIP LOCKED`)
+- `[PASS]` (`SEC-002`) Rejects `call-next`, `start`, and `complete` mutations without a valid `X-CSRF-Token` with `403 FORBIDDEN` before any state change
+- `[PASS]` (`CONCURRENCY-003`) Concurrent `call-next` race condition: 6 parallel `call-next` requests across `operator1` and `operator2` against 4 `WAITING` entries result in four `200 OK` responses claiming distinct entries (`queueNumber` 1..4) and two `204 No Content` responses (`FOR UPDATE SKIP LOCKED`)
 - `[PASS]` (`CONCURRENCY-004`) Concurrent `start` and `complete` race condition: 5 parallel `/start` requests on a `CALLED` entry result in exactly one `200 OK` and four `409 INVALID_STATE_TRANSITION`; 5 parallel `/complete` requests on that `SERVING` entry result in exactly one `200 OK` and four `409 INVALID_STATE_TRANSITION`
 
-#### Client: `src/test/operator.test.tsx` (11 passed)
-- `[PASS]` `/operator` (`OperatorHomePage`): lists assigned `OPEN` and `CLOSED` queues with availability badges (`Open`, `Closed`) and navigates to `/operator/queues/:id`
-- `[PASS]` `/operator`: displays neutral empty state ("You have no assigned service queues.") when the operator has no assignments
-- `[PASS]` `/operator`: displays error alert with a working `Try again` button when loading assigned queues fails
-- `[PASS]` `/operator`: redirects `CUSTOMER` users to `/customer` without calling operator endpoints and redirects unauthenticated visitors to `/login`
-- `[PASS]` `/operator/queues/:id` (`OperatorQueueDetailPage`): groups entries into `Active Service` (`CALLED` / `SERVING`), `Waiting Queue — FIFO` (`WAITING`), and `Completed` (`COMPLETED`); enables `Start Service` and disables `Complete Service` for `CALLED` entries; disables `Start Service` and enables `Complete Service` for `SERVING` entries
-- `[PASS]` (`FLOW-010`) Executes `Call Next` (`WAITING -> CALLED`), `Start Service` (`CALLED -> SERVING`), and `Complete Service` (`SERVING -> COMPLETED`) end-to-end, sending `X-CSRF-Token` on each `POST` and refreshing the queue view after each transition
-- `[PASS]` (`FLOW-003`) Handles `204 No Content` on `Call Next` by displaying the neutral banner "No waiting entries to call right now." without an error alert
-- `[PASS]` (`FLOW-005`) Handles `409 INVALID_STATE_TRANSITION` on stale operator actions by displaying a user-safe conflict alert and automatically refreshing the queue entries
-- `[PASS]` (`RBAC-004`) Displays a safe access-denied view ("You do not have permission to manage this queue.") with a link back to `/operator` when the operator opens an unassigned queue (`403 FORBIDDEN`)
-- `[PASS]` Displays a safe not-found view ("We couldn't find that service queue.") on `404 RESOURCE_NOT_FOUND` or `400 INVALID_ARGUMENT`
-- `[PASS]` Polls `GET /api/operator/queues/:queueId/entries` every 10 seconds while visible and stops polling on unmount
+#### Client: `src/test/operator.test.tsx` (13 passed)
+- `[PASS]` `/operator` (`OperatorHomePage`): displays assigned `OPEN` and `CLOSED` queues with availability badges (`Open`, `Closed`) and navigates to `/operator/queues/:id`
+- `[PASS]` `/operator`: shows neutral empty state (`"You have no assigned service queues."`) when the operator has no assigned queues
+- `[PASS]` `/operator`: shows safe error note and retries when loading assigned queues fails (`Try again`)
+- `[PASS]` `/operator/queues/:id` (`OperatorQueueDetailPage`): groups entries into `Active Service` (`CALLED` / `SERVING`), `Waiting Queue (FIFO)` (`WAITING`), and `Completed` (`COMPLETED`) with proper button states (`Start Service` enabled and `Complete Service` disabled for `CALLED`; `Start Service` disabled and `Complete Service` enabled for `SERVING`)
+- `[PASS]` `/operator/queues/:id`: executes `Call Next` (`WAITING -> CALLED`), `Start Service` (`CALLED -> SERVING`), and `Complete Service` (`SERVING -> COMPLETED`) lifecycle end-to-end with `X-CSRF-Token` header and UI refresh after each transition
+- `[PASS]` (`FLOW-003`) `/operator/queues/:id`: shows neutral empty status (`"No waiting entries to call right now."`) when `Call Next` returns `204 No Content`
+- `[PASS]` `/operator/queues/:id`: disables `Call Next` with `"Calling next..."` while in flight and prevents duplicate submissions (in-flight duplicate-click guard)
+- `[PASS]` (`FLOW-005`) `/operator/queues/:id`: handles `409 INVALID_STATE_TRANSITION` on stale operator actions by showing a safe conflict alert and automatically refreshing the queue entries
+- `[PASS]` (`RBAC-004`) `/operator/queues/:id`: shows `403 FORBIDDEN` message (`"You do not have permission to manage this queue."`) when the operator opens an unassigned queue
+- `[PASS]` `/operator/queues/:id`: shows not-found message (`"We couldn't find that service queue."`) when the queue does not exist (`404`) or `:id` is malformed (`400`)
+- `[PASS]` `/operator/queues/:id`: distinguishes `403` CSRF verification failures (`"We couldn't verify this request. Please refresh the page or sign in again."`) from `403` RBAC permission errors (`"You do not have permission to perform this action."`) on operator actions
+- `[PASS]` `/operator/queues/:id`: distinguishes `404` queue-not-found on `Call Next` (`"We couldn't find that service queue."`) from `404` entry-not-found on `Start Service` (`"We couldn't find that queue entry."`)
+- `[PASS]` `/operator/queues/:id`: redirects a `CUSTOMER` attempting to open `/operator/queues/:id` to `/customer` without calling operator endpoints
 

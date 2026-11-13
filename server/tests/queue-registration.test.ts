@@ -161,6 +161,11 @@ describe('Issue #4: Service Queue Creation & Queue Number Generation', () => {
       expect(res.body.error.code).toBe('INVALID_ARGUMENT');
     });
 
+    // Note: During this test, the global error handler logs a Prisma P2002 unique constraint
+    // error to stderr. This stderr output is intentional and expected: the test deliberately
+    // forces a mid-transaction P2002 collision on (serviceQueueId, queueNumber) after
+    // incrementing ServiceQueue.lastQueueNumber to verify that the entire transaction rolls back
+    // atomically and bubbles up as 500 INTERNAL_ERROR rather than leaking or skipping a queue number.
     it('rolls back lastQueueNumber atomically when entry creation fails inside the transaction (NUMBER-002)', async () => {
       const custAuth = await login(app, CUSTOMER1.email);
 

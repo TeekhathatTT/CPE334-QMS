@@ -378,6 +378,66 @@ describe('Operator Queue Management (/operator/queues/:id)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent("We couldn't find that service queue.");
   });
 
+  it('distinguishes 403 CSRF verification failures from 403 RBAC permission errors on operator actions', async () => {
+    const calledEntry = makeEntry({
+      id: ENTRY_ID,
+      queueNumber: 5,
+      status: 'CALLED',
+      calledAt: '2026-11-13T09:00:00.000Z',
+    });
+
+    mockApi({
+      'GET /api/auth/me': () => jsonResponse(200, { data: { user: OPERATOR } }),
+      'GET /api/operator/queues': () => queuesResponse([OPEN_QUEUE]),
+      [`GET /api/operator/queues/${OPEN_QUEUE.id}/entries`]: () => entriesResponse([calledEntry]),
+      [`POST /api/operator/queues/${OPEN_QUEUE.id}/call-next`]: () =>
+        errorResponse(403, 'FORBIDDEN', 'The request could not be verified.'),
+      [`POST /api/operator/queue-entries/${ENTRY_ID}/start`]: () =>
+        errorResponse(403, 'FORBIDDEN', 'You are not assigned to this queue.'),
+    });
+
+    renderApp(`/operator/queues/${OPEN_QUEUE.id}`);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Call Next' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "We couldn't verify this request. Please refresh the page or sign in again."
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Start Service for queue number 5' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'You do not have permission to perform this action.'
+    );
+  });
+
+  it('distinguishes 404 queue-not-found on Call Next from 404 entry-not-found on Start Service', async () => {
+    const calledEntry = makeEntry({
+      id: ENTRY_ID,
+      queueNumber: 6,
+      status: 'CALLED',
+      calledAt: '2026-11-13T09:00:00.000Z',
+    });
+
+    mockApi({
+      'GET /api/auth/me': () => jsonResponse(200, { data: { user: OPERATOR } }),
+      'GET /api/operator/queues': () => queuesResponse([OPEN_QUEUE]),
+      [`GET /api/operator/queues/${OPEN_QUEUE.id}/entries`]: () => entriesResponse([calledEntry]),
+      [`POST /api/operator/queues/${OPEN_QUEUE.id}/call-next`]: () =>
+        errorResponse(404, 'RESOURCE_NOT_FOUND', 'Service queue not found.'),
+      [`POST /api/operator/queue-entries/${ENTRY_ID}/start`]: () =>
+        errorResponse(404, 'RESOURCE_NOT_FOUND', 'Queue entry not found.'),
+    });
+
+    renderApp(`/operator/queues/${OPEN_QUEUE.id}`);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Call Next' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("We couldn't find that service queue.");
+
+    await user.click(screen.getByRole('button', { name: 'Start Service for queue number 6' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("We couldn't find that queue entry.");
+  });
+
   it('redirects a customer attempting to open /operator/queues/:id to /customer', async () => {
     const fetchMock = mockApi({
       'GET /api/auth/me': () => jsonResponse(200, { data: { user: CUSTOMER } }),

@@ -427,6 +427,40 @@ describe('Issue #6: Operator Queue Management Workflow', () => {
       expect(complete400.status).toBe(400);
       expect(complete400.body.error.code).toBe('INVALID_ARGUMENT');
     });
+
+    it('returns 404 RESOURCE_NOT_FOUND for unknown queueId and 400 INVALID_ARGUMENT for malformed queueId on call-next without mutating database state', async () => {
+      const waitingEntry = await prisma.queueEntry.create({
+        data: {
+          customerId: CUSTOMER1.id,
+          serviceQueueId: OPEN_QUEUE_ID,
+          queueNumber: 1n,
+          status: QueueStatus.WAITING,
+        },
+      });
+
+      const unknownQueueId = '99999999-9999-4999-8999-999999999999';
+      const callNext404 = await request(app)
+        .post(`/api/operator/queues/${unknownQueueId}/call-next`)
+        .set('Cookie', operator1.cookieHeader)
+        .set('X-CSRF-Token', operator1.csrfToken);
+
+      expect(callNext404.status).toBe(404);
+      expect(callNext404.body.error.code).toBe('RESOURCE_NOT_FOUND');
+
+      const callNext400 = await request(app)
+        .post('/api/operator/queues/not-a-valid-uuid/call-next')
+        .set('Cookie', operator1.cookieHeader)
+        .set('X-CSRF-Token', operator1.csrfToken);
+
+      expect(callNext400.status).toBe(400);
+      expect(callNext400.body.error.code).toBe('INVALID_ARGUMENT');
+
+      // Verify existing WAITING entry and database state remain completely unchanged
+      const afterEntry = await prisma.queueEntry.findUniqueOrThrow({ where: { id: waitingEntry.id } });
+      expect(afterEntry.status).toBe(QueueStatus.WAITING);
+      expect(afterEntry.calledAt).toBeNull();
+      expect(await prisma.queueEntry.count()).toBe(1);
+    });
   });
 
   describe('4. Authorization, RBAC & CSRF Enforcement (RBAC-001 to RBAC-004, SEC-002)', () => {

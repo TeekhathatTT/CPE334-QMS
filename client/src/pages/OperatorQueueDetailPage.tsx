@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ApiError } from '../api/client';
+import { ApiError, CSRF_COOKIE, readCookie } from '../api/client';
 import {
   callNextQueueEntry,
   completeQueueEntry,
@@ -37,6 +37,7 @@ export const OPERATOR_EMPTY_CALL_NEXT_TEXT = 'No waiting entries to call right n
 export const OPERATOR_ACTION_ERROR_TEXT = {
   CONFLICT: "This queue entry's status has changed. The queue has been refreshed.",
   FORBIDDEN: 'You do not have permission to perform this action.',
+  QUEUE_NOT_FOUND: OPERATOR_QUEUE_NOT_FOUND_TEXT,
   NOT_FOUND: "We couldn't find that queue entry.",
   CSRF: "We couldn't verify this request. Please refresh the page or sign in again.",
   GENERIC: 'Something went wrong. Please try again.',
@@ -47,15 +48,28 @@ interface ActionFailure {
   refetchEntries: boolean;
 }
 
-function describeActionFailure(err: unknown): ActionFailure {
+function isCsrfForbidden(err: ApiError): boolean {
+  if (err.code.toUpperCase().includes('CSRF')) return true;
+  if (err.serverMessage && /csrf|verified/i.test(err.serverMessage)) return true;
+  if (!readCookie(CSRF_COOKIE)) return true;
+  return false;
+}
+
+function describeActionFailure(err: unknown, target: 'queue' | 'entry'): ActionFailure {
   if (err instanceof ApiError) {
     if (err.status === 409) {
       return { text: OPERATOR_ACTION_ERROR_TEXT.CONFLICT, refetchEntries: true };
     }
     if (err.status === 404) {
+      if (target === 'queue') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.QUEUE_NOT_FOUND, refetchEntries: false };
+      }
       return { text: OPERATOR_ACTION_ERROR_TEXT.NOT_FOUND, refetchEntries: true };
     }
     if (err.status === 403) {
+      if (isCsrfForbidden(err)) {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.CSRF, refetchEntries: false };
+      }
       return { text: OPERATOR_ACTION_ERROR_TEXT.FORBIDDEN, refetchEntries: false };
     }
   }
@@ -200,7 +214,7 @@ export function OperatorQueueDetailPage() {
       await loadEntries();
     } catch (err) {
       if (!mounted.current || isSessionExpiredError(err)) return;
-      const { text, refetchEntries } = describeActionFailure(err);
+      const { text, refetchEntries } = describeActionFailure(err, 'queue');
       setFeedback({ kind: 'error', text });
       setAnnouncement(text);
       if (refetchEntries) void loadEntries();
@@ -244,7 +258,7 @@ export function OperatorQueueDetailPage() {
       await loadEntries();
     } catch (err) {
       if (!mounted.current || isSessionExpiredError(err)) return;
-      const { text, refetchEntries } = describeActionFailure(err);
+      const { text, refetchEntries } = describeActionFailure(err, 'entry');
       setFeedback({ kind: 'error', text });
       setAnnouncement(text);
       if (refetchEntries) void loadEntries();
@@ -270,7 +284,7 @@ export function OperatorQueueDetailPage() {
       await loadEntries();
     } catch (err) {
       if (!mounted.current || isSessionExpiredError(err)) return;
-      const { text, refetchEntries } = describeActionFailure(err);
+      const { text, refetchEntries } = describeActionFailure(err, 'entry');
       setFeedback({ kind: 'error', text });
       setAnnouncement(text);
       if (refetchEntries) void loadEntries();
