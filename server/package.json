@@ -14,7 +14,9 @@
     "migrate": "prisma migrate deploy",
     "migrate:test": "tsx scripts/migrate-test.ts",
     "migrate:dev": "prisma migrate dev",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "test:perf": "tsx tests/nfr/perf-001.ts",
+    "test:rel": "npm run build && tsx tests/nfr/rel-001.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
