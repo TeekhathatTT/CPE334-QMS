@@ -20,7 +20,8 @@
     "migrate": "npm run migrate --workspace=server",
     "migrate:test": "npm run migrate:test --workspace=server",
     "prisma:generate": "npm run prisma:generate --workspace=server",
-    "test:e2e": "playwright test --config e2e/playwright.config.ts"
+    "test:e2e": "playwright test --config e2e/playwright.config.ts --project=chromium",
+    "test:e2e:all-browsers": "playwright test --config e2e/playwright.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0"

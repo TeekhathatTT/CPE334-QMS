@@ -37,7 +37,13 @@ export default defineConfig({
     screenshot: 'off',
     video: 'off',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } }],
+  // `npm run test:e2e` runs chromium only; `npm run test:e2e:all-browsers` runs all three.
+  // Evidence screenshots are written by the chromium project only (helpers/app.ts `shot`).
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } },
+    { name: 'firefox', use: { ...devices['Desktop Firefox'], viewport: { width: 1280, height: 800 } } },
+    { name: 'webkit', use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 800 } } },
+  ],
   webServer: [
     {
       name: 'api',

@@ -17,12 +17,14 @@ export default class SummaryReporter implements Reporter {
   private version = '';
   private workers = 0;
   private total = 0;
+  private projects = '';
 
   onBegin(config: FullConfig, suite: Suite): void {
     this.started = new Date();
     this.version = config.version;
     this.workers = config.workers;
     this.total = suite.allTests().length;
+    this.projects = suite.suites.map((s) => s.title).join(', ');
   }
 
   onTestEnd(test: TestCase, result: TestResult): void {
@@ -32,14 +34,15 @@ export default class SummaryReporter implements Reporter {
     else this.counts[result.status]++;
     const file = path.basename(test.location.file);
     const title = test.titlePath().slice(3).join(' › ');
-    this.rows.push(`${result.status.toUpperCase().padEnd(8)} ${file} › ${title} (${(result.duration / 1000).toFixed(1)}s)`);
+    const project = test.parent.project()?.name ?? '';
+    this.rows.push(`${result.status.toUpperCase().padEnd(8)} [${project}] ${file} › ${title} (${(result.duration / 1000).toFixed(1)}s)`);
   }
 
   onEnd(result: FullResult): void {
     const lines = [
       `E2E run: ${this.started.toISOString()}`,
-      `Command: npm run test:e2e   (playwright test --config e2e/playwright.config.ts)`,
-      `Playwright ${this.version}, Chromium (headless), workers=${this.workers}, retries=0`,
+      `Command: ${process.env.npm_lifecycle_event ? `npm run ${process.env.npm_lifecycle_event}` : 'playwright test'} (config e2e/playwright.config.ts)`,
+      `Playwright ${this.version}, headless, projects: ${this.projects}, workers=${this.workers}, retries=0`,
       `Host: ${os.type()} ${os.release()}, Node ${process.version}`,
       `Overall: ${result.status.toUpperCase()} in ${(result.duration / 1000).toFixed(1)}s`,
       `Tests: ${this.total} total, ${this.counts.passed} passed, ${this.counts.failed + this.counts.timedOut} failed, ` +

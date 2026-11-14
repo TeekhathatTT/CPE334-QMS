@@ -4,7 +4,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { expect, request as playwrightRequest, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, test, request as playwrightRequest, type APIRequestContext, type Page } from '@playwright/test';
 import { ROOT_DIR } from './env';
 import { OPEN_QUEUE_ID, SEED_PASSWORD } from './db';
 
@@ -12,8 +12,12 @@ export const EVIDENCE_DIR = path.join(ROOT_DIR, 'docs', 'sprints', 'sprint-1', '
 export const CLIENT_ORIGIN = 'http://localhost:5173';
 export const SESSION_EXPIRED_TEXT = 'Session expired. Please sign in again.';
 
-/** Viewport (not full-page) PNG with a deterministic name in the evidence folder. */
+/**
+ * Viewport (not full-page) PNG with a deterministic name in the evidence folder.
+ * Only the chromium project writes evidence, so other browsers never overwrite it.
+ */
 export async function shot(page: Page, name: string, opts: { fullPage?: boolean } = {}): Promise<void> {
+  if (test.info().project.name !== 'chromium') return;
   fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
   await page.screenshot({ path: path.join(EVIDENCE_DIR, `${name}.png`), fullPage: opts.fullPage ?? false });
 }
