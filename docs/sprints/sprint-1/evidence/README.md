@@ -4,7 +4,7 @@ Every PNG in this folder is written by the Playwright suite (`npm run test:e2e`,
 
 - `e2e-run.txt`: counts-only summary of the two consecutive final E2E runs (Chromium, Firefox, WebKit). It is written by `e2e/helpers/summary-reporter.ts`.
 - `perf-001.txt`: PERF-001 / NFR-04 p95 measurements (`npm run test:perf --workspace=server`).
-- `rel-001.txt`: REL-001 / NFR-05 crash-restart durability log (`npm run test:rel --workspace=server`).
+- `rel-001.txt`: REL-001 / NFR-05 crash-restart durability log (`npm run test:rel --workspace=server`). The run uses its own throwaway PostgreSQL container and shows that `qms-postgres` was not restarted.
 - `issue7-coverage.md`: gap analysis and scenario map.
 
 ## Screenshots

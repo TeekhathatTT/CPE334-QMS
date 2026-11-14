@@ -46,7 +46,7 @@ All specs run in Chromium, Firefox and WebKit (`npm run test:e2e:all-browsers`).
 | Test ID | Method | File |
 |---|---|---|
 | PERF-001 | 1,000-entry dataset, 5 warm-ups + 100 timed sequential requests per operation, p95 against NFR-04 targets | `server/tests/nfr/perf-001.ts` |
-| REL-001 | Row visible on a separate connection after each 2xx; SIGKILL the API and PostgreSQL, WAL recovery, identical data afterwards | `server/tests/nfr/rel-001.ts` |
+| REL-001 | Row visible on a separate connection after each 2xx; SIGKILL the API and a **throwaway** PostgreSQL container created by the run (never the dev/shared `qms-postgres`), WAL recovery, identical data afterwards | `server/tests/nfr/rel-001.ts` |
 
 ## Deliberately not duplicated
 

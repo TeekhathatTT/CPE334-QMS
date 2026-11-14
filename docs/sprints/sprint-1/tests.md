@@ -928,15 +928,26 @@ Two first-run E2E failures were **test** errors and were fixed in the test code.
 Limits: this is one local run on one machine with sequential requests. It does not measure concurrent load or throughput. Login time is dominated by bcrypt by design.
 
 **REL-001 / NFR-05: PASSED.** Command: `npm run test:rel --workspace=server` (`server/tests/nfr/rel-001.ts`); log in `evidence/rel-001.txt`.
-1. PostgreSQL durability settings were read from the server: `fsync=on`, `synchronous_commit=on`, `full_page_writes=on`, `wal_level=replica`. The script fails if any of the first three is off.
+
+**Isolation (changed after PR review).** The script no longer touches the shared `qms-postgres` container that hosts the development database. Each run:
+- creates its own throwaway `postgres:16-alpine` container named `qms-rel001-<timestamp>`, with the label `qms.purpose=rel-001-throwaway`, a random per-run password, and a port bound to `127.0.0.1:55433` only
+- applies migrations to it and seeds it
+- gives the API under test only that database URL; `DATABASE_URL` is an unreachable dummy
+- before the kill, refuses to proceed unless the target has the same container id it created, the label and the name prefix, and holds no database other than `qms_rel001_test`
+- removes the container and its volume at the end
+- records the `StartedAt` of `qms-postgres` before and after and fails if it changed
+
+In the recorded run, `qms-postgres` `StartedAt` stayed `2026-11-14T09:23:23.151763308Z` before and after, and no throwaway container was left behind.
+
+1. PostgreSQL durability settings were read from the throwaway server: `fsync=on`, `synchronous_commit=on`, `full_page_writes=on`, `wal_level=replica`. The script fails if any of the first three is off.
 2. The compiled API (`node dist/server.js`, `NODE_ENV=test`) was started as a separate process. Over HTTP it ran customer1 join → call-next → start → complete, then a customer2 join. **Right after each 2xx response**, a separate DB connection read the row, and it already matched the response exactly ("response follows commit").
-3. The API process was **SIGKILLed**. Then the PostgreSQL container was **SIGKILLed** (`docker kill --signal=SIGKILL qms-postgres`) and started again. The PostgreSQL log confirmed crash recovery: "database system was not properly shut down; automatic recovery in progress", followed by WAL redo.
+3. The API process was **SIGKILLed**. Then the throwaway PostgreSQL container, and only that one, was **SIGKILLed** (`docker kill --signal=SIGKILL qms-rel001-<timestamp>`) and started again. The PostgreSQL log confirmed crash recovery: "database system was not properly shut down; automatic recovery in progress", followed by WAL redo.
 4. The API was started again, and the **pre-restart session cookies** were reused.
    - The COMPLETED entry, with all 4 timestamps, matched the pre-restart response exactly.
    - The WAITING entry matched exactly, and the operator list was unchanged.
    - `lastQueueNumber` (2) and the session-row count were unchanged.
    - The next join received number 3, continuing from the persisted counter.
-- Side effect: the `qms-postgres` container also hosts the development database `qms_db`, so that database was crash-restarted too. Nothing in it was modified.
+- History: the first REL-001 runs (before the review) killed the shared `qms-postgres` container, which also hosts the development database `qms_db`. Nothing in `qms_db` was modified, but that behaviour has been removed. The current script cannot kill any container it did not create in the same run.
 
 ### 13.10 Keyboard-only walkthrough and other browsers
 
