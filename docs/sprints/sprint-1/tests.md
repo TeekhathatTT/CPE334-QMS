@@ -57,12 +57,12 @@ Use the standard API error envelope and the Sprint 1 contract in [../srs.md](../
 | CONCURRENCY-002 | Duplicate active entry race | only one active row survives under concurrent duplicate joins | Database integration | **PASSED** (#4, `tests/queue-registration.test.ts`) |
 | CONCURRENCY-003 | Call-next race | concurrent call-next requests claim different entries correctly | Database integration | **PASSED** (#6, `tests/operator-workflow.test.ts`) |
 | CONCURRENCY-004 | Stale concurrent mutation | stale mutation returns conflict response without corrupting state | Database integration | **PASSED** (#6, `tests/operator-workflow.test.ts`) |
-| PERF-001 | Local performance targets | p95 read and mutation timings meet Sprint 1 local targets | Performance | Pending — not run in #7: no 1,000-entry dataset and no 100-request p95 measurement were executed (see §13) |
-| REL-001 | Commit durability | successful mutation persists after commit and survives restart validation | Database integration | Pending — not run in #7: no application/database restart check was executed (see §13) |
-| UI-001 | Responsive core workflows | pages remain usable at 360 px and 1280 px without horizontal overflow | Browser E2E | **PASSED** (#7, Playwright Chromium, `e2e/tests/responsive.spec.ts`: all six customer and operator screens at 360 × 800 and 1280 × 800, two consecutive runs; see §13) |
+| PERF-001 | Local performance targets | p95 read and mutation timings meet Sprint 1 local targets | Performance | **PASSED** (#7, `server/tests/nfr/perf-001.ts`: 1,000-entry dataset, 100 timed requests per operation; worst read p95 109.7 ms ≤ 500, worst mutation p95 257.9 ms ≤ 1,000; see §13.9) |
+| REL-001 | Commit durability | successful mutation persists after commit and survives restart validation | Database integration | **PASSED** (#7, `server/tests/nfr/rel-001.ts`: rows visible on a separate connection right after each 2xx; API and PostgreSQL SIGKILLed, WAL crash recovery, data identical after restart; see §13.9) |
+| UI-001 | Responsive core workflows | pages remain usable at 360 px and 1280 px without horizontal overflow | Browser E2E | **PASSED** (#7, Playwright Chromium + Firefox + WebKit, `e2e/tests/responsive.spec.ts`: all six customer and operator screens at 360 × 800 and 1280 × 800, two consecutive runs; see §13) |
 | SETUP-001 | Reproducible local setup | clean checkout can provision required test accounts and queues | Manual verification | **PASSED** (Verified in `tests/seed.test.ts` & clean checkout) |
-| FLOW-009 | Customer E2E flow | login, join queue, view own detail | E2E | **PASSED** (#7, Playwright Chromium, `e2e/tests/customer-flow.spec.ts` S1 and S5; see §13) |
-| FLOW-010 | Operator E2E flow | login, call, start, complete | E2E | **PASSED** (#7, Playwright Chromium, `e2e/tests/operator-flow.spec.ts` S4, plus S5 from the customer side; see §13) |
+| FLOW-009 | Customer E2E flow | login, join queue, view own detail | E2E | **PASSED** (#7, Playwright Chromium + Firefox + WebKit, `e2e/tests/customer-flow.spec.ts` S1 and S5; see §13) |
+| FLOW-010 | Operator E2E flow | login, call, start, complete | E2E | **PASSED** (#7, Playwright Chromium + Firefox + WebKit, `e2e/tests/operator-flow.spec.ts` S4, plus S5 from the customer side; see §13) |
 
 ## 3. Detailed test cases for critical behaviors
 
@@ -735,7 +735,7 @@ This test plan maps to FR-01 through FR-13, BR-01 through BR-12, and NFR-01 thro
 ## 12. Execution Evidence and Automated Test Results (Issue #6 Operator Queue Management Workflow)
 
 **Execution Date:** 2026-11-13  
-**Server suite:** Vitest v2.1.9 (`npm test`) against the isolated PostgreSQL 16 test database (`qms_test_db` on `localhost:5432`)  
+**Server suite:** Vitest v2.1.9 (`npm test`) against the isolated PostgreSQL 16 test database (`qms_test_db` on `localhost:5432`) — *note added in #7: on this machine the configured test database (`server/.env.test`) is on `127.0.0.1:5433` (the `qms-postgres` container), as recorded in §9 and §13; `5432` does not match that configuration*  
 **Server result:** **109 passed / 109 total (100% Pass across 9 test files)** (91 Issue #5 baseline + 18 new Issue #6 operator tests)  
 **Client suite:** Vitest v2.1.9 + jsdom + React Testing Library (`npm run test:client`)  
 **Client result:** **71 passed / 71 total (100% Pass across 4 test files)** (58 Issue #5 baseline + 13 new Issue #6 operator UI tests)  
@@ -780,7 +780,7 @@ This test plan maps to FR-01 through FR-13, BR-01 through BR-12, and NFR-01 thro
 
 **Execution Date:** 2026-11-14
 **Branch:** `feature/sprint1/7-integration-testing` (from `sprint1-staging` at `68d818f`)
-**Environment:** Windows 11 Home (10.0.26200), Node v22.20.0, PostgreSQL 16.15 (`qms-postgres` Docker container on `127.0.0.1:5433`, test database `qms_test_db`), Playwright 1.63.0 with Chrome for Testing 153.0.8010.12 (headless Chromium)
+**Environment:** Windows 11 Home (10.0.26200), Node v22.20.0, PostgreSQL 16.15 (`qms-postgres` Docker container on `127.0.0.1:5433`, test database `qms_test_db`), Playwright 1.63.0 with Chrome for Testing 153.0.8010.12 (Chromium), plus the Playwright Firefox and WebKit builds for 1.63.0, all headless; Intel i5-11400H, 16 GiB RAM
 **Coverage / gap analysis:** [`evidence/issue7-coverage.md`](./evidence/issue7-coverage.md). **Screenshots:** [`evidence/README.md`](./evidence/README.md)
 
 ### 13.1 Commands and results
@@ -794,8 +794,13 @@ Every number below comes from a command run in this session. Step 0 is the regre
 | `npm run test:server` | **109 passed / 0 failed / 0 skipped** (9 files) | **118 passed / 0 failed / 0 skipped** (10 files: 109 + 9 new) |
 | `npm run test:client` | **71 passed / 0 failed / 0 skipped** (4 files) | **77 passed / 0 failed / 0 skipped** (5 files: 71 + 6 new) |
 | `npm run build` | exit 0 | exit 0 |
-| `npm run test:e2e` run 1 | — (no E2E existed) | **10 passed / 0 failed / 0 skipped / 0 flaky**, 130.5 s |
-| `npm run test:e2e` run 2 (immediately after run 1) | — | **10 passed / 0 failed / 0 skipped / 0 flaky**, 130.0 s |
+| `npm run test:e2e` (Chromium only), run 1 / run 2 | — (no E2E existed) | **10 passed / 0 failed / 0 skipped / 0 flaky** each (130.5 s, 130.0 s); first round, before the keyboard spec and other browsers were added |
+| `npm run test:e2e:all-browsers` final run 1 | — | **36 tests: 34 passed / 0 failed / 2 skipped / 0 flaky**, 186.8 s |
+| `npm run test:e2e:all-browsers` final run 2 (immediately after run 1) | — | **36 tests: 34 passed / 0 failed / 2 skipped / 0 flaky**, 182.1 s |
+| `npm run test:perf --workspace=server` | — | **PASSED**: 11/11 operations within target (§13.9) |
+| `npm run test:rel --workspace=server` | — | **PASSED** (§13.9) |
+
+The final round (migrate, typecheck, server 118, client 77, build, then E2E twice in all three browsers) was run after the last code commit. The 2 skipped tests are the keyboard walkthroughs in WebKit (§13.10). The 12 E2E tests × 3 browsers make up the 36.
 
 ¹ The first Step 0 attempt failed because the `qms-postgres` container was not running (`P1001`). It passed after Docker Desktop was started. `npm ci` also removed the generated Prisma client, so `npm run prisma:generate` was run before the baseline server suite. Both are environment steps; no code changed.
 
@@ -844,7 +849,7 @@ The database has no CHECK constraint on lifecycle timestamps, so these SQL check
 - `[PASS]` Anonymous visitors to `/operator/queues/:id` and `/customer/entries/:id` go to `/login` without the banner. The only request is the `/api/auth/me` probe.
 - The existing client suites were not modified.
 
-### 13.4 Browser E2E (Playwright, Chromium), 10 passed in each of two consecutive runs
+### 13.4 Browser E2E (Playwright): S1–S9 passed in Chromium, Firefox and WebKit, in each of two consecutive final runs ("×2" below refers to those runs)
 
 | # | Test | Result | What it proves |
 |---|---|---|---|
@@ -872,11 +877,11 @@ S1–S8 are the eight scenarios in Issue #7. S9 is an extra item that verifies U
 
 | Test ID | Before | After | Evidence |
 |---|---|---|---|
-| FLOW-009 | Pending | **PASSED** | Browser S1 and S5, both runs |
-| FLOW-010 | Pending | **PASSED** | Browser S4 and S5, both runs |
-| UI-001 | Pending (operator screens) | **PASSED** | Browser S9 at 360 and 1280, both runs; this covers the customer screens again as well as the operator screens |
-| PERF-001 | Pending | **Pending** | Not run. NFR-04 needs a seeded 1,000-entry dataset and 100 requests per operation with p95 measured; neither was done. The suite durations above are not performance measurements. |
-| REL-001 | Pending | **Pending** | Not run. No application or database restart validation was performed. |
+| FLOW-009 | Pending | **PASSED** | Browser S1 and S5, both final runs, Chromium + Firefox + WebKit |
+| FLOW-010 | Pending | **PASSED** | Browser S4 and S5, both final runs, Chromium + Firefox + WebKit |
+| UI-001 | Pending (operator screens) | **PASSED** | Browser S9 at 360 and 1280, both final runs, Chromium + Firefox + WebKit; this covers the customer screens again as well as the operator screens |
+| PERF-001 | Pending | **PASSED** | `npm run test:perf --workspace=server`, all 11 operations within target (§13.9, `evidence/perf-001.txt`) |
+| REL-001 | Pending | **PASSED** | `npm run test:rel --workspace=server`, crash-restart of API and PostgreSQL with identical data afterwards (§13.9, `evidence/rel-001.txt`) |
 
 ### 13.6 Defect log
 
@@ -886,11 +891,10 @@ Two first-run E2E failures were **test** errors and were fixed in the test code.
 
 ### 13.7 Not verified / manual checks left
 
-- Only Chromium was run. Firefox, WebKit/Safari, and mobile browsers were not tested.
+- Browsers: Chromium, Firefox and WebKit were run through Playwright on Windows. Real Safari on macOS/iOS, and mobile browsers, were not tested. The keyboard walkthrough was not run in WebKit (see §13.10).
 - No physical touch device was used. The 360 px run used a touch-enabled emulated context only.
 - No screen-reader listening test (NVDA, JAWS, VoiceOver, TalkBack). The live-region text was asserted in the DOM (S5), not heard.
-- No keyboard-only walkthrough was repeated in #7. The last one is §11, customer screens only.
-- PERF-001 and REL-001 were not run (see 13.5).
+- PERF-001 is a single sequential run on one machine. No concurrent-load or throughput test was done.
 - No CI run: the repository has no `.github/` workflows. All results are from one local Windows machine.
 - The Issue #7 Acceptance Criteria and Definition of Done checklists could not be read in this session (GitHub CLI not authenticated), so they were not ticked here.
 
@@ -898,4 +902,51 @@ Two first-run E2E failures were **test** errors and were fixed in the test code.
 
 1. **Wrong-role navigation is not specified.** ui-spec §7 defines only the unauthenticated case ("Redirect to `/login` or show a clear access message"). It does not say what a signed-in customer opening `/operator…`, or an operator opening `/customer…`, should see. The implementation (`ProtectedRoute.tsx`) silently redirects to the user's own home, and E2E S6 asserts that behaviour. This was recorded, not decided; the spec owner should confirm whether a silent redirect is the intended "access message".
 2. **The customer status refresh interval is not specified.** ui-spec §5.1 step 7 requires that the customer "sees updated status values". The 10 s polling interval is an implementation decision (Issue #5 decision 2, `usePolling.ts`), not a spec value. E2E S5 allows 15 s per transition based on that decision.
+3. **Focus after an action is not specified.** ui-spec §8.1 requires visible focus but does not say where focus goes after Join, Call Next, Start or Complete. The keyboard walkthrough (§13.10) records where it lands and does not assert it.
+
+### 13.9 PERF-001 and REL-001 (measured)
+
+**PERF-001 / NFR-04: PASSED.** Command: `npm run test:perf --workspace=server` (`server/tests/nfr/perf-001.ts`).
+- Setup: the test database is reset and seeded with **1,000 WAITING entries** from 1,000 distinct customers in the OPEN queue, and the dataset only grows during the run (1,105 entries at the end).
+- Requests: the real Express app runs on a local ephemeral port, and requests go over real TCP with Node `fetch`, real session cookies and CSRF tokens. Requests are sequential. Each operation gets 5 untimed warm-ups, then **100 timed requests**, measured on the client from send until the full body is read.
+- Host: Intel i5-11400H, 12 threads, 16 GiB RAM, Windows 11, Node v22.20.0. Database: PostgreSQL 16.15 in Docker.
+
+| Operation | Kind | p50 ms | p95 ms | max ms | Target p95 | Result |
+|---|---|---|---|---|---|---|
+| `POST /api/auth/login` | mutation | 249.1 | 257.9 | 270.0 | 1,000 | PASS |
+| `GET /api/auth/me` | read | 11.0 | 12.9 | 15.6 | 500 | PASS |
+| `GET /api/queues` | read | 13.2 | 16.0 | 17.0 | 500 | PASS |
+| `GET /api/me/queue-entries` | read | 13.8 | 16.7 | 19.6 | 500 | PASS |
+| `GET /api/me/queue-entries/:id` (aheadCount over 1,000) | read | 19.0 | 23.0 | 27.4 | 500 | PASS |
+| `GET /api/operator/queues` | read | 15.7 | 18.5 | 19.1 | 500 | PASS |
+| `GET /api/operator/queues/:id/entries` (≥ 1,000 rows) | read | 85.7 | 109.7 | 116.9 | 500 | PASS |
+| `POST /api/queues/:id/entries` (join) | mutation | 32.0 | 37.4 | 40.8 | 1,000 | PASS |
+| `POST …/call-next` | mutation | 27.8 | 33.3 | 35.8 | 1,000 | PASS |
+| `POST …/start` | mutation | 23.4 | 29.5 | 36.6 | 1,000 | PASS |
+| `POST …/complete` | mutation | 25.7 | 30.8 | 34.8 | 1,000 | PASS |
+
+Limits: this is one local run on one machine with sequential requests. It does not measure concurrent load or throughput. Login time is dominated by bcrypt by design.
+
+**REL-001 / NFR-05: PASSED.** Command: `npm run test:rel --workspace=server` (`server/tests/nfr/rel-001.ts`); log in `evidence/rel-001.txt`.
+1. PostgreSQL durability settings were read from the server: `fsync=on`, `synchronous_commit=on`, `full_page_writes=on`, `wal_level=replica`. The script fails if any of the first three is off.
+2. The compiled API (`node dist/server.js`, `NODE_ENV=test`) was started as a separate process. Over HTTP it ran customer1 join → call-next → start → complete, then a customer2 join. **Right after each 2xx response**, a separate DB connection read the row, and it already matched the response exactly ("response follows commit").
+3. The API process was **SIGKILLed**. Then the PostgreSQL container was **SIGKILLed** (`docker kill --signal=SIGKILL qms-postgres`) and started again. The PostgreSQL log confirmed crash recovery: "database system was not properly shut down; automatic recovery in progress", followed by WAL redo.
+4. The API was started again, and the **pre-restart session cookies** were reused.
+   - The COMPLETED entry, with all 4 timestamps, matched the pre-restart response exactly.
+   - The WAITING entry matched exactly, and the operator list was unchanged.
+   - `lastQueueNumber` (2) and the session-row count were unchanged.
+   - The next join received number 3, continuing from the persisted counter.
+- Side effect: the `qms-postgres` container also hosts the development database `qms_db`, so that database was crash-restarted too. Nothing in it was modified.
+
+### 13.10 Keyboard-only walkthrough and other browsers
+
+`e2e/tests/keyboard.spec.ts` walks both workflows using only Tab, Shift+Tab, Enter, the arrow keys and Home/End. Every control it reaches must match `:focus-visible` and show a ring (box-shadow or outline).
+- **Customer:** keyboard sign-in; tabs with ArrowRight (wraps around), End and Home; Join; View details; Refresh; Back; Logout.
+- **Operator:** keyboard sign-in; Manage queue; Call Next; Start Service; Complete Service; Back. Disabled buttons are correctly skipped in the tab order.
+- **Focus after actions (recorded, not asserted):** after Join, focus falls back to `<body>`, as already noted in §11. "View details" is still reachable by keyboard. The landing point after each operator action is listed in the run's HTML/JSON report annotations.
+
+The whole E2E suite now also runs in **Firefox** and **WebKit** (`npm run test:e2e:all-browsers`).
+- Every test passes in all three browsers, with 2 exceptions: the two keyboard walkthroughs are **skipped in WebKit** with the reason given in the test.
+- WebKit keeps links (`<a>`) out of the Tab order by default, like Safari with "Press Tab to highlight each item" off. Both Tab and Alt+Tab were tried in Playwright's WebKit on Windows, and neither reached a link. This is browser behaviour, not an application defect, and those two tests are reported as skipped, not passed.
+- Evidence screenshots are taken from Chromium only.
 

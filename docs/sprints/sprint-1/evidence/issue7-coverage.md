@@ -5,7 +5,8 @@ This table maps each Issue #7 scope item to the tests that already existed on `s
 New test files:
 - Server: `server/tests/integration-sprint1.test.ts` (9 tests, real HTTP + real PostgreSQL)
 - Client: `client/src/test/integration-guards.test.tsx` (6 tests, jsdom)
-- Browser: `e2e/tests/*.spec.ts` (10 Playwright tests, Chromium)
+- Browser: `e2e/tests/*.spec.ts` (12 Playwright tests × Chromium, Firefox, WebKit)
+- NFR: `server/tests/nfr/perf-001.ts` (PERF-001) and `server/tests/nfr/rel-001.ts` (REL-001), standalone scripts outside `npm test`
 
 | # | Issue #7 scope item | Already covered before #7 (test IDs / files) | Gap found | Added in #7 |
 |---|---|---|---|---|
@@ -20,8 +21,8 @@ New test files:
 | 3b | CSRF | SEC-002: join (all variants), operator mutations (missing token only), logout (wrong/other) | Wrong, empty, and another session's token on call-next / start / complete; closed-queue join | Server §2: 6 mutations × 4 bad-token variants → 403, DB and sessions unchanged |
 | 4 | API integration | All server suites | Covered by items 1–3 above | — |
 | 5 | E2E automated tests (8 scenarios) | none (no Playwright before #7) | All | E2E **S1–S8**, plus **S9** (UI-001), which is an extra item and **not** one of the eight issue scenarios |
-| 6 | Regression (backend, frontend, integration, E2E) | Server 109, client 71 (Step 0 baseline, this session) | — | Full re-run recorded in tests.md §13: server 118, client 77, E2E 10 (twice) |
-| 7 | Test evidence including screenshots | Customer-screen notes in tests.md §11 (no image files) | No screenshots in the repo | 30 PNGs + `e2e-run.txt` in this folder (see [README.md](./README.md)) |
+| 6 | Regression (backend, frontend, integration, E2E) | Server 109, client 71 (Step 0 baseline, this session) | — | Full re-run recorded in tests.md §13: server 118, client 77, E2E 34 passed + 2 skipped across 3 browsers (twice), PERF-001 and REL-001 passed |
+| 7 | Test evidence including screenshots | Customer-screen notes in tests.md §11 (no image files) | No screenshots in the repo | 32 PNGs + `e2e-run.txt`, `perf-001.txt`, `rel-001.txt` in this folder (see [README.md](./README.md)) |
 
 ## E2E scenario map
 
@@ -36,6 +37,16 @@ New test files:
 | S7 | Unauthenticated access; session expired mid-use | `authorization.spec.ts` › S7 | AUTH-003, AUTH-005 (UI) |
 | S8 | Cross-customer access | `authorization.spec.ts` › S8 | QUEUE-006, RBAC-005 |
 | S9 (extra) | Responsive at 360 / 1280 px | `responsive.spec.ts` › S9 / UI-001 (×2 viewports) | UI-001 |
+| Extra | Keyboard-only walkthrough, customer and operator | `keyboard.spec.ts` (skipped in WebKit, reason in the test) | ui-spec §8.1 |
+
+All specs run in Chromium, Firefox and WebKit (`npm run test:e2e:all-browsers`).
+
+## NFR checks added after review
+
+| Test ID | Method | File |
+|---|---|---|
+| PERF-001 | 1,000-entry dataset, 5 warm-ups + 100 timed sequential requests per operation, p95 against NFR-04 targets | `server/tests/nfr/perf-001.ts` |
+| REL-001 | Row visible on a separate connection after each 2xx; SIGKILL the API and PostgreSQL, WAL recovery, identical data afterwards | `server/tests/nfr/rel-001.ts` |
 
 ## Deliberately not duplicated
 

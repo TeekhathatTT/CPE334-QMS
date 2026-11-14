@@ -1,0 +1,27 @@
+REL-001 / NFR-05 run: 2026-11-14T05:20:58.943Z
+Command: npm run test:rel --workspace=server   (npm run build && tsx tests/nfr/rel-001.ts)
+Host: Windows_NT 10.0.26200, 11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz x12, 16 GiB RAM, Node v22.20.0
+
+[2026-11-14T05:20:54.128Z] test database "qms_test_db" on 127.0.0.1:5433, container "qms-postgres"
+[2026-11-14T05:20:54.176Z] PostgreSQL durability settings: fsync=on, full_page_writes=on, synchronous_commit=on, wal_level=replica
+[2026-11-14T05:20:55.123Z] API started (pid 9540) on :3101
+[2026-11-14T05:20:55.489Z] customer1 join: HTTP 201, status WAITING; separate connection sees the same committed row
+[2026-11-14T05:20:55.515Z] operator1 call-next: HTTP 200, status CALLED; separate connection sees the same committed row
+[2026-11-14T05:20:55.533Z] operator1 start: HTTP 200, status SERVING; separate connection sees the same committed row
+[2026-11-14T05:20:55.551Z] operator1 complete: HTTP 200, status COMPLETED; separate connection sees the same committed row
+[2026-11-14T05:20:55.570Z] customer2 join: HTTP 201, status WAITING; separate connection sees the same committed row
+[2026-11-14T05:20:55.591Z] API hard-killed (SIGKILL), no graceful shutdown
+[2026-11-14T05:20:56.161Z] docker kill --signal=SIGKILL qms-postgres: PostgreSQL killed without shutdown
+[2026-11-14T05:20:57.209Z] docker start qms-postgres: done
+[2026-11-14T05:20:57.788Z] database accepting connections again after 571 ms; postmaster start time 2026-11-14T05:20:57.253Z
+[2026-11-14T05:20:57.887Z] postgres log: LOG:  database system was not properly shut down; automatic recovery in progress
+[2026-11-14T05:20:57.888Z] postgres log: LOG:  redo starts at 0/34FABB0
+[2026-11-14T05:20:57.888Z] postgres log: LOG:  redo done at 0/3517E58 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+[2026-11-14T05:20:58.755Z] API restarted (pid 28516)
+[2026-11-14T05:20:58.820Z] customer1 (pre-restart cookie): COMPLETED entry identical to the pre-restart response, all 4 timestamps
+[2026-11-14T05:20:58.845Z] customer2 (pre-restart cookie): WAITING entry identical to the pre-restart response
+[2026-11-14T05:20:58.870Z] operator1 (pre-restart cookie): queue list unchanged (2 entries, FIFO order)
+[2026-11-14T05:20:58.881Z] DB direct: lastQueueNumber 2 (unchanged), 3 session rows (unchanged)
+[2026-11-14T05:20:58.922Z] post-restart join: HTTP 201, queueNumber 3 (continues from the persisted counter)
+
+Overall: PASSED

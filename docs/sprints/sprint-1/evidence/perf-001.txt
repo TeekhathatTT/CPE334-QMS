@@ -1,0 +1,23 @@
+PERF-001 / NFR-04 run: 2026-11-14T05:18:52.882Z
+Command: npm run test:perf --workspace=server   (tsx tests/nfr/perf-001.ts)
+Host: Windows_NT 10.0.26200, 11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz x12, 16 GiB RAM, Node v22.20.0
+Database: PostgreSQL 16.15 on x86_64-pc-linux-musl, test database "qms_test_db" on 127.0.0.1:5433
+Method: real Express app on a local ephemeral port, sequential HTTP requests (Node fetch, real cookies + CSRF),
+        5 untimed warm-ups then 100 timed requests per operation, client-side wall time incl. body.
+Dataset: 1000 queue entries before timing (1000 WAITING in the OPEN queue), 1105 after.
+Targets: read p95 <= 500 ms, mutation p95 <= 1000 ms.
+
+Operation                                                  kind         n   p50 ms   p95 ms   max ms target  result
+POST /api/auth/login                                       mutation   100    249.1    257.9    270.0   1000  PASS
+GET /api/auth/me                                           read       100     11.0     12.9     15.6    500  PASS
+GET /api/queues                                            read       100     13.2     16.0     17.0    500  PASS
+GET /api/me/queue-entries                                  read       100     13.8     16.7     19.6    500  PASS
+GET /api/me/queue-entries/:id (aheadCount over 1,000)      read       100     19.0     23.0     27.4    500  PASS
+GET /api/operator/queues                                   read       100     15.7     18.5     19.1    500  PASS
+GET /api/operator/queues/:id/entries (>= 1,000 rows)       read       100     85.7    109.7    116.9    500  PASS
+POST /api/queues/:id/entries (join)                        mutation   100     32.0     37.4     40.8   1000  PASS
+POST /api/operator/queues/:id/call-next                    mutation   100     27.8     33.3     35.8   1000  PASS
+POST /api/operator/queue-entries/:id/start                 mutation   100     23.4     29.5     36.6   1000  PASS
+POST /api/operator/queue-entries/:id/complete              mutation   100     25.7     30.8     34.8   1000  PASS
+
+Overall: PASSED

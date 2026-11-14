@@ -1,8 +1,10 @@
 # Sprint 1 Test Evidence (Issue #7)
 
-Every PNG in this folder is written by the Playwright suite (`npm run test:e2e`). Each run overwrites them under the same names. They come from headless Chromium (Playwright 1.63.0, Chrome for Testing 153.0.8010.12) against the isolated test database. Flow screenshots show the 1280 × 800 viewport; `responsive-*` screenshots are full-page. The screenshots contain only seeded test accounts and test UUIDs. No cookie, token, connection string or secret appears in them. The password field on the login screenshot is masked.
+Every PNG in this folder is written by the Playwright suite (`npm run test:e2e`, or `npm run test:e2e:all-browsers`). Each run overwrites them under the same names. They come from the Chromium project only (Playwright 1.63.0, Chrome for Testing 153.0.8010.12, headless). Firefox and WebKit run the same assertions but write no screenshots. All runs use the isolated test database. Flow screenshots show the 1280 × 800 viewport; `responsive-*` screenshots are full-page. The screenshots contain only seeded test accounts and test UUIDs. No cookie, token, connection string or secret appears in them. The password field on the login screenshot is masked.
 
-- `e2e-run.txt`: counts-only summary of the two consecutive E2E runs recorded for Issue #7. It is written by `e2e/helpers/summary-reporter.ts`.
+- `e2e-run.txt`: counts-only summary of the two consecutive final E2E runs (Chromium, Firefox, WebKit). It is written by `e2e/helpers/summary-reporter.ts`.
+- `perf-001.txt`: PERF-001 / NFR-04 p95 measurements (`npm run test:perf --workspace=server`).
+- `rel-001.txt`: REL-001 / NFR-05 crash-restart durability log (`npm run test:rel --workspace=server`).
 - `issue7-coverage.md`: gap analysis and scenario map.
 
 ## Screenshots
@@ -27,6 +29,8 @@ Every PNG in this folder is written by the Playwright suite (`npm run test:e2e`)
 | `forbidden-operator-on-customer.png` | S6 | RBAC (UI) | Operator who opened `/customer/entries/:id` ends on `/operator` |
 | `session-expired-banner.png` | S7 | AUTH-005 (UI), ui-spec §7 | `/login` with "Session expired. Please sign in again." after server-side session revocation |
 | `cross-customer-not-found.png` | S8 | QUEUE-006, RBAC-005 | customer2 on customer1's entry URL: "We couldn't find that queue entry." and no entry data |
+| `keyboard-01-customer-join-focused.png` | Keyboard walkthrough (customer) `keyboard.spec.ts` | ui-spec §8.1 | Join Queue reached by Tab with a visible focus ring |
+| `keyboard-02-operator-start-focused.png` | Keyboard walkthrough (operator) | ui-spec §8.1 | Start Service reached by Tab with a visible focus ring |
 | `responsive-360-01-login.png`, `responsive-1280-01-login.png` | S9 `responsive.spec.ts` | UI-001 | `/login` |
 | `responsive-360-02-customer-queues.png`, `responsive-1280-02-customer-queues.png` | S9 | UI-001 | `/customer`, Available Queues |
 | `responsive-360-03-customer-tickets.png`, `responsive-1280-03-customer-tickets.png` | S9 | UI-001 | `/customer`, My Active Tickets (one WAITING, one COMPLETED) |
@@ -34,7 +38,7 @@ Every PNG in this folder is written by the Playwright suite (`npm run test:e2e`)
 | `responsive-360-05-operator-dashboard.png`, `responsive-1280-05-operator-dashboard.png` | S9 | UI-001 | `/operator` |
 | `responsive-360-06-operator-queue.png`, `responsive-1280-06-operator-queue.png` | S9 | UI-001 | `/operator/queues/:id` with the Active, Waiting and Completed sections all filled |
 
-## Measured layout (S9, both runs identical)
+## Measured layout (S9, Chromium; both runs identical)
 
 | Screen | 360 × 800: scrollWidth / clientWidth / innerWidth | 1280 × 800: scrollWidth / clientWidth / innerWidth |
 |---|---|---|
