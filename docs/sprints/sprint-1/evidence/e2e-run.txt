@@ -1,0 +1,36 @@
+E2E run: 2026-11-14T04:47:19.299Z
+Command: npm run test:e2e   (playwright test --config e2e/playwright.config.ts)
+Playwright 1.63.0, Chromium (headless), workers=1, retries=0
+Host: Windows_NT 10.0.26200, Node v22.20.0
+Overall: PASSED in 130.5s
+Tests: 10 total, 10 passed, 0 failed, 0 skipped, 0 flaky, 0 interrupted
+
+PASSED   authorization.spec.ts › Authorization in the browser › S6: a customer cannot reach operator screens, and an operator cannot reach customer screens (8.0s)
+PASSED   authorization.spec.ts › Authorization in the browser › S7: protected routes send anonymous visitors to /login; a session invalidated mid-use shows the session-expired banner (7.2s)
+PASSED   authorization.spec.ts › Authorization in the browser › S8: customer 2 opening customer 1's entry URL sees the not-found state and none of customer 1's data (2.9s)
+PASSED   customer-flow.spec.ts › Customer workflow › S1 / FLOW-009: customer logs in, sees available queues, joins, gets a number, and views own WAITING entry (3.2s)
+PASSED   customer-flow.spec.ts › Customer workflow › S2: joining the same queue again shows the duplicate error and creates no second entry (2.6s)
+PASSED   customer-flow.spec.ts › Customer workflow › S5: customer detail page shows each operator change through real 10 s polling, without a reload (33.8s)
+PASSED   operator-flow.spec.ts › Operator workflow › S3: operator sees only assigned queues and the FIFO waiting list; an unassigned operator sees none (6.0s)
+PASSED   operator-flow.spec.ts › Operator workflow › S4 / FLOW-010: Call Next -> CALLED, Start -> SERVING, Complete -> COMPLETED, with the UI updating after each step (4.0s)
+PASSED   responsive.spec.ts › S9 / UI-001 at 360 x 800: login, customer and operator screens have no horizontal overflow and usable primary actions (9.5s)
+PASSED   responsive.spec.ts › S9 / UI-001 at 1280 x 800: login, customer and operator screens have no horizontal overflow and usable primary actions (9.7s)
+
+E2E run: 2026-11-14T04:49:36.785Z
+Command: npm run test:e2e   (playwright test --config e2e/playwright.config.ts)
+Playwright 1.63.0, Chromium (headless), workers=1, retries=0
+Host: Windows_NT 10.0.26200, Node v22.20.0
+Overall: PASSED in 130.0s
+Tests: 10 total, 10 passed, 0 failed, 0 skipped, 0 flaky, 0 interrupted
+
+PASSED   authorization.spec.ts › Authorization in the browser › S6: a customer cannot reach operator screens, and an operator cannot reach customer screens (8.1s)
+PASSED   authorization.spec.ts › Authorization in the browser › S7: protected routes send anonymous visitors to /login; a session invalidated mid-use shows the session-expired banner (7.0s)
+PASSED   authorization.spec.ts › Authorization in the browser › S8: customer 2 opening customer 1's entry URL sees the not-found state and none of customer 1's data (3.1s)
+PASSED   customer-flow.spec.ts › Customer workflow › S1 / FLOW-009: customer logs in, sees available queues, joins, gets a number, and views own WAITING entry (3.1s)
+PASSED   customer-flow.spec.ts › Customer workflow › S2: joining the same queue again shows the duplicate error and creates no second entry (2.5s)
+PASSED   customer-flow.spec.ts › Customer workflow › S5: customer detail page shows each operator change through real 10 s polling, without a reload (33.4s)
+PASSED   operator-flow.spec.ts › Operator workflow › S3: operator sees only assigned queues and the FIFO waiting list; an unassigned operator sees none (5.9s)
+PASSED   operator-flow.spec.ts › Operator workflow › S4 / FLOW-010: Call Next -> CALLED, Start -> SERVING, Complete -> COMPLETED, with the UI updating after each step (4.0s)
+PASSED   responsive.spec.ts › S9 / UI-001 at 360 x 800: login, customer and operator screens have no horizontal overflow and usable primary actions (9.5s)
+PASSED   responsive.spec.ts › S9 / UI-001 at 1280 x 800: login, customer and operator screens have no horizontal overflow and usable primary actions (9.5s)
+
