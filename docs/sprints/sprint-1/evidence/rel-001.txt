@@ -1,0 +1,35 @@
+REL-001 / NFR-05 run: 2026-11-14T09:24:55.668Z
+Command: npm run test:rel --workspace=server   (npm run build && tsx tests/nfr/rel-001.ts)
+Host: Windows_NT 10.0.26200, 11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz x12, 16 GiB RAM, Node v22.20.0
+Database: throwaway postgres:16-alpine container created and removed by this run (not the dev/shared test container)
+
+[2026-11-14T09:24:27.023Z] shared test-DB port 5433: qms-postgres (will not be touched; StartedAt recorded)
+[2026-11-14T09:24:27.985Z] throwaway container qms-rel001-1794648266870 created (postgres:16-alpine, label qms.purpose=rel-001-throwaway, 127.0.0.1:55433)
+[2026-11-14T09:24:32.190Z] throwaway database ready after 4196 ms
+[2026-11-14T09:24:43.034Z] migrations applied to the throwaway database
+[2026-11-14T09:24:46.595Z] seeded
+[2026-11-14T09:24:46.603Z] PostgreSQL durability settings: fsync=on, full_page_writes=on, synchronous_commit=on, wal_level=replica
+[2026-11-14T09:24:49.395Z] API started on :3101 against the throwaway database
+[2026-11-14T09:24:49.778Z] customer1 join: HTTP 201, status WAITING; separate connection sees the same committed row
+[2026-11-14T09:24:49.804Z] operator1 call-next: HTTP 200, status CALLED; separate connection sees the same committed row
+[2026-11-14T09:24:49.823Z] operator1 start: HTTP 200, status SERVING; separate connection sees the same committed row
+[2026-11-14T09:24:49.839Z] operator1 complete: HTTP 200, status COMPLETED; separate connection sees the same committed row
+[2026-11-14T09:24:49.859Z] customer2 join: HTTP 201, status WAITING; separate connection sees the same committed row
+[2026-11-14T09:24:49.879Z] API hard-killed (SIGKILL), no graceful shutdown
+[2026-11-14T09:24:49.978Z] safety check passed: target is this run's own container (id, name, label) and holds only "qms_rel001_test"
+[2026-11-14T09:24:50.631Z] docker kill --signal=SIGKILL qms-rel001-1794648266870: PostgreSQL killed without shutdown
+[2026-11-14T09:24:51.674Z] docker start qms-rel001-1794648266870: done
+[2026-11-14T09:24:53.813Z] database accepting connections again after 2134 ms
+[2026-11-14T09:24:53.914Z] postgres log: LOG:  database system was not properly shut down; automatic recovery in progress
+[2026-11-14T09:24:53.915Z] postgres log: LOG:  redo starts at 0/1925DD8
+[2026-11-14T09:24:53.915Z] postgres log: LOG:  redo done at 0/1977F58 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+[2026-11-14T09:24:54.586Z] API restarted
+[2026-11-14T09:24:54.632Z] customer1 (pre-restart cookie): COMPLETED entry identical to the pre-restart response, all 4 timestamps
+[2026-11-14T09:24:54.647Z] customer2 (pre-restart cookie): WAITING entry identical to the pre-restart response
+[2026-11-14T09:24:54.667Z] operator1 (pre-restart cookie): queue list unchanged (2 entries, FIFO order)
+[2026-11-14T09:24:54.677Z] DB direct: lastQueueNumber 2 (unchanged), 3 session rows (unchanged)
+[2026-11-14T09:24:54.712Z] post-restart join: HTTP 201, queueNumber 3 (continues from the persisted counter)
+[2026-11-14T09:24:55.507Z] throwaway container qms-rel001-1794648266870 removed with its volume
+[2026-11-14T09:24:55.668Z] qms-postgres: StartedAt unchanged (2026-11-14T09:23:23.151763308Z), not restarted or killed
+
+Overall: PASSED

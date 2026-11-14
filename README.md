@@ -1,70 +1,198 @@
-# CPE 334 Lab 5 Starter Files
+# Queue and Service Management System (QMS)
 
-These files take TokTickIT from a laptop to Google Cloud Run with a CI/CD pipeline. They are the worked example for Lab 5. Your team's project uses a different app and maybe a different stack, so copy the files into your repository and adapt them. The Lab 5 handout explains the rules each file must follow.
+QMS is a high-reliability queue and service management application for service counters. It supports customer queue registration, personal ticket tracking, and operator-managed service workflows in strict FIFO order with transactional concurrency control.
 
-The application code (`client/`, `server/src/`, `server/prisma/`) is not included. Every file here assumes a Node.js 24 frontend and API in one container with PostgreSQL and Prisma. Lines that depend on that are listed under "What to change".
+## Documentation Set
 
-## What is in this folder
+- [docs/srs.md](docs/srs.md) — Software Requirements Specification & domain narrative
+- [docs/features.md](docs/features.md) — Feature inventory & delivery status
+- [docs/traceability.md](docs/traceability.md) — Requirement-to-feature-to-test traceability
+- [docs/system-sds.md](docs/system-sds.md) — System Design Specification, logical model, and integrity rules
+- [docs/sprints/plan.md](docs/sprints/plan.md) — Sprint plans & execution schedule
+- [docs/sprints/sprint-1/api-spec.md](docs/sprints/sprint-1/api-spec.md) — Sprint 1 REST API specification
+- [docs/sprints/sprint-1/ui-spec.md](docs/sprints/sprint-1/ui-spec.md) — User interface workflow specification
+- [docs/sprints/sprint-1/tests.md](docs/sprints/sprint-1/tests.md) — Test specifications and acceptance criteria
 
-| File | What it does |
-|---|---|
-| `server/Dockerfile`, `client/Dockerfile`, `client/nginx.conf` | Used by `docker-compose.yml` for local runs: one image for the API, one for the web app served by nginx. |
-| `Dockerfile`, `.dockerignore` | Three-stage build. The React app is built and served by the Express API from one container on port 3000, running as the non-root `node` user. |
-| `docker-compose.yml` | Runs PostgreSQL, a migration/seed job, the API (`localhost:3000`) and the web app (`localhost:5173`) locally. |
-| `server/.env.example`, `client/.env.example` | Every environment variable the app reads, with placeholders only. Copy to `.env` locally and never commit `.env`. |
-| `server/docker-entrypoint.sh` | Starts the server and nothing else. Migrations run in a separate Cloud Run job. |
-| `.github/workflows/ci-docker.yml` | Runs on every Pull Request: PostgreSQL service, migrate and seed, backend and frontend tests, deploy script tests, Docker build. The job name `test-and-docker` is the required check for the ruleset. |
-| `.github/workflows/deploy.yml` | Runs on every merge into `main`: CI again, build and push the image tagged with the commit SHA, migration job, Cloud Run update, smoke test. Run it by hand with `image_tag` to roll back. |
-| `deploy/deploy.sh` | One-time setup and first deploy: APIs, Artifact Registry, Cloud SQL, secrets, runtime service account, migration job, and Cloud Run service. Run with `DRY_RUN=1` first. |
-| `deploy/release.sh` | Called by `deploy.yml`. Checks the image exists, reads its digest, runs the migration job, and updates the service. |
-| `deploy/smoke_test.py` | Checks `/api/health`, `/api/ready`, `/`, and `/api/categories`, plus an optional sign-in. |
-| `deploy/teardown.sh` | Deletes the cloud resources after the course. |
-| `deploy/tests/` | Offline tests for the deploy scripts. CI runs them. |
-| `.github/dependabot.yml` | Opens a Pull Request every week when a GitHub Action used by the workflows has a newer version. |
-| `docs/gcp-first-lab.md` | Step-by-step first deploy from Cloud Shell. |
-| `docs/gcp-cicd-guide.md` | GCP setup, local run, CI, troubleshooting, and cost. |
-| `docs/auto-deploy.md` | Workload Identity Federation, GitHub environment and variables, ruleset, and rollback. |
+---
 
-The guides are in English. The TA team wrote them during their own rehearsal. Values such as `YOUR_PROJECT_ID`, `YOUR_PROJECT_NUMBER`, and `YOUR_ORG/YOUR_REPO` are placeholders for your own. Commit SHAs and revision names in the guides are examples from the rehearsal.
+## Architecture & Layout
 
-## Order of work
+```
+.
+├── docker-compose.yml       # Local PostgreSQL database container configuration
+├── .env.example             # Documented environment variables matching Section 7 of system-sds.md
+├── package.json             # Root npm workspace manifest (server & client)
+├── server/                  # Backend service
+│   ├── prisma/
+│   │   ├── schema.prisma    # PostgreSQL Prisma schema with enums, models & relations
+│   │   ├── migrations/      # DDL migrations including custom CHECKs and partial UNIQUE index
+│   │   └── seed.ts          # Idempotent seed script (upsert)
+│   ├── src/
+│   │   ├── app.ts           # Production Express application (base middlewares & error handling)
+│   │   ├── server.ts        # Server entry point
+│   │   ├── db.ts            # Prisma client instance (supports isolated test DB)
+│   │   ├── middleware/      # RequestId, RequestLogger, UUIDv4 validator, Zod validator, Auth/RBAC
+│   │   └── errors/          # Standard AppError and SDS-conforming error codes
+│   └── tests/               # Vitest real database integration test suite
+└── client/                  # Frontend SPA
+    ├── src/                 # React 18, Vite, TypeScript, and Tailwind CSS
+    └── vite.config.ts       # Vite config with API proxy
+```
 
-0. Follow the Lab 5 Student Guide (the episode series from the TA team). This folder is the material it points to.
-1. Run your app locally in production mode, then with `docker compose up --build`.
-2. Make it cloud-ready: sessions and uploaded files in the database, no demo passwords in production, reference data and the first administrator created by the seed.
-3. Add `ci-docker.yml` and open a Pull Request to see the checks run.
-4. Confirm billing is open and create a budget alert. In Cloud Shell, run `DRY_RUN=1 PROJECT_ID=YOUR_PROJECT_ID bash deploy/deploy.sh`, read the output, then run it without `DRY_RUN`. The TA guides add `--demo`, which loads sample users with a generated password for teaching. Demo accounts are allowed in your project (you will need them for UAT in Lab 6), but their passwords must come from Secret Manager or environment variables, never from code, and must not be shown on screen.
-5. Follow `docs/auto-deploy.md` to create the deploy service account, Workload Identity Federation, the GitHub environment `demo`, and the ruleset for `main`.
-6. Add `deploy.yml` and merge a small change into `main`.
+---
 
-## GitHub settings that deploy.yml expects
+## Clean Checkout & Local Setup Guide
 
-Environment `demo`, deployable only from `main`, with these variables:
+Follow these steps to run a clean checkout and verify the foundational setup:
 
-| Name | Example |
-|---|---|
-| `GCP_PROJECT_ID` | `YOUR_PROJECT_ID` |
-| `GCP_REGION` | `asia-southeast1` |
-| `WIF_PROVIDER` | `projects/YOUR_PROJECT_NUMBER/locations/global/workloadIdentityPools/github-actions/providers/github-main` |
-| `WIF_SERVICE_ACCOUNT` | `toktickit-deployer@YOUR_PROJECT_ID.iam.gserviceaccount.com` |
+### 1. Prerequisites
+- **Node.js**: v20 or higher (v24 LTS recommended)
+- **npm**: v10 or higher
+- **Docker & Docker Compose** (for local PostgreSQL container) OR a local PostgreSQL 16+ instance.
 
-Optional: `SMOKE_EMAIL` as a variable and `SMOKE_PASSWORD` as a secret, for the sign-in check. Set both or neither.
+### 2. Clone and Configure Environment
+Clone the repository and copy the environment configuration:
+```bash
+# Configure environment variables (run from the repository root after cloning)
+cp .env.example .env
+cp .env.example server/.env
+cp .env.example server/.env.test
+```
 
-Ruleset for `main`: Enforcement Active, empty bypass list, Require a pull request, Require status checks to pass with `test-and-docker` selected through Add checks, and Require branches to be up to date.
+> [!IMPORTANT]
+> **Never commit session secrets or use placeholder keys in production.** Generate your own cryptographically secure secret (minimum 32 characters) for `SESSION_SECRET` rather than copying default keys:
+> ```bash
+> node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+> ```
 
-## What to change for your project
+Ensure `.env` matches your local database credentials:
+```env
+PORT=3000
+NODE_ENV=development
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/qms_db?schema=public
+TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/qms_test_db?schema=public
+SESSION_SECRET=<YOUR_GENERATED_SECURE_RANDOM_SESSION_SECRET_AT_LEAST_32_CHARS>
+CORS_ORIGIN=
+```
 
-- Names: the service `toktickit`, the job `toktickit-migrate`, the Artifact Registry repository, and the Cloud SQL instance and database appear in `deploy/deploy.sh`, `deploy/release.sh`, and `deploy.yml`. Rename them consistently.
-- `Dockerfile`: the build commands, the paths copied into the final image, and the port. The final image must contain every file the server and the seed need at run time.
-- `ci-docker.yml`: the install, migrate, seed, test, and build commands for your stack.
-- `deploy/deploy.sh` and `release.sh`: the migration job command (`prisma migrate deploy` and the seed) and the secrets your app reads.
-- `deploy/smoke_test.py`: the endpoints and the expected text. Keep it read-only and do not use the administrator account.
-- Leave alone unless you know why: Workload Identity Federation instead of JSON keys, actions pinned to full commit SHAs, the image tag being the full commit SHA, deploying by image digest, and the `if` conditions on the `test` and `deploy` jobs that make rollback work.
+| Variable | Required | Purpose |
+|---|---|---|
+| `PORT` | No (default `3000`) | HTTP API listen port |
+| `NODE_ENV` | Yes | `development`, `test`, or `production` |
+| `DATABASE_URL` | Yes | PostgreSQL connection string for the app, migrations, and seed. There is no built-in default; the server refuses to start without it. |
+| `TEST_DATABASE_URL` | For tests | Separate database used when `NODE_ENV=test`. Tests delete all rows, so they refuse to run if this is missing or equals `DATABASE_URL`. |
+| `SESSION_SECRET` | Yes | At least 32 characters. The server refuses to start with a missing, short, or placeholder value. |
+| `CORS_ORIGIN` | No | Comma-separated origins allowed to call the API cross-origin. Empty means same-origin only (the Vite dev proxy is same-origin). |
 
-## Rollback
+### 3. Start PostgreSQL Database
+Using Docker Compose:
+```bash
+docker compose up -d
+```
+Verify PostgreSQL is ready to accept connections on port `5432`.
 
-Actions > Deploy demo > Run workflow on `main`, then enter the full 40-character commit SHA of the last release that worked. The workflow skips tests, build, and migration, deploys that image, and runs the smoke test. The database schema is not rolled back, so keep migrations additive.
+On first start, the container creates both `qms_db` (development) and `qms_test_db` (tests) via `docker/postgres-init/`. Init scripts only run on an empty volume; if you created the volume before this script existed, run `docker compose down -v` and start again, or create the database manually with `docker exec qms-postgres createdb -U postgres qms_test_db`.
 
-## Cost
-Cloud SQL is billed for every hour it exists. The TA team estimated about USD 14 to 18 per project per month with light use in October 2026. Create the budget alert before anything else, and run `deploy/teardown.sh` when the course ends.
-#
+### 4. Install Dependencies & Generate Prisma Client
+From the repository root:
+```bash
+npm install
+npm run prisma:generate
+```
+
+### 5. Apply Database Migrations
+Run the initial migration containing all database models, foreign keys, CHECK constraints, and partial unique indexes:
+```bash
+# Apply migrations to development database
+npm run migrate
+
+# Apply migrations to the isolated test database (reads TEST_DATABASE_URL; works in bash and PowerShell)
+npm run migrate:test
+```
+
+### 6. Seed Initial Data (Idempotent)
+Execute the seed script to provision test accounts and queues:
+```bash
+npm run seed
+```
+
+This provisions:
+- **Default Password**: `Password123!` (salted bcrypt, 10 rounds)
+- **Customer Accounts (RFC 4122 UUIDv4)**:
+  - `customer1@example.com` (`11111111-1111-4111-8111-111111111111`, Role: `CUSTOMER`, Status: `ACTIVE`)
+  - `customer2@example.com` (`22222222-2222-4222-8222-222222222222`, Role: `CUSTOMER`, Status: `ACTIVE`)
+- **Operator Accounts (RFC 4122 UUIDv4)**:
+  - `operator1@example.com` (`33333333-3333-4333-8333-333333333333`, Role: `OPERATOR`, Status: `ACTIVE`)
+  - `operator2@example.com` (`44444444-4444-4444-8444-444444444444`, Role: `OPERATOR`, Status: `ACTIVE`)
+- **Service Queues (RFC 4122 UUIDv4)**:
+  - `General Inquiry Desk` (`aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`, `OPEN`, `lastQueueNumber: 0`)
+  - `Specialized Consultation` (`bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb`, `CLOSED`, `lastQueueNumber: 0`)
+- **Operator Assignment**:
+  - `operator1` assigned to `General Inquiry Desk` only (`operator2` unassigned).
+
+*Note: Repeated runs of `npm run seed` will preserve any advanced `lastQueueNumber` counter without resetting it to 0, maintaining the non-decreasing invariant specified in SDS §3.2.*
+
+---
+
+## Running Development Servers
+
+To start both server and client development servers:
+```bash
+# Start backend API (runs on http://localhost:3000)
+npm run dev:server
+
+# In a separate terminal, start frontend client (runs on http://localhost:5173)
+npm run dev:client
+```
+
+---
+
+## Authentication (local development)
+
+- Sign in at `http://localhost:5173/login` with a seeded account from `server/prisma/seed.ts`: `customer1@example.com`, `customer2@example.com` (CUSTOMER) or `operator1@example.com`, `operator2@example.com` (OPERATOR). The development-only password is `Password123!` (see step 6). Never use it outside local development.
+- Customers land on `/customer` (customer queue screens, Issue #5), operators on `/operator` (a placeholder until Issue #6).
+- A successful `POST /api/auth/login` sets two cookies, both valid for 8 hours:
+  - `qms_session`: the session token (`HttpOnly`, `SameSite=Lax`, `Secure` in production). The database stores only an HMAC of it.
+  - `qms_csrf`: the CSRF token for that session (`SameSite=Lax`, readable by JavaScript).
+- The client reads `qms_csrf` and sends it as the `X-CSRF-Token` header on every non-GET request (logout and all later mutations). `GET /api/auth/me` re-issues the cookie after a page reload. Missing or wrong token: `403 FORBIDDEN`; missing or expired session: `401 UNAUTHORIZED`.
+
+---
+
+## Customer flow (local development)
+
+1. Start the API and the client (`npm run dev:server`, `npm run dev:client`) and open `http://localhost:5173/login`.
+2. Sign in as `customer1@example.com` (development password from step 6). You land on `/customer`.
+3. **Available Queues** (default tab) lists only `OPEN` queues. Select **Join Queue** on "General Inquiry Desk". The button shows `Joining queue...` until the request finishes, then a panel shows the queue name, your queue number, and the status `Waiting`. "Specialized Consultation" is `CLOSED` and is not listed.
+4. Select **View details** (or open **My Active Tickets** and select **View details** on the ticket) to open `/customer/entries/:id`. It shows the queue number, queue name, status, timestamps, and a message such as "You are next" or "Currently waiting. 2 people ahead of you."
+5. Status refreshes automatically every 10 seconds while the page is visible (My Active Tickets tab and the detail page; the detail page stops once the entry is `Completed`). Use **Refresh** to re-fetch at any time. Until the operator screens (Issue #6) exist, status changes can only be seen by changing the row in the development database.
+6. Joining the same queue again shows "You already have an active entry in this queue." Opening another customer's entry id shows only "We couldn't find that queue entry."
+
+---
+
+## Running Tests & Typechecks
+
+Execute tests across the test suite:
+```bash
+# Run Vitest test suite against real isolated test database (qms_test_db)
+npm run test
+
+# Run the client (React) test suite: Vitest + jsdom + React Testing Library, no database needed
+npm run test:client
+
+# Run TypeScript type checking across both production and test files
+npm run typecheck --workspace=server
+npx tsc --noEmit --project client/tsconfig.json
+
+# Run production build
+npm run build
+
+# Start production server
+npm start --workspace=server
+```
+
+Tests require `server/.env.test` with `TEST_DATABASE_URL` and a migrated test database (`npm run migrate:test`). Every test file resets and re-seeds that database, so test files run sequentially.
+
+---
+
+## Status
+Branch `feature/sprint1/2-project-foundation` implements Issue #2 (Project Foundation and Database Setup), conforming strictly to the Sprint 1 SRS, SDS, API Specification, and Test Specification.
