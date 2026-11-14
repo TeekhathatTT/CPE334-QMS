@@ -40,3 +40,11 @@ Thumbs.db
 *.swp
 *.swo
 
+
+# Playwright (E2E) local output — never committed
+e2e/test-results/
+e2e/playwright-report/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/

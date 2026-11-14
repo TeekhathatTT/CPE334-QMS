@@ -57,12 +57,12 @@ Use the standard API error envelope and the Sprint 1 contract in [../srs.md](../
 | CONCURRENCY-002 | Duplicate active entry race | only one active row survives under concurrent duplicate joins | Database integration | **PASSED** (#4, `tests/queue-registration.test.ts`) |
 | CONCURRENCY-003 | Call-next race | concurrent call-next requests claim different entries correctly | Database integration | **PASSED** (#6, `tests/operator-workflow.test.ts`) |
 | CONCURRENCY-004 | Stale concurrent mutation | stale mutation returns conflict response without corrupting state | Database integration | **PASSED** (#6, `tests/operator-workflow.test.ts`) |
-| PERF-001 | Local performance targets | p95 read and mutation timings meet Sprint 1 local targets | Performance | Pending |
-| REL-001 | Commit durability | successful mutation persists after commit and survives restart validation | Database integration | Pending |
-| UI-001 | Responsive core workflows | pages remain usable at 360 px and 1280 px without horizontal overflow | Browser E2E | Pending — customer screens verified in browser at 360 px / 1280 px (#5, §11); operator screens have jsdom component coverage in `src/test/operator.test.tsx` (#6, §12), full browser viewport E2E verification pending |
+| PERF-001 | Local performance targets | p95 read and mutation timings meet Sprint 1 local targets | Performance | **PASSED** (#7, `server/tests/nfr/perf-001.ts`: 1,000-entry dataset, 100 timed requests per operation; worst read p95 109.7 ms ≤ 500, worst mutation p95 257.9 ms ≤ 1,000; see §13.9) |
+| REL-001 | Commit durability | successful mutation persists after commit and survives restart validation | Database integration | **PASSED** (#7, `server/tests/nfr/rel-001.ts`: rows visible on a separate connection right after each 2xx; API and PostgreSQL SIGKILLed, WAL crash recovery, data identical after restart; see §13.9) |
+| UI-001 | Responsive core workflows | pages remain usable at 360 px and 1280 px without horizontal overflow | Browser E2E | **PASSED** (#7, Playwright Chromium + Firefox + WebKit, `e2e/tests/responsive.spec.ts`: all six customer and operator screens at 360 × 800 and 1280 × 800, two consecutive runs; see §13) |
 | SETUP-001 | Reproducible local setup | clean checkout can provision required test accounts and queues | Manual verification | **PASSED** (Verified in `tests/seed.test.ts` & clean checkout) |
-| FLOW-009 | Customer E2E flow | login, join queue, view own detail | E2E | Pending |
-| FLOW-010 | Operator E2E flow | login, call, start, complete | E2E | Pending — API integration verified in `tests/operator-workflow.test.ts` and jsdom component coverage in `src/test/operator.test.tsx` (#6, §12); full browser E2E pending |
+| FLOW-009 | Customer E2E flow | login, join queue, view own detail | E2E | **PASSED** (#7, Playwright Chromium + Firefox + WebKit, `e2e/tests/customer-flow.spec.ts` S1 and S5; see §13) |
+| FLOW-010 | Operator E2E flow | login, call, start, complete | E2E | **PASSED** (#7, Playwright Chromium + Firefox + WebKit, `e2e/tests/operator-flow.spec.ts` S4, plus S5 from the customer side; see §13) |
 
 ## 3. Detailed test cases for critical behaviors
 
@@ -735,7 +735,7 @@ This test plan maps to FR-01 through FR-13, BR-01 through BR-12, and NFR-01 thro
 ## 12. Execution Evidence and Automated Test Results (Issue #6 Operator Queue Management Workflow)
 
 **Execution Date:** 2026-11-13  
-**Server suite:** Vitest v2.1.9 (`npm test`) against the isolated PostgreSQL 16 test database (`qms_test_db` on `localhost:5432`)  
+**Server suite:** Vitest v2.1.9 (`npm test`) against the isolated PostgreSQL 16 test database (`qms_test_db` on `localhost:5432`) — *note added in #7: on this machine the configured test database (`server/.env.test`) is on `127.0.0.1:5433` (the `qms-postgres` container), as recorded in §9 and §13; `5432` does not match that configuration*  
 **Server result:** **109 passed / 109 total (100% Pass across 9 test files)** (91 Issue #5 baseline + 18 new Issue #6 operator tests)  
 **Client suite:** Vitest v2.1.9 + jsdom + React Testing Library (`npm run test:client`)  
 **Client result:** **71 passed / 71 total (100% Pass across 4 test files)** (58 Issue #5 baseline + 13 new Issue #6 operator UI tests)  
@@ -775,4 +775,189 @@ This test plan maps to FR-01 through FR-13, BR-01 through BR-12, and NFR-01 thro
 - `[PASS]` `/operator/queues/:id`: distinguishes `403` CSRF verification failures (`"We couldn't verify this request. Please refresh the page or sign in again."`) from `403` RBAC permission errors (`"You do not have permission to perform this action."`) on operator actions
 - `[PASS]` `/operator/queues/:id`: distinguishes `404` queue-not-found on `Call Next` (`"We couldn't find that service queue."`) from `404` entry-not-found on `Start Service` (`"We couldn't find that queue entry."`)
 - `[PASS]` `/operator/queues/:id`: redirects a `CUSTOMER` attempting to open `/operator/queues/:id` to `/customer` without calling operator endpoints
+
+## 13. Execution Evidence and Automated Test Results (Issue #7 Integration, Authorization & E2E)
+
+**Execution Date:** 2026-11-14
+**Branch:** `feature/sprint1/7-integration-testing` (from `sprint1-staging` at `68d818f`)
+**Environment:** Windows 11 Home (10.0.26200), Node v22.20.0, PostgreSQL 16.15 (`qms-postgres` Docker container on `127.0.0.1:5433`, test database `qms_test_db`), Playwright 1.63.0 with Chrome for Testing 153.0.8010.12 (Chromium), plus the Playwright Firefox and WebKit builds for 1.63.0, all headless; Intel i5-11400H, 16 GiB RAM
+**Coverage / gap analysis:** [`evidence/issue7-coverage.md`](./evidence/issue7-coverage.md). **Screenshots:** [`evidence/README.md`](./evidence/README.md)
+
+### 13.1 Commands and results
+
+Every number below comes from a command run in this session. Step 0 is the regression baseline measured before any Issue #7 change. The Final column is the run after all Issue #7 commits, in this order.
+
+| Command | Step 0 baseline | Final |
+|---|---|---|
+| `npm run migrate:test` | exit 0 (2 migrations, none pending)¹ | exit 0 (none pending) |
+| `npm run typecheck --workspace=server` | exit 0 | exit 0 |
+| `npm run test:server` | **109 passed / 0 failed / 0 skipped** (9 files) | **118 passed / 0 failed / 0 skipped** (10 files: 109 + 9 new) |
+| `npm run test:client` | **71 passed / 0 failed / 0 skipped** (4 files) | **77 passed / 0 failed / 0 skipped** (5 files: 71 + 6 new) |
+| `npm run build` | exit 0 | exit 0 |
+| `npm run test:e2e` (Chromium only), run 1 / run 2 | — (no E2E existed) | **10 passed / 0 failed / 0 skipped / 0 flaky** each (130.5 s, 130.0 s); first round, before the keyboard spec and other browsers were added |
+| `npm run test:e2e:all-browsers` final run 1 | — | **36 tests: 34 passed / 0 failed / 2 skipped / 0 flaky**, 186.8 s |
+| `npm run test:e2e:all-browsers` final run 2 (immediately after run 1) | — | **36 tests: 34 passed / 0 failed / 2 skipped / 0 flaky**, 182.1 s |
+| `npm run test:perf --workspace=server` | — | **PASSED**: 11/11 operations within target (§13.9) |
+| `npm run test:rel --workspace=server` | — | **PASSED** (§13.9) |
+
+The final round (migrate, typecheck, server 118, client 77, build, then E2E twice in all three browsers) was run after the last code commit. The 2 skipped tests are the keyboard walkthroughs in WebKit (§13.10). The 12 E2E tests × 3 browsers make up the 36.
+
+¹ The first Step 0 attempt failed because the `qms-postgres` container was not running (`P1001`). It passed after Docker Desktop was started. `npm ci` also removed the generated Prisma client, so `npm run prisma:generate` was run before the baseline server suite. Both are environment steps; no code changed.
+
+E2E settings: `workers: 1`, `fullyParallel: false`, `retries: 0`. Global setup refuses any database whose name does not contain `test` as a word, or that equals `DATABASE_URL`. This refusal was checked against fake configurations in a scratch directory: a `qms_db` target, a target equal to `DATABASE_URL`, a `contest` target, and a missing variable were all refused; `qms_test_db` was accepted. Global setup then runs `migrate:test` and a reset plus seed. Every spec also resets and re-seeds in `beforeEach`. The API runs compiled (`node dist/server.js`) with `NODE_ENV=test`. The browser talks only to the Vite dev server on `:5173`, with `/api` proxied, so cookies and CSRF behave as in normal use; CORS is off. Already-running servers are never reused. Run summaries are in [`evidence/e2e-run.txt`](./evidence/e2e-run.txt).
+
+### 13.2 Server: `tests/integration-sprint1.test.ts` (9 passed)
+
+Real HTTP through supertest, real session cookies and CSRF tokens, real PostgreSQL, no mocked Prisma. Every rejection is checked for the exact status and code and for the envelope `{error:{code,message,requestId}}` with a UUID `requestId` and no `data`. A DB snapshot is compared before and after: all entries with their statuses and timestamps, every `lastQueueNumber`, and the user and assignment counts.
+- `[PASS]` (`NFR-02`, `AUTH-003`, `AUTH-005`) All 11 protected endpoints × {anonymous, anonymous with a forged CSRF header, expired session, tampered session cookie, logged-out session reused} → `401 UNAUTHORIZED` (55 requests). No customer id or entry id appears in any body, and the DB is unchanged.
+- `[PASS]` (`RBAC-001`–`RBAC-005`, `QUEUE-006`) A 22-row role/assignment table:
+  - Operators on customer endpoints → `403`.
+  - Customers calling `call-next`/`start`/`complete` and operator reads directly → `403`.
+  - Unassigned operator2 on operator1's queue (list, call-next, start, complete) → `403`.
+  - operator1 on the unassigned CLOSED queue → `403`.
+  - Cross-owner entry reads in both directions → `404 RESOURCE_NOT_FOUND`, not `403`.
+  - DB unchanged. Allowed reads return only the caller's own or assigned data.
+- `[PASS]` The assigned operator succeeds on each of the three mutations that were rejected for everyone else.
+- `[PASS]` A logged-out session is dead for reads, joins and a second logout. Other users' sessions are unaffected.
+- `[PASS]` (`SEC-002`) 6 mutations (join OPEN, join CLOSED, call-next, start, complete, logout) × {missing, empty, wrong, another session's token} → `403 FORBIDDEN`. DB, counters and the session count are all unchanged.
+- `[PASS]` (FLOW-009/010 at API level) One lifecycle driven only by API calls:
+  - Joins get numbers 1 and 2. A duplicate gets `409 DUPLICATE_ACTIVE_ENTRY` and the counter stays at 2. A closed-queue join gets `409 QUEUE_NOT_AVAILABLE`, with no row and the counter at 0.
+  - The operator's list is in FIFO order. `aheadCount` goes 1 → 0.
+  - start/complete on WAITING, complete on CALLED, start on SERVING, and start/complete on COMPLETED all return `409 INVALID_STATE_TRANSITION` with no DB change.
+  - The duplicate join is still rejected while the entry is CALLED or SERVING.
+  - The timestamps `joinedAt ≤ calledAt ≤ serviceStartedAt ≤ completedAt` are all RFC 3339 `Z`.
+  - Rejoin after COMPLETED gets number 3. FIFO then calls customer2 before customer1's new entry. The final empty `call-next` returns `204` with an empty body and no mutation.
+- `[PASS]` (`NFR-03`) 10 joins racing 12 `call-next` requests from two assigned operators:
+  - Joins get 201 with numbers 1..10, and `lastQueueNumber` is 10.
+  - No entry is claimed twice, and the CALLED rows match the 200 responses exactly.
+  - The remaining WAITING entries are called in FIFO order.
+- `[PASS]` (`NFR-03`) 4 customers × 4 parallel duplicate joins → exactly one `201` each and the rest `409`. Numbers are 1..4 and the counter is 4.
+- `[PASS]` (`NFR-03`) 24 parallel start/complete requests over 4 CALLED entries from two operators. Exactly one start succeeds per entry and at most one complete. Every other request is `409`; none is `500`. Each final status matches the responses.
+- After every mutating scenario, SQL invariant checks returned no violations:
+  - no two active entries for one (customer, queue)
+  - no duplicate `(serviceQueueId, queueNumber)`
+  - no status/timestamp combination outside the lifecycle (for example SERVING without `serviceStartedAt`)
+  - no out-of-order timestamps
+  - no `lastQueueNumber` below an allocated number
+
+The database has no CHECK constraint on lifecycle timestamps, so these SQL checks are the only automated guard for that rule.
+
+### 13.3 Client: `src/test/integration-guards.test.tsx` (6 passed)
+
+- `[PASS]` (ui-spec §7) Session expiry on operator screens: a `401` while loading `/operator/queues/:id`, on Call Next, and on the `/operator` load each clears the user, goes to `/login`, and shows exactly `Session expired. Please sign in again.`. No action error alert and no server text are shown.
+- `[PASS]` An operator opening `/customer/entries/:id` is sent to `/operator` with no customer API call.
+- `[PASS]` Anonymous visitors to `/operator/queues/:id` and `/customer/entries/:id` go to `/login` without the banner. The only request is the `/api/auth/me` probe.
+- The existing client suites were not modified.
+
+### 13.4 Browser E2E (Playwright): S1–S9 passed in Chromium, Firefox and WebKit, in each of two consecutive final runs ("×2" below refers to those runs)
+
+| # | Test | Result | What it proves |
+|---|---|---|---|
+| S1 | `customer-flow.spec.ts` › FLOW-009 | **PASS** ×2 | Login through the form; Available Queues shows only "General Inquiry Desk"; Join → "You joined General Inquiry Desk.", number 1, Waiting; DB has one WAITING row. Detail page shows number 1, the queue name, Waiting, "You are next", and `Joined:` with `<time datetime>` equal to the DB `joinedAt`. |
+| S2 | `customer-flow.spec.ts` › duplicate | **PASS** ×2 | Second Join → HTTP 409 → "You already have an active entry in this queue."; button stays enabled; DB still has 1 row and `lastQueueNumber` 1; My Active Tickets shows 1 ticket |
+| S3 | `operator-flow.spec.ts` › queue view | **PASS** ×2 | operator1 sees only the assigned queue; the waiting list is FIFO (customer1 at position 1, customer2 at position 2). operator2 sees "You have no assigned service queues." and on the queue URL gets "You do not have permission to manage this queue." with no Call Next button and no customer data. |
+| S4 | `operator-flow.spec.ts` › FLOW-010 | **PASS** ×2 | Call Next → Called (Start enabled, Complete disabled) → Start Service → In service → Complete Service → Completed. The feedback banner and sections update after each step. An empty Call Next shows the neutral message. The DB row is COMPLETED with ordered timestamps. |
+| S5 | `customer-flow.spec.ts` › customer sees operator changes | **PASS** ×2 | The operator acts in a second browser context. The customer's open detail page changes to Called, then In service, then Completed, with the matching messages and live-region text. This comes from the **real 10 s polling** (`usePolling`); no reload or navigation happened, which was asserted. It takes about 34 s. |
+| S6 | `authorization.spec.ts` › role separation | **PASS** ×2 | A customer opening `/operator` and `/operator/queues/:id` ends on `/customer`, with zero `/api/operator/*` requests. An operator opening `/customer` and `/customer/entries/:id` ends on `/operator`, with zero `/api/me/*` requests. |
+| S7 | `authorization.spec.ts` › unauthenticated / expired | **PASS** ×2 | Anonymous visits to all 4 protected routes go to `/login` without the banner. Each session is revoked in the DB mid-use, as a customer on the tickets tab and as an operator on the queue page; the next action goes to `/login` with "Session expired. Please sign in again.". Re-opening `/customer` stays on `/login`. Signing in again works and clears the banner. A normal logout shows no banner. |
+| S8 | `authorization.spec.ts` › cross-customer | **PASS** ×2 | customer2 opens customer1's entry URL. The API returns `404 RESOURCE_NOT_FOUND` with no customer1 id. The page shows only "We couldn't find that queue entry."; no entry card, number, entry id, customer1 id or email is on the page. |
+| S9 | `responsive.spec.ts` › UI-001 at 360 × 800 | **PASS** ×2 | See below |
+| S9 | `responsive.spec.ts` › UI-001 at 1280 × 800 | **PASS** ×2 | See below |
+
+S1–S8 are the eight scenarios in Issue #7. S9 is an extra item that verifies UI-001.
+
+**UI-001 result: PASSED.**
+- Screens checked: `/login`, `/customer` (both tabs), `/customer/entries/:id`, `/operator`, and `/operator/queues/:id` with the Active, Waiting and Completed sections all populated.
+- At both 360 × 800 (touch-enabled context) and 1280 × 800, `document.documentElement.scrollWidth` equalled `clientWidth` and `innerWidth` on every screen (360 or 1280).
+- No visible element's box crossed the viewport edge. This check matters because the layouts use `overflow-x-hidden`, which would hide overflow from `scrollWidth`.
+- Every primary action was visible, fully inside the viewport horizontally, and at least 44 px tall.
+- Measured values and screenshots: [`evidence/README.md`](./evidence/README.md).
+
+### 13.5 Test ID status changes in Issue #7
+
+| Test ID | Before | After | Evidence |
+|---|---|---|---|
+| FLOW-009 | Pending | **PASSED** | Browser S1 and S5, both final runs, Chromium + Firefox + WebKit |
+| FLOW-010 | Pending | **PASSED** | Browser S4 and S5, both final runs, Chromium + Firefox + WebKit |
+| UI-001 | Pending (operator screens) | **PASSED** | Browser S9 at 360 and 1280, both final runs, Chromium + Firefox + WebKit; this covers the customer screens again as well as the operator screens |
+| PERF-001 | Pending | **PASSED** | `npm run test:perf --workspace=server`, all 11 operations within target (§13.9, `evidence/perf-001.txt`) |
+| REL-001 | Pending | **PASSED** | `npm run test:rel --workspace=server`, crash-restart of API and PostgreSQL with identical data afterwards (§13.9, `evidence/rel-001.txt`) |
+
+### 13.6 Defect log
+
+**None found.** No Issue #7 test exposed a production defect, and no production file was changed.
+
+Two first-run E2E failures were **test** errors and were fixed in the test code. In S4 and S5, `getByText('Called queue number 1.')` matched both the visible banner and the screen-reader live region, which is a Playwright strict-mode violation. The assertions now target the visible `role="status"` banner.
+
+### 13.7 Not verified / manual checks left
+
+- Browsers: Chromium, Firefox and WebKit were run through Playwright on Windows. Real Safari on macOS/iOS, and mobile browsers, were not tested. The keyboard walkthrough was not run in WebKit (see §13.10).
+- No physical touch device was used. The 360 px run used a touch-enabled emulated context only.
+- No screen-reader listening test (NVDA, JAWS, VoiceOver, TalkBack). The live-region text was asserted in the DOM (S5), not heard.
+- PERF-001 is a single sequential run on one machine. No concurrent-load or throughput test was done.
+- No CI run: the repository has no `.github/` workflows. All results are from one local Windows machine.
+- The Issue #7 Acceptance Criteria and Definition of Done checklists could not be read in this session (GitHub CLI not authenticated), so they were not ticked here.
+
+### 13.8 Spec gaps found
+
+1. **Wrong-role navigation is not specified.** ui-spec §7 defines only the unauthenticated case ("Redirect to `/login` or show a clear access message"). It does not say what a signed-in customer opening `/operator…`, or an operator opening `/customer…`, should see. The implementation (`ProtectedRoute.tsx`) silently redirects to the user's own home, and E2E S6 asserts that behaviour. This was recorded, not decided; the spec owner should confirm whether a silent redirect is the intended "access message".
+2. **The customer status refresh interval is not specified.** ui-spec §5.1 step 7 requires that the customer "sees updated status values". The 10 s polling interval is an implementation decision (Issue #5 decision 2, `usePolling.ts`), not a spec value. E2E S5 allows 15 s per transition based on that decision.
+3. **Focus after an action is not specified.** ui-spec §8.1 requires visible focus but does not say where focus goes after Join, Call Next, Start or Complete. The keyboard walkthrough (§13.10) records where it lands and does not assert it.
+
+### 13.9 PERF-001 and REL-001 (measured)
+
+**PERF-001 / NFR-04: PASSED.** Command: `npm run test:perf --workspace=server` (`server/tests/nfr/perf-001.ts`).
+- Setup: the test database is reset and seeded with **1,000 WAITING entries** from 1,000 distinct customers in the OPEN queue, and the dataset only grows during the run (1,105 entries at the end).
+- Requests: the real Express app runs on a local ephemeral port, and requests go over real TCP with Node `fetch`, real session cookies and CSRF tokens. Requests are sequential. Each operation gets 5 untimed warm-ups, then **100 timed requests**, measured on the client from send until the full body is read.
+- Host: Intel i5-11400H, 12 threads, 16 GiB RAM, Windows 11, Node v22.20.0. Database: PostgreSQL 16.15 in Docker.
+
+| Operation | Kind | p50 ms | p95 ms | max ms | Target p95 | Result |
+|---|---|---|---|---|---|---|
+| `POST /api/auth/login` | mutation | 249.1 | 257.9 | 270.0 | 1,000 | PASS |
+| `GET /api/auth/me` | read | 11.0 | 12.9 | 15.6 | 500 | PASS |
+| `GET /api/queues` | read | 13.2 | 16.0 | 17.0 | 500 | PASS |
+| `GET /api/me/queue-entries` | read | 13.8 | 16.7 | 19.6 | 500 | PASS |
+| `GET /api/me/queue-entries/:id` (aheadCount over 1,000) | read | 19.0 | 23.0 | 27.4 | 500 | PASS |
+| `GET /api/operator/queues` | read | 15.7 | 18.5 | 19.1 | 500 | PASS |
+| `GET /api/operator/queues/:id/entries` (≥ 1,000 rows) | read | 85.7 | 109.7 | 116.9 | 500 | PASS |
+| `POST /api/queues/:id/entries` (join) | mutation | 32.0 | 37.4 | 40.8 | 1,000 | PASS |
+| `POST …/call-next` | mutation | 27.8 | 33.3 | 35.8 | 1,000 | PASS |
+| `POST …/start` | mutation | 23.4 | 29.5 | 36.6 | 1,000 | PASS |
+| `POST …/complete` | mutation | 25.7 | 30.8 | 34.8 | 1,000 | PASS |
+
+Limits: this is one local run on one machine with sequential requests. It does not measure concurrent load or throughput. Login time is dominated by bcrypt by design.
+
+**REL-001 / NFR-05: PASSED.** Command: `npm run test:rel --workspace=server` (`server/tests/nfr/rel-001.ts`); log in `evidence/rel-001.txt`.
+
+**Isolation (changed after PR review).** The script no longer touches the shared `qms-postgres` container that hosts the development database. Each run:
+- creates its own throwaway `postgres:16-alpine` container named `qms-rel001-<timestamp>`, with the label `qms.purpose=rel-001-throwaway`, a random per-run password, and a port bound to `127.0.0.1:55433` only
+- applies migrations to it and seeds it
+- gives the API under test only that database URL; `DATABASE_URL` is an unreachable dummy
+- before the kill, refuses to proceed unless the target has the same container id it created, the label and the name prefix, and holds no database other than `qms_rel001_test`
+- removes the container and its volume at the end
+- records the `StartedAt` of `qms-postgres` before and after and fails if it changed
+
+In the recorded run, `qms-postgres` `StartedAt` stayed `2026-11-14T09:23:23.151763308Z` before and after, and no throwaway container was left behind.
+
+1. PostgreSQL durability settings were read from the throwaway server: `fsync=on`, `synchronous_commit=on`, `full_page_writes=on`, `wal_level=replica`. The script fails if any of the first three is off.
+2. The compiled API (`node dist/server.js`, `NODE_ENV=test`) was started as a separate process. Over HTTP it ran customer1 join → call-next → start → complete, then a customer2 join. **Right after each 2xx response**, a separate DB connection read the row, and it already matched the response exactly ("response follows commit").
+3. The API process was **SIGKILLed**. Then the throwaway PostgreSQL container, and only that one, was **SIGKILLed** (`docker kill --signal=SIGKILL qms-rel001-<timestamp>`) and started again. The PostgreSQL log confirmed crash recovery: "database system was not properly shut down; automatic recovery in progress", followed by WAL redo.
+4. The API was started again, and the **pre-restart session cookies** were reused.
+   - The COMPLETED entry, with all 4 timestamps, matched the pre-restart response exactly.
+   - The WAITING entry matched exactly, and the operator list was unchanged.
+   - `lastQueueNumber` (2) and the session-row count were unchanged.
+   - The next join received number 3, continuing from the persisted counter.
+- History: the first REL-001 runs (before the review) killed the shared `qms-postgres` container, which also hosts the development database `qms_db`. Nothing in `qms_db` was modified, but that behaviour has been removed. The current script cannot kill any container it did not create in the same run.
+
+### 13.10 Keyboard-only walkthrough and other browsers
+
+`e2e/tests/keyboard.spec.ts` walks both workflows using only Tab, Shift+Tab, Enter, the arrow keys and Home/End. Every control it reaches must match `:focus-visible` and show a ring (box-shadow or outline).
+- **Customer:** keyboard sign-in; tabs with ArrowRight (wraps around), End and Home; Join; View details; Refresh; Back; Logout.
+- **Operator:** keyboard sign-in; Manage queue; Call Next; Start Service; Complete Service; Back. Disabled buttons are correctly skipped in the tab order.
+- **Focus after actions (recorded, not asserted):** after Join, focus falls back to `<body>`, as already noted in §11. "View details" is still reachable by keyboard. The landing point after each operator action is listed in the run's HTML/JSON report annotations.
+
+The whole E2E suite now also runs in **Firefox** and **WebKit** (`npm run test:e2e:all-browsers`).
+- Every test passes in all three browsers, with 2 exceptions: the two keyboard walkthroughs are **skipped in WebKit** with the reason given in the test.
+- WebKit keeps links (`<a>`) out of the Tab order by default, like Safari with "Press Tab to highlight each item" off. Both Tab and Alt+Tab were tried in Playwright's WebKit on Windows, and neither reached a link. This is browser behaviour, not an application defect, and those two tests are reported as skipped, not passed.
+- Evidence screenshots are taken from Chromium only.
 
