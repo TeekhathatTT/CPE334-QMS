@@ -10,6 +10,7 @@ import { authRouter } from './routes/auth';
 import { queuesRouter } from './routes/queues';
 import { meRouter } from './routes/me';
 import { operatorRouter } from './routes/operator';
+import { healthRouter } from './routes/health';
 import { AppError } from './errors/AppError';
 import { mountClient } from './staticClient';
 
@@ -39,6 +40,10 @@ export function createApp(options: AppOptions = {}): Express {
   app.use(cookieParser());
   app.use(requestIdMiddleware);
   app.use(requestLogger);
+
+  // Public health/version check (Issue #17). Mounted before session loading so it never
+  // touches the session table and still answers 503 (not 500) when the database is down.
+  app.use('/api/health', healthRouter);
 
   // Resolves the session cookie into req.user; never rejects by itself (requireAuth does).
   app.use(loadSession);
