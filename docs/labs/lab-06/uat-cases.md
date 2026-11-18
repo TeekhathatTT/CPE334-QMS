@@ -1,6 +1,6 @@
 # QMS Sprint 1: User Acceptance Test (UAT) Cases
 
-Lab 6 Part A, Issue #25. These cases are for an independent UAT team testing the deployed QMS release from a web browser. Read [handoff.md](./handoff.md) first: it gives the environment, the accounts and how to report a defect.
+Lab 6 Part A, Issue #25. These cases are for an independent UAT team testing QMS from a web browser. There is no cloud deployment: the owner runs the app on their own machine, and testers use it there or through a temporary tunnel (handoff.md §2). Read [handoff.md](./handoff.md) first: it gives the environment, the accounts and how to report a defect.
 
 ## How to read these cases
 
@@ -10,7 +10,7 @@ Lab 6 Part A, Issue #25. These cases are for an independent UAT team testing the
 - **Two browsers at once.** Several cases need a customer and an operator signed in at the same time. Use two separate browser profiles, or one normal window and one private window, so the two sessions do not share cookies.
 - **Queue numbers.** Queue numbers never reset in Sprint 1 (BR-04), and other testers may have used the queue before you. Do not expect a particular number such as `1`. Write down the number you get and check it in later steps.
 - **Status refresh.** The customer pages re-check the status automatically every 10 seconds while the page is visible. Wait up to 15 seconds, or press **Refresh**, before you record a status as wrong (see handoff.md, Known limitations).
-- **Base URL.** `<BASE_URL>` below means the service URL in handoff.md §2 (`TO FILL (Cloud Run URL from Lab 5)`).
+- **Base URL.** `<BASE_URL>` below means `http://localhost:5173` when testing on the owner's machine (handoff.md §2 A), or the temporary tunnel URL the owner sends privately for the session (handoff.md §2 B).
 
 ## UAT-01: Customer joins a queue and follows it to completion
 
@@ -219,33 +219,74 @@ Lab 6 Part A, Issue #25. These cases are for an independent UAT team testing the
 
 | Field | Value |
 |---|---|
-| Covers | AC-08, AC-15 · FR-05, FR-11, FR-13 · BR-04, BR-05 · NFR-05 · related tests QUEUE-005, NUMBER-001, REL-001 |
-| Purpose | Confirm that queue data is stored by the server, completed tickets stay in the customer's history, and a customer may join again after completion. |
-| Role(s) | CUSTOMER (`customer1`), OPERATOR (`operator1`) |
-| Interface | UI only |
+| Covers | AC-08, AC-12, AC-14, AC-15 · FR-05, FR-09, FR-10, FR-11, FR-13 · BR-01, BR-04, BR-05, BR-09 · NFR-05 · related tests QUEUE-005, NUMBER-001, REL-001 |
+| Purpose | Confirm that queue data is stored by the server, completed tickets stay in the customer's history, a customer may join again after completion, and data and numbering survive an app or database restart. |
+| Role(s) | CUSTOMER (`customer1`), OPERATOR (`operator1`); the **owner** for the restart steps |
+| Interface | UI (tester); terminal on the owner's machine (owner, Parts 2 and 3) |
 
 **Preconditions**
 1. UAT-01 has just been run (or repeat it): `customer1` has a Completed ticket **N** in "General Inquiry Desk" and no active ticket there.
+2. Parts 2 and 3: the owner started the app as in handoff.md §2 ("Owner: starting the app") and can reach both terminals and the repository folder. No other tester is using the queue.
 
 **Synthetic input:** seeded accounts `customer1`, `operator1`.
 
-**Steps**
+**Part 1: refresh, new sign-in, rejoin (tester)**
+
+Steps
 1. As `customer1`, open **My Active Tickets** and press the browser's reload button.
 2. Select **Logout**, close the browser window, open a new one, go to `<BASE_URL>/login` and sign in as `customer1` again.
 3. Open **My Active Tickets**, then **View details** on ticket **N**.
 4. As `operator1`, reload the "General Inquiry Desk" queue page.
-5. As `customer1`, go back to **Available Queues** and select **Join Queue** on "General Inquiry Desk". Record the number as **M**.
-6. **Variant: restart or redeploy.** `TO FILL (needs deployed environment)`. After the team restarts or redeploys the Cloud Run service (handoff.md §3), repeat steps 2–4.
+5. As `customer1`, go back to **Available Queues** and select **Join Queue** on "General Inquiry Desk". Record the number as **M**. Leave ticket **M** Waiting for Part 2.
 
-**Expected results**
+Expected results
 1. Step 1: after the reload, ticket **N** is still listed for "General Inquiry Desk" with status Completed and its "Joined:", "Called:", "Service started:" and "Completed:" times.
 2. Step 2: after **Logout**, the browser shows the "Sign in" screen. After signing in again, it shows `/customer`.
 3. Step 3: ticket **N** is still in the list with status Completed. The detail page shows "Service completed." and "This entry is complete and no longer updates.", with the same times as in step 1.
 4. Step 4: ticket **N** is listed under "Completed (…)" with the same queue number.
 5. Step 5: the join succeeds with "You joined General Inquiry Desk." and status Waiting. **M** is greater than **N** (numbers are not reused). **My Active Tickets** now shows both the new Waiting ticket **M** and the Completed ticket **N**.
-6. Step 6 (when filled): the same data as steps 1–4 is still shown after the restart or redeploy.
 
-**Clean-up:** ask `operator1` to call, start and complete ticket **M**.
+**Part 2: API server restart (owner does, tester checks)**
+
+Steps
+1. Tester: on **My Active Tickets**, write down each ticket's queue number, status and times (at least **M** Waiting and **N** Completed).
+2. Owner: in the terminal running `npm run dev:server`, press `Ctrl+C` and wait until the command has stopped.
+3. Owner: start it again with the same command, `npm run dev:server`, and wait for the line `[QMS Server] Running on http://localhost:3000`.
+4. Tester: as `customer1`, press the browser's reload button on **My Active Tickets**.
+5. Tester: as `operator1`, reload the "General Inquiry Desk" queue page.
+6. Tester: as `operator1`, select **Call Next**, then **Start Service** and **Complete Service** on ticket **M**.
+7. Tester: as `customer1`, join "General Inquiry Desk" again. Record the number as **P**.
+
+Expected results
+1. Step 2: the owner's terminal returns to the prompt. While the API is stopped, the tester's open page may show "Could not refresh. Retrying..."; that is expected.
+2. Step 3: the owner's terminal shows `[QMS Server] Running on http://localhost:3000`.
+3. Step 4: the tester is still signed in (sessions are stored in the database), no "Sign in" screen appears, and the list matches step 1 exactly: **M** Waiting, **N** Completed, same numbers and times.
+4. Step 5: "Waiting Queue — FIFO (1)" lists **M** at position #1; ticket **N** is under "Completed (…)".
+5. Step 6: the banners show "Called queue number M.", "Started service for queue number M." and "Completed service for queue number M."
+6. Step 7: the join succeeds with status Waiting and **P** is greater than **M**; if no one else joined in between, **P** is **M** + 1. Numbering continued after the restart instead of starting again.
+
+**Part 3 (optional): database container restart (owner does, tester checks)**
+
+> **Warning for the owner:** never run `docker compose down -v`, or any other command that removes the `qms_postgres_data` volume, during UAT. It deletes every queue entry, account and session (handoff.md §3, Reset).
+
+The data survives this restart because `docker-compose.yml` stores PostgreSQL's data directory (`/var/lib/postgresql/data`) in the named volume `qms_postgres_data`, and restarting the container keeps the volume.
+
+Steps
+1. Tester: on **My Active Tickets**, write down ticket **P**'s number and status (Waiting) and the numbers of the Completed tickets.
+2. Owner: press `Ctrl+C` in the `npm run dev:server` terminal.
+3. Owner: run `docker compose restart postgres` from the repository root, then run `docker compose ps` until the `qms-postgres` container shows as healthy.
+4. Owner: start the API again with `npm run dev:server` and wait for `[QMS Server] Running on http://localhost:3000`.
+5. Tester: as `customer1`, reload **My Active Tickets**.
+6. Tester: as `operator1`, reload the queue page, then complete ticket **P** (**Call Next**, **Start Service**, **Complete Service**).
+7. Tester: as `customer1`, join "General Inquiry Desk" again. Record the number as **Q**.
+
+Expected results
+1. Step 3: `docker compose ps` shows `qms-postgres` running and healthy.
+2. Step 5: the tester is still signed in and the list matches step 1: **P** Waiting, the earlier tickets Completed, same numbers and times.
+3. Step 6: "Called queue number P." is shown first (FIFO is unchanged), then the Start and Complete banners for **P**.
+4. Step 7: **Q** is greater than **P**; if no one else joined in between, **Q** is **P** + 1.
+
+**Clean-up:** ask `operator1` to call, start and complete the last ticket you created (**M** if you stopped after Part 1, **P** after Part 2, **Q** after Part 3).
 
 **Pass / Fail / Notes:** ☐ Pass ☐ Fail · Notes: ____________________ · Tester / date / browser: ____________
 
@@ -289,8 +330,10 @@ Lab 6 Part A, Issue #25. These cases are for an independent UAT team testing the
 | UAT-04 | AC-04, AC-11, AC-12, AC-13 | FR-08, FR-09 | BR-01, BR-02, BR-10 |
 | UAT-05 | AC-03, AC-05, AC-10 | FR-03, FR-07 | BR-07 |
 | UAT-06 | AC-04, AC-05 | FR-03, FR-08 | BR-07 |
-| UAT-07 | AC-08, AC-15 | FR-05, FR-11, FR-13 | BR-04, BR-05 |
+| UAT-07 | AC-08, AC-12, AC-14, AC-15 | FR-05, FR-09, FR-10, FR-11, FR-13 | BR-01, BR-04, BR-05, BR-09 |
 | UAT-08 | AC-01, AC-02, AC-03 | FR-01, FR-02 | none |
+
+UAT-07 also covers NFR-05 (data kept after a restart): Part 2 restarts the API server and Part 3 restarts the database container, both on the owner's machine.
 
 ### Sprint 1 items no case covers
 
@@ -299,7 +342,7 @@ Lab 6 Part A, Issue #25. These cases are for an independent UAT team testing the
 - **AC-12 and AC-13 are covered for one operator only.** Two operators calling the same queue at the same moment (CONCURRENCY-003) is not covered: only one seeded operator is assigned to the open queue.
 - **BR-03, BR-06 and BR-12** are not covered. BR-03 and BR-12 are database-level rules (transactions, row locks, constraints). BR-06 (joining several queues at once) cannot be shown, because the seed has only one open queue.
 - **Session expiry** (the "Session expired. Please sign in again." banner, AUTH-005) is not covered: it needs a session to expire (8 hours) or to be revoked in the database.
-- **Non-functional requirements** NFR-01, NFR-02 (CSRF), NFR-03, NFR-04 and NFR-06 are not covered by these cases. NFR-05 is covered only for the restart variant of UAT-07, which is `TO FILL`.
+- **Non-functional requirements** NFR-01, NFR-02 (CSRF), NFR-03, NFR-04 and NFR-06 are not covered by these cases. NFR-05 is covered by UAT-07 Parts 2 and 3, but only for a clean stop and start by the owner; a crash (as in REL-001, which kills the processes) is not repeated in UAT.
 
 ## Open questions
 
