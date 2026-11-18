@@ -104,6 +104,8 @@ Checks, verified against this repository:
 
 ### Starting data (from `server/prisma/seed.ts`)
 
+The owner runs `npm run seed` once before the first session (§2). It creates four accounts (`customer1`, `customer2`, `operator1`, `operator2`), two queues and one operator assignment, all in the local development database (`qms_db` in the `qms-postgres` container):
+
 | Queue | Id | Availability | Assigned operator |
 |---|---|---|---|
 | General Inquiry Desk | `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa` | OPEN | `operator1` |
@@ -113,7 +115,7 @@ The seed creates no queue entries. On a fresh database both queues have `lastQue
 
 ### Data the tests create
 
-Each join creates one queue entry (ticket) for the signed-in customer in "General Inquiry Desk". Operator actions change that entry's status (Waiting → Called → In service → Completed). Entries cannot be deleted or cancelled from the application, and completed entries stay in the history by design (FR-13).
+Each join creates one queue entry (ticket) for the signed-in customer in "General Inquiry Desk". Operator actions change that entry's status (Waiting → Called → In service → Completed). Each sign-in also creates a session row. Entries cannot be deleted or cancelled from the application, and completed entries stay in the history by design (FR-13).
 
 ### Avoiding interference
 
@@ -123,11 +125,27 @@ Each join creates one queue entry (ticket) for the signed-in customer in "Genera
 - After a case, finish every entry you created (Call Next, Start Service, Complete Service as `operator1`). The cases give the clean-up step.
 - Do not expect a particular queue number. Numbers never reset in Sprint 1 (BR-04), so they keep rising across testers and runs.
 
-### Reset
+### Reset (owner only)
 
-The repository has **no** reset method for application data. `npm run seed` only creates or updates the accounts, the two queues and the assignment; it does not delete queue entries and does not reset the queue-number counter (README, seed step). The only code that deletes all rows is the automated test setup, which runs against the separate test database (`TEST_DATABASE_URL`) and refuses to run when that is missing or equals `DATABASE_URL` (README); it is not a reset tool for the deployed service.
+The repository has **no** command that resets only the application data. What exists:
 
-If the shared data gets into a state the testers cannot fix with the operator screens, contact the QMS team (`TO FILL`: contact person and channel). Resetting the deployed database is done by the team, not by the UAT testers.
+| Command | What it does | What it does not do |
+|---|---|---|
+| `npm run seed` | Safe to re-run (it uses upserts). Restores the four accounts (email, password, role, active status), the two queue names and their OPEN/CLOSED state, and `operator1`'s assignment. | Does not delete queue entries or sessions, and does not reset `lastQueueNumber` (the README and the seed comment say this is deliberate). |
+| `npm run migrate` | Applies any pending migrations (`prisma migrate deploy`). | Deletes nothing. |
+
+For most problems, the safest option is to finish the stuck entries with `operator1` (Call Next, Start Service, Complete Service) and re-run `npm run seed`. The data then stays, which UAT-07 relies on.
+
+**Full reset to an empty database (deletes data).** Only if the owner really needs a clean start, and never during a test session:
+
+1. Stop the API and the client (`Ctrl+C` in both terminals).
+2. `docker compose down -v`. This **deletes the `qms_postgres_data` volume**, which holds **every database in the container**: all queue entries, sessions, accounts and queues in `qms_db`, and the automated test database `qms_test_db`.
+3. `docker compose up -d`. On an empty volume the container recreates `qms_db`, and `docker/postgres-init/01-create-test-db.sql` recreates `qms_test_db`.
+4. `npm run migrate`, then `npm run seed`. Queue numbers start again from 1. If the owner also runs the automated tests, `npm run migrate:test` as well.
+
+The automated test setup also deletes rows, but only in the separate test database (`TEST_DATABASE_URL`), and it refuses to run when that is missing or equals `DATABASE_URL` (README). It is not a reset tool for UAT.
+
+Testers never reset data. If the shared data gets into a state the testers cannot fix with the operator screens, they contact the owner (`TO FILL`: contact person and channel).
 
 ## 4. Account mapping
 
