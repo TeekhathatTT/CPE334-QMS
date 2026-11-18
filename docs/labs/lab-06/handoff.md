@@ -197,3 +197,22 @@ Other limits that affect UAT:
 
 8. A closed queue cannot be joined from the UI because it is never listed, and there is no screen to open or close a queue (see UAT-03).
 9. Session expiry (8 hours) cannot be reached in a normal UAT session.
+10. The app runs in development mode on the owner's machine (Vite dev server and `tsx watch`), not as a production build. It is available only while the owner's machine, the app and (for option B) the tunnel are running.
+
+## 7. Still to fill and open questions
+
+None of these depend on a cloud deployment.
+
+| Item | Where | Why it is still open |
+|---|---|---|
+| Branch the owner runs (`main` or `lab6-staging`) | §1 | The owner decides; today both are the same commit. |
+| Tunnel URL | §2 B | Created by the owner at test time, sent privately, and different every session. |
+| Browsers the UAT team should use | §2 | Not stated in the specs; the team decides. |
+| UAT time slots | §3 | Agreed with the UAT team; only one tester at a time can run the queue cases. |
+| Owner contact person and channel | §3 | Not yet agreed with the UAT team. |
+| Defect-report channel | §5 | Not yet agreed with the UAT team. |
+
+Open questions (not verified in this repository):
+
+1. Whether the chosen tunnel tool can rewrite the forwarded host name to `localhost`, which would remove the need for the temporary `allowedHosts` change in §2 B. That is tunnel-tool behavior, outside this repository.
+2. Whether Vite's live-reload connection works through the tunnel. It is only a development aid; the UAT cases do not rely on it.
