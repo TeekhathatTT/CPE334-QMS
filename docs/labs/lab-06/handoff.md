@@ -1,6 +1,6 @@
 # QMS Sprint 1: UAT Handoff Package
 
-Lab 6 Part A, Issue #25. This package gives an independent UAT team what it needs to run the cases in [uat-cases.md](./uat-cases.md) against the deployed QMS release. Items marked `TO FILL` depend on the Lab 5 deployment and had not been created or checked when this file was written.
+Lab 6 Part A, Issue #25. This package gives an independent UAT team what it needs to run the cases in [uat-cases.md](./uat-cases.md) on a copy of QMS that the owner runs on their own machine. No cloud deployment exists for this project, so this handoff covers local testing only. Items marked `TO FILL` are decided or created at test time; §7 lists them.
 
 ## 1. Tested scope and version
 
@@ -21,32 +21,84 @@ The Sprint 1 features as listed in [`docs/traceability.md`](../../traceability.m
 
 Customer self-registration, password reset, cancelling or leaving a queue, no-show handling, multiple counters, priority queues, analytics and appointment booking (features F-07 to F-12 are planned for Sprints 2 and 3). There is also no screen for opening or closing a queue or for assigning operators; those are set by the seed only.
 
-### Version
+### Tested version
 
 | Item | Value | How it was checked |
 |---|---|---|
-| Release tag | `TO FILL (from Lab 5)`: no tag exists in the repository yet. | `git tag` returned nothing (checked 2026-11-17). |
-| Current `main` commit | `7edfd9921f72e746004873f84c7e6ed2f48221ef` (`7edfd99`, "Merge pull request #15 from TeekhathatTT/sprint1-staging") | `git log -1 origin/main` after `git fetch` (2026-11-17). |
-| Commit actually deployed | `TO FILL (from Lab 5)`: read it from `GET /api/health` once the service runs (see §2). | Not checked: no deployed service yet. |
-| Cloud Run revision | `TO FILL (from Lab 5)` | Not checked. |
+| Repository | `TeekhathatTT/CPE334-QMS` on GitHub | `git remote -v` |
+| Branch the owner runs | `TO FILL` (owner decides: `main` or `lab6-staging`). On 2026-11-18 both point to the same commit, so the application code is identical. | `git rev-parse origin/main origin/lab6-staging` after `git fetch` (2026-11-18) |
+| Commit SHA | `7edfd9921f72e746004873f84c7e6ed2f48221ef` (`7edfd99`, "Merge pull request #15 from TeekhathatTT/sprint1-staging") | Same command, read on 2026-11-18 |
+| Release tag | No release tag. | `git tag` returned nothing (2026-11-18) |
 
-The deployed build may be newer than `main` above: the Lab 5 work (Issue #17) adds the health endpoint and production serving and was not yet merged to `main` when this was written.
+The owner re-checks this SHA before each test session; if the branch moved, update it.
 
-## 2. Environment
+**Confirming the version on the running machine.** The owner runs `git rev-parse HEAD` in the repository folder used to start the app and checks that `git status` shows no local changes (other than the temporary tunnel host setting in §2 B, if used). The result must equal the SHA above. This branch has no health or version endpoint, so the version cannot be read from the browser; the owner tells the testers the SHA at the start of the session.
+
+## 2. Environment (local testing)
+
+There is no cloud deployment. The owner runs QMS on their own machine and the testers use it either on that machine (A) or remotely through a temporary tunnel (B).
+
+### How the app is served on this branch
+
+Checked in `package.json`, `client/package.json`, `client/vite.config.ts`, `server/src/server.ts`, `server/src/app.ts` and the README:
+
+- The browser always opens the **Vite dev server on port 5173** (`npm run dev:client`). It serves the React client and proxies every `/api` request to the API server at `http://localhost:3000` (`client/vite.config.ts`).
+- The **API server on port 3000** (`npm run dev:server`) serves only `/api/...`. On this branch it does not serve the client pages, so opening port 3000 in a browser does not show the app.
+- The database is the PostgreSQL 16 container `qms-postgres` from `docker-compose.yml` (port 5432).
 
 | Item | Value |
 |---|---|
-| Public URL | `TO FILL (Cloud Run URL from Lab 5)` |
-| Sign-in page | `<public URL>/login` |
 | Supported browsers | Not stated in the SRS or UI spec. The team's own Sprint 1 browser tests ran in Playwright's Chromium, Firefox and WebKit builds on Windows (tests.md §13); real Safari on macOS/iOS and mobile browsers were not tested (tests.md §13.7). `TO FILL`: the browsers the team asks the UAT team to use. |
 | Screen sizes | The UI is specified to work without horizontal scrolling at 360 px and 1280 px widths (NFR-06, ui-spec §8.2). |
 
-**Checking which commit is running.** The endpoint `GET /api/health` exists on the Lab 5 branch `feature/lab5/2-cloud-ready-config` (Issue #17, `server/src/routes/health.ts`). It is **not** on `main` or on the branch this file was written on. If the deployed build includes it, open `<public URL>/api/health` in the browser. It needs no sign-in and returns:
+### Owner: starting the app (both options)
 
-- `{"status":"ok","database":"ok","version":"<commit SHA>"}` when the service and database are working;
-- HTTP 503 with `{"status":"degraded","database":"unavailable","version":"<commit SHA>"}` when the database cannot be reached.
+Run from the repository root, following the README "Clean Checkout & Local Setup Guide". First-time setup (environment files, `SESSION_SECRET`, `npm install`, `npm run prisma:generate`) is described there and is not repeated here.
 
-`version` is the deployed commit SHA, or `unknown` if the deploy did not set it. Record it in every defect report. If the endpoint returns a JSON `404 RESOURCE_NOT_FOUND` error, the deployed build does not include it; ask the team which commit is deployed.
+1. `docker compose up -d` (starts PostgreSQL; wait until it accepts connections).
+2. `npm run migrate` (applies migrations to the development database).
+3. `npm run seed` (creates or updates the seeded accounts, queues and assignment; see §3).
+4. Terminal 1: `npm run dev:server` (API on `http://localhost:3000`).
+5. Terminal 2: `npm run dev:client` (browser app on `http://localhost:5173`).
+
+`server/.env` must keep `NODE_ENV=development` (as in `.env.example`) for local testing; see the cookie note in option B.
+
+### A. Testing together on one machine (same room or screen share)
+
+| Item | Value |
+|---|---|
+| URL the tester opens | `http://localhost:5173` (sign-in page: `http://localhost:5173/login`) |
+| Where | In a browser on the owner's machine |
+
+Nothing else is needed. Wherever a UAT case says `<BASE_URL>`, use `http://localhost:5173`.
+
+### B. Testing remotely through a temporary tunnel (ngrok or Cloudflare Tunnel)
+
+| Item | Value |
+|---|---|
+| URL the tester opens | `TO FILL at test time (temporary tunnel URL, sent privately, changes every session)` |
+| Port to tunnel | **5173 only** (the Vite dev server) |
+
+Steps for the owner:
+
+1. Start the app as above and check that option A works on the owner's machine.
+2. Start a tunnel from the tunnel tool to `localhost:5173`. Use the tool's own documentation; its commands and account token are not part of this repository.
+3. Allow the tunnel host name in Vite (see the first check below), then open the tunnel URL in the owner's own browser and sign in once to confirm it works.
+4. Send the HTTPS tunnel URL to the UAT team privately, together with the passwords. Wherever a UAT case says `<BASE_URL>`, the tester uses this URL.
+
+Checks, verified against this repository:
+
+- **Vite rejects unknown host names.** `client/vite.config.ts` sets no `server.allowedHosts`, and the installed Vite (5.4.21) answers any request whose host is not `localhost`, `*.localhost` or an IP address with HTTP 403 and the text "Blocked request. This host (…) is not allowed." So a tunnel that forwards its own host name is blocked. Before the session, the owner adds the tunnel host name locally under `server` in `client/vite.config.ts`, for example `allowedHosts: ['<tunnel host name>']`, and restarts `npm run dev:client`. **Do not commit this change**; undo it after the session (`git restore client/vite.config.ts`). The host name is not a secret, but it changes every session and does not belong in the repository.
+- **One origin only.** The client calls the API with relative `/api/...` paths and the server allows no cross-origin access unless `CORS_ORIGIN` is set (`server/src/app.ts`; `CORS_ORIGIN` is empty in `.env.example`). The session cookie `qms_session` and the CSRF cookie `qms_csrf` are set with no domain, `SameSite=Lax`, for the host the browser used. Tunnelling port 5173 keeps the pages and `/api` on the same tunnel origin, so sign-in and every action work. Do **not** tunnel port 3000: it has no pages on this branch, and a second origin for the API would break the cookies and the CSRF token.
+- **Cookie `Secure` flag.** `server/src/auth/session.ts` marks both cookies `Secure` only when `NODE_ENV=production`. With `NODE_ENV=development` they are not `Secure`, so the browser stores and sends them both on `http://localhost:5173` (A) and on the HTTPS tunnel URL (B). Do not switch to `NODE_ENV=production` for UAT; on this branch that only changes the cookie flag and would break option A, which uses plain HTTP.
+
+### Tunnel safety
+
+- Anyone who has the tunnel URL can open the sign-in page. Share it only with the UAT team, privately, never in GitHub Issues, Pull Requests or commits.
+- Use only the seeded demo accounts and the local development database. Never point the app at a database with real data while a tunnel is open.
+- Tunnel only port 5173. Do not tunnel the API port 3000 or the database port 5432.
+- Close the tunnel and stop the app (`Ctrl+C` in both terminals) when the session ends. A new session gets a new URL.
+- Never paste a tunnel account token or tunnel configuration file into this repository.
 
 ## 3. Data setup and cleanup
 
@@ -97,7 +149,7 @@ For each failed step, record:
 | Case and step | For example `UAT-04, step 4` |
 | Account and role | The label, for example `operator1` (OPERATOR). Never the password. |
 | Time | Date and time with time zone |
-| Environment | Browser name and version, screen width, and the `version` value from `/api/health` (§2) |
+| Environment | Browser name and version, screen width, option A (owner's machine) or B (tunnel), and the commit SHA the owner gave for the session (§1) |
 | Steps | What you did, in order, from the case |
 | Expected | The expected result quoted from the case |
 | Actual | What you saw, with the exact on-screen text |
@@ -120,7 +172,7 @@ From tests.md §13.7 (not verified by the team):
 
 4. Real Safari on macOS/iOS and mobile browsers were not tested, and no physical touch device was used. In WebKit, links are not in the Tab order by default, so the team's keyboard-only walkthrough was skipped there (tests.md §13.10).
 5. No screen-reader listening test (NVDA, JAWS, VoiceOver, TalkBack) was done; status announcements were checked only in the page markup.
-6. Performance was measured only as one sequential run on one local machine (PERF-001), not under concurrent load and not on the deployed service.
+6. Performance was measured only as one sequential run on one local machine (PERF-001), not under concurrent load. A tunnel (§2 B) adds network delay that PERF-001 did not measure.
 7. All Sprint 1 results come from one local Windows machine. Nothing was run in CI or against a deployed environment.
 
 Other limits that affect UAT:
