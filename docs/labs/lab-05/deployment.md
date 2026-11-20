@@ -216,6 +216,6 @@ The job injects non-secret test configuration matching `.env.example` and `serve
 | Check | Target | Expected Result | Status |
 |---|---|---|---|
 | Local YAML & script validation | `.github/workflows/ci-docker.yml` | Valid GitHub Actions YAML; all `npm run` scripts and env variables match `package.json` and `server/src/config.ts` | **PASS** (verified locally 2026-11-20) |
-| GitHub Actions PR run (**Check C-01**) | Pull Request to `lab5-staging` / `main` | All 11 steps in `Build, Migrate, Seed, Test & Docker Image` complete with green status (`0` exit code) | `TO FILL (record PR run URL / run ID after opening PR)` |
+| GitHub Actions PR run (**Check C-01**) | Pull Request `#30` to `lab5-staging` | All 11 steps in `Build, Migrate, Seed, Test & Docker Image` complete with green status (`0` exit code) | **PASS** (Run `#44741265187` — [View Run](https://github.com/TeekhathatTT/CPE334-QMS/actions/runs/44741265187/job/136305214771?pr=30)) |
 
 
