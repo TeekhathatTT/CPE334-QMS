@@ -79,6 +79,8 @@ Production mode needs `DATABASE_URL` and a real `SESSION_SECRET` in the environm
 | GitHub Actions CI and deploy workflows | TO FILL (later Lab 5 step) |
 | Service URL | TO FILL (later Lab 5 step) |
 
+> **Note:** `docker-compose.yml` sets `name: cpe334-qms`, so Docker Compose always creates the network `cpe334-qms_default` regardless of the local clone folder name. You can verify the active network name with `docker network ls`.
+
 ## 6. Checking which commit is running
 
 Call the health endpoint on the running instance and compare `version` with the expected commit:
@@ -144,7 +146,7 @@ The root [`Dockerfile`](../../../Dockerfile) uses three `node:20-bookworm-slim` 
      -e COMMIT_SHA=$(git rev-parse --short HEAD) \
      cpe334-qms:local
    ```
-   *(If `localhost:3000` on the host is already in use by a local dev server, map `-p 3100:3000` and probe `http://localhost:3100`.)*
+   *(Because `docker-compose.yml` defines `name: cpe334-qms`, the Compose network is always named `cpe334-qms_default`; verify with `docker network ls`. If `localhost:3000` on the host is already in use by a local dev server, map `-p 3100:3000` and probe `http://localhost:3100`.)*
 
 ### 7.4 Check C-03 Local Verification Log
 
