@@ -33,7 +33,7 @@ Status: **updated for Lab 5 step 4 — GitHub Actions CI & Docker workflow added
 | `TEST_DATABASE_URL` | server tests, `npm run migrate:test`, E2E | Separate database used only when `NODE_ENV=test`; must differ from `DATABASE_URL` (tests delete all rows). | Yes, if it carries real credentials | `server/.env.test` | CI only (`.github/workflows/ci-docker.yml` PostgreSQL 16 service container `qms_test_db`). Not used by the deployed service. |
 | `SESSION_SECRET` | server | HMAC key for session tokens (only the HMAC is stored in the database), at least 32 characters; the `.env.example` placeholder is refused at startup. | **Yes** | `server/.env` (generate your own) | Secret Manager. TO FILL (later Lab 5 step): secret name. |
 | `CORS_ORIGIN` | server | Comma-separated origins allowed cross-origin. Empty means same-origin only. | No | `server/.env` (empty) | Leave empty: UI and API share one origin on Cloud Run. |
-| `COMMIT_SHA` | server (`GET /api/health`) | Commit of the running build, used to check which release is live. | No | Empty (health reports `unknown`) | CI passes `--build-arg COMMIT_SHA=${GITHUB_SHA::7}` when building the image. |
+| `COMMIT_SHA` | server (`GET /api/health`) | Commit of the running build, used to check which release is live. | No | Empty (health reports `unknown`) | CI passes the first 7 characters of the commit as `--build-arg COMMIT_SHA` when building the image: the PR head commit for pull requests (`github.event.pull_request.head.sha`), otherwise `github.sha`. |
 | `APP_VERSION` | server (`GET /api/health`) | Optional fallback version label when `COMMIT_SHA` is unset. | No | Empty | Optional; not planned to be set. |
 
 The client reads no environment variables at build or run time (`import.meta.env` is not used). It calls the API with relative `/api/...` paths, so it always uses the origin it was loaded from.
@@ -76,7 +76,7 @@ Production mode needs `DATABASE_URL` and a real `SESSION_SECRET` in the environm
 | Create the Secret Manager secrets | TO FILL (later Lab 5 step) |
 | Run migrations against Cloud SQL | TO FILL (later Lab 5 step) |
 | Deploy to Cloud Run | TO FILL (later Lab 5 step) |
-| GitHub Actions CI workflow | `.github/workflows/ci-docker.yml` (`pull_request` to `main` / `lab5-staging`, `push` to `lab5-staging`, `workflow_dispatch`); deploy workflow: TO FILL (later Lab 5 step) |
+| GitHub Actions CI workflow | `.github/workflows/ci-docker.yml` (`pull_request` to `main`, `lab5-staging`, `*-staging` or `staging/**`; `push` to `lab5-staging`; `workflow_dispatch`; see section 8.1); deploy workflow: TO FILL (later Lab 5 step) |
 | Service URL | TO FILL (later Lab 5 step) |
 
 > **Note:** `docker-compose.yml` sets `name: cpe334-qms`, so Docker Compose always creates the network `cpe334-qms_default` regardless of the local clone folder name. You can verify the active network name with `docker network ls`.
@@ -209,7 +209,7 @@ The job injects non-secret test configuration matching `.env.example` and `serve
 8. **Run server integration test suites** (`NODE_ENV=test npm test` — all Vitest suites against real PostgreSQL 16 in `qms_test_db`)
 9. **Run client test suites** (`npm run test:client` — Vitest + jsdom + React Testing Library)
 10. **Run production build checks** (`npm run build` — compiles `server/dist` and `client/dist`)
-11. **Test Docker image build** (`docker build --build-arg COMMIT_SHA=${GITHUB_SHA::7} -t cpe334-qms:ci .`)
+11. **Test Docker image build** (`docker build --build-arg COMMIT_SHA=${SHA::7} -t cpe334-qms:ci .`, where `SHA` is `github.event.pull_request.head.sha` on pull requests and `github.sha` otherwise; on `pull_request` events `GITHUB_SHA` is the temporary merge commit, not a commit on the branch)
 
 ### 8.4 Check C-01 CI Verification Status
 
