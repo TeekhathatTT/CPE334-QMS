@@ -35,6 +35,7 @@ Status: **updated for Lab 5 step 4 — GitHub Actions CI & Docker workflow added
 | `CORS_ORIGIN` | server | Comma-separated origins allowed cross-origin. Empty means same-origin only. | No | `server/.env` (empty) | Leave empty: UI and API share one origin on Cloud Run. |
 | `COMMIT_SHA` | server (`GET /api/health`) | Commit of the running build, used to check which release is live. | No | Empty (health reports `unknown`) | CI passes `--build-arg COMMIT_SHA=${GITHUB_SHA::7}` when building the image. |
 | `APP_VERSION` | server (`GET /api/health`) | Optional fallback version label when `COMMIT_SHA` is unset. | No | Empty | Optional; not planned to be set. |
+| `SEED_PASSWORD` | seed only (`npm run seed`) | Password for every seeded demo account, at least 12 characters. Without it the seed uses the public dev password only when `NODE_ENV` is `development` or `test`, and refuses to run otherwise. | **Yes** (outside local dev) | Not needed locally (dev password) | Set in the operator's shell when seeding Cloud SQL; shared with the team privately. Not used by the running service. |
 
 The client reads no environment variables at build or run time (`import.meta.env` is not used). It calls the API with relative `/api/...` paths, so it always uses the origin it was loaded from.
 
