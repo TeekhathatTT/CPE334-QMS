@@ -130,6 +130,9 @@ The root [`Dockerfile`](../../../Dockerfile) uses three `node:20-bookworm-slim` 
    npm run migrate
    npm run seed
    ```
+   > **Upgrading from an older checkout:** before `name: cpe334-qms` was added, Compose used the clone folder name as the project name (for example `qms`). If that older stack is still around:
+   > - `docker compose up -d` fails with `container name "/qms-postgres" is already in use`. Remove the old container first with `docker rm -f qms-postgres` (or `docker compose -p <old-folder-name> down`).
+   > - The new project uses a new, empty volume (`cpe334-qms_qms_postgres_data` instead of `<old-folder-name>_qms_postgres_data`), so run `npm run migrate` and `npm run seed` again. The old volume is kept; delete it with `docker volume rm <old-folder-name>_qms_postgres_data` only when you no longer need its data.
 2. **Build the QMS image from the repository root:**
    ```bash
    docker build --build-arg COMMIT_SHA=$(git rev-parse --short HEAD) -t cpe334-qms:local .
