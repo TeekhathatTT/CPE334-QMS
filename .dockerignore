@@ -1,0 +1,62 @@
+# Dependencies
+node_modules/
+**/node_modules/
+server/package-lock.json
+client/package-lock.json
+
+# Environment files & secrets (never bake into image)
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Build outputs & caches
+dist/
+**/dist/
+build/
+**/build/
+*.tsbuildinfo
+
+# Test, E2E & coverage artifacts
+coverage/
+**/coverage/
+.nyc_output/
+e2e/
+server/tests/
+client/src/test/
+**/*.test.*
+**/*.spec.*
+test-results/
+playwright-report/
+blob-report/
+playwright/
+
+# Local database volumes & data files
+.pgdata/
+.*pgdata*/
+test-pgdata/
+*.sqlite
+*.sqlite3
+*.db
+
+# Git, CI, editor & OS metadata
+.git/
+.gitignore
+.github/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Documentation & local compose helpers (not needed to build the image)
+docs/
+docker/
+docker-compose.yml
+README.md
