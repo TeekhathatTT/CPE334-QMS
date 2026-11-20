@@ -1,6 +1,6 @@
 # QMS Deployment Guide (Lab 5)
 
-Status: **initial draft** (Lab 5 step 2, Issue #17). Sections marked `TO FILL (later Lab 5 step)` are completed by the later Lab 5 Issues; nothing in them has been created or run yet.
+Status: **updated for Lab 5 step 3 — Containerization & Check C-03 verified** (builds on Lab 5 step 2, Issue #17). Remaining cloud sections marked `TO FILL (later Lab 5 step)` are completed by later Lab 5 Issues.
 
 ## 1. Reference stack (planned target)
 
@@ -69,8 +69,8 @@ Production mode needs `DATABASE_URL` and a real `SESSION_SECRET` in the environm
 
 | Task | Command |
 |---|---|
-| Build the container image | TO FILL (later Lab 5 step) |
-| Run the container locally | TO FILL (later Lab 5 step) |
+| Build the container image | `docker build --build-arg COMMIT_SHA=$(git rev-parse --short HEAD) -t cpe334-qms:local .` |
+| Run the container locally (with `qms-postgres` from Docker Compose) | `docker run --rm --name cpe334-qms --network cpe334-qms_default -p 3000:3000 -e PORT=3000 -e NODE_ENV=production -e "DATABASE_URL=postgresql://postgres:postgres@qms-postgres:5432/qms_db?schema=public" -e "SESSION_SECRET=<at-least-32-char-random-secret>" -e COMMIT_SHA=$(git rev-parse --short HEAD) cpe334-qms:local` |
 | Push the image to Artifact Registry | TO FILL (later Lab 5 step) |
 | Create the Cloud SQL instance and database | TO FILL (later Lab 5 step) |
 | Create the Secret Manager secrets | TO FILL (later Lab 5 step) |
@@ -78,6 +78,8 @@ Production mode needs `DATABASE_URL` and a real `SESSION_SECRET` in the environm
 | Deploy to Cloud Run | TO FILL (later Lab 5 step) |
 | GitHub Actions CI and deploy workflows | TO FILL (later Lab 5 step) |
 | Service URL | TO FILL (later Lab 5 step) |
+
+> **Note:** `docker-compose.yml` sets `name: cpe334-qms`, so Docker Compose always creates the network `cpe334-qms_default` regardless of the local clone folder name. You can verify the active network name with `docker network ls`.
 
 ## 6. Checking which commit is running
 
@@ -89,3 +91,80 @@ curl -s http://localhost:3000/api/health
 ```
 
 On Cloud Run, use the same path on the service URL (TO FILL (later Lab 5 step)). A `503` with `"database":"unavailable"` means the app is running but cannot reach PostgreSQL; check the server logs for the cause.
+
+## 7. Containerization & Check C-03 Local Verification (Lab 5 Step 3)
+
+### 7.1 `.dockerignore` Exclusions
+
+The root [`.dockerignore`](../../../.dockerignore) keeps the build context small (~399 kB) and prevents secrets or local state from entering any image layer:
+
+- **Dependencies & workspace lock artifacts:** `node_modules/`, `**/node_modules/`, `server/package-lock.json`, `client/package-lock.json`
+- **Secrets & environment files:** `.env`, `.env.*`, `**/.env`, `**/.env.*`
+- **Build & cache outputs:** `dist/`, `**/dist/`, `build/`, `**/build/`, `*.tsbuildinfo`
+- **Test suites, E2E artifacts & coverage:** `e2e/`, `server/tests/`, `client/src/test/`, `**/*.test.*`, `**/*.spec.*`, `coverage/`, `test-results/`, `playwright-report/`
+- **Local database volumes & VCS/editor metadata:** `.pgdata/`, `.*pgdata*/`, `test-pgdata/`, `.git/`, `.github/`, `.vscode/`, `.idea/`, `docs/`, `docker/`, `docker-compose.yml`, `README.md`
+
+### 7.2 Multi-Stage `Dockerfile` Architecture
+
+The root [`Dockerfile`](../../../Dockerfile) uses three `node:20-bookworm-slim` stages for Prisma/OpenSSL and prebuilt `bcrypt` compatibility:
+
+1. **Stage 1 — `builder` (`node:20-bookworm-slim`):**
+   - Installs `openssl` and `ca-certificates`.
+   - Copies `package.json`, `package-lock.json`, `server/package.json`, and `client/package.json`, then runs `npm ci`.
+   - Copies `server/prisma` and generates the typed Prisma Client (`npm run prisma:generate`).
+   - Copies `server` and `client` sources and runs `npm run build` (`tsc` for `server/dist` and `tsc && vite build` for `client/dist`).
+2. **Stage 2 — `prod-deps` (`node:20-bookworm-slim`):**
+   - Runs `npm ci --omit=dev --workspace=server --include-workspace-root=false` so only backend production dependencies remain (`@prisma/client`, `bcrypt`, `cookie-parser`, `cors`, `dotenv`, `express`, `uuid`, `zod`).
+   - Copies the generated Prisma Client engine (`node_modules/.prisma` and `node_modules/@prisma/client`) from `builder`.
+3. **Stage 3 — `runtime` (`node:20-bookworm-slim`):**
+   - Installs only `openssl` and `ca-certificates` for Prisma's query engine at runtime.
+   - Sets `NODE_ENV=production`, `PORT=3000`, and optional `COMMIT_SHA` (via `ARG COMMIT_SHA`).
+   - Copies production `node_modules` (including `server/node_modules`), `server/prisma`, `server/dist`, and `client/dist` preserving the relative layout (`server/dist` -> `../../client/dist`) expected by `server/src/staticClient.ts`.
+   - Drops privileges to the non-root `node` user, exposes port `3000`, and starts the server with `CMD ["node", "server/dist/server.js"]`.
+
+### 7.3 Building and Running the Container Locally
+
+1. **Start PostgreSQL via Docker Compose** (and ensure migrations/seed have been applied to `qms_db`):
+   ```bash
+   docker compose up -d
+   npm run migrate
+   npm run seed
+   ```
+   > **Upgrading from an older checkout:** before `name: cpe334-qms` was added, Compose used the clone folder name as the project name (for example `qms`). If that older stack is still around:
+   > - `docker compose up -d` fails with `container name "/qms-postgres" is already in use`. Remove the old container first with `docker rm -f qms-postgres` (or `docker compose -p <old-folder-name> down`).
+   > - The new project uses a new, empty volume (`cpe334-qms_qms_postgres_data` instead of `<old-folder-name>_qms_postgres_data`), so run `npm run migrate` and `npm run seed` again. The old volume is kept; delete it with `docker volume rm <old-folder-name>_qms_postgres_data` only when you no longer need its data.
+2. **Build the QMS image from the repository root:**
+   ```bash
+   docker build --build-arg COMMIT_SHA=$(git rev-parse --short HEAD) -t cpe334-qms:local .
+   ```
+3. **Run the container connected to `qms-postgres`** (using `.env.example` keys with a real 32+ character `SESSION_SECRET` and the Docker network hostname `qms-postgres:5432`):
+   ```bash
+   docker run -d --name cpe334-qms-verify \
+     --network cpe334-qms_default \
+     -p 3000:3000 \
+     -e PORT=3000 \
+     -e NODE_ENV=production \
+     -e "DATABASE_URL=postgresql://postgres:postgres@qms-postgres:5432/qms_db?schema=public" \
+     -e "SESSION_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")" \
+     -e COMMIT_SHA=$(git rev-parse --short HEAD) \
+     cpe334-qms:local
+   ```
+   *(Because `docker-compose.yml` defines `name: cpe334-qms`, the Compose network is always named `cpe334-qms_default`; verify with `docker network ls`. If `localhost:3000` on the host is already in use by a local dev server, map `-p 3100:3000` and probe `http://localhost:3100`.)*
+
+### 7.4 Check C-03 Local Verification Log
+
+**Execution Date:** 2026-11-20  
+**Image Tag:** `cpe334-qms:local` (`sha256:430529520409...`, 107 MB compressed / 421 MB disk usage, build context 399.25 kB)  
+**Database Container:** `qms-postgres` (`postgres:16-alpine` on network `cpe334-qms_default`)
+
+| Check | Command / Request | Expected | Actual Result | Status |
+|---|---|---|---|---|
+| Image build | `docker build -t cpe334-qms:local .` | Multi-stage build succeeds (`npm ci`, `prisma:generate`, `npm run build`, runtime stage) | Exited `0`; built `server/dist` and `client/dist` (`index.html`, hashed JS/CSS) | **PASS** |
+| Container startup | `docker logs cpe334-qms-verify` | `validateEnv()` passes; server listens on `PORT=3000` | `[QMS Server] Running on http://localhost:3000` | **PASS** |
+| Health & DB readiness | `GET /api/health` | `200 OK` JSON with `status: "ok"`, `database: "ok"`, `version` | `200 OK` `{"status":"ok","database":"ok","version":"a619d49"}` | **PASS** |
+| Root SPA HTML | `GET /` | `200 OK` `text/html` serving `client/dist/index.html` | `200 OK` (`Content-Type: text/html; charset=UTF-8`, `<div id="root"></div>`) | **PASS** |
+| SPA deep-link fallback | `GET /customer` | `200 OK` `text/html` serving `client/dist/index.html` | `200 OK` (`Content-Type: text/html; charset=UTF-8`, `<div id="root"></div>`) | **PASS** |
+| API 404 envelope | `GET /api/unknown` | `404 Not Found` JSON `RESOURCE_NOT_FOUND` (not `index.html`) | `404 Not Found` `{"error":{"code":"RESOURCE_NOT_FOUND","message":"Route GET /api/unknown not found.","requestId":"550609d4-1a5d-47dc-b038-2c53679428fd"}}` | **PASS** |
+| Authenticated DB query (`bcrypt` + Prisma) | `POST /api/auth/login` (`customer1@example.com`) | `200 OK` with user identity and session cookies | `200 OK` `{"data":{"user":{"id":"11111111-1111-4111-8111-111111111111","email":"customer1@example.com","role":"CUSTOMER"}}}` | **PASS** |
+| Cleanup | `docker rm -f cpe334-qms-verify` | Temporary verification container removed | Container `cpe334-qms-verify` stopped and removed | **PASS** |
+
