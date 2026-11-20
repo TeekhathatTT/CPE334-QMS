@@ -1,6 +1,6 @@
 # QMS Deployment Guide (Lab 5)
 
-Status: **updated for Lab 5 step 3 — Containerization & Check C-03 verified** (builds on Lab 5 step 2, Issue #17). Remaining cloud sections marked `TO FILL (later Lab 5 step)` are completed by later Lab 5 Issues.
+Status: **updated for Lab 5 step 4 — GitHub Actions CI & Docker workflow added** (builds on Lab 5 steps 2–3, Issues #17–#19). Remaining cloud deployment sections marked `TO FILL (later Lab 5 step)` are completed by later Lab 5 Issues.
 
 ## 1. Reference stack (planned target)
 
@@ -30,10 +30,10 @@ Status: **updated for Lab 5 step 3 — Containerization & Check C-03 verified** 
 | `PORT` | server | HTTP listen port; default `3000`. | No | `server/.env` | Set by the platform (Cloud Run injects `PORT`). |
 | `NODE_ENV` | server | `development`, `test` or `production`. `production` serves `client/dist` and marks cookies `Secure`. | No | `server/.env` (`development`); Vitest forces `test` | Set on the service (`production`). TO FILL (later Lab 5 step): exact deploy setting. |
 | `DATABASE_URL` | server, Prisma CLI (migrate, seed) | PostgreSQL connection string. Required, no default; startup fails without it. | **Yes** (outside local dev) | `server/.env` (local Docker Compose database) | Secret Manager. TO FILL (later Lab 5 step): secret name and Cloud SQL connection form. |
-| `TEST_DATABASE_URL` | server tests, `npm run migrate:test`, E2E | Separate database used only when `NODE_ENV=test`; must differ from `DATABASE_URL` (tests delete all rows). | Yes, if it carries real credentials | `server/.env.test` | CI only. TO FILL (later Lab 5 step): CI database setup. Not used by the deployed service. |
+| `TEST_DATABASE_URL` | server tests, `npm run migrate:test`, E2E | Separate database used only when `NODE_ENV=test`; must differ from `DATABASE_URL` (tests delete all rows). | Yes, if it carries real credentials | `server/.env.test` | CI only (`.github/workflows/ci-docker.yml` PostgreSQL 16 service container `qms_test_db`). Not used by the deployed service. |
 | `SESSION_SECRET` | server | HMAC key for session tokens (only the HMAC is stored in the database), at least 32 characters; the `.env.example` placeholder is refused at startup. | **Yes** | `server/.env` (generate your own) | Secret Manager. TO FILL (later Lab 5 step): secret name. |
 | `CORS_ORIGIN` | server | Comma-separated origins allowed cross-origin. Empty means same-origin only. | No | `server/.env` (empty) | Leave empty: UI and API share one origin on Cloud Run. |
-| `COMMIT_SHA` | server (`GET /api/health`) | Commit of the running build, used to check which release is live. | No | Empty (health reports `unknown`) | CI passes the Git commit SHA at deploy time. TO FILL (later Lab 5 step): workflow step. |
+| `COMMIT_SHA` | server (`GET /api/health`) | Commit of the running build, used to check which release is live. | No | Empty (health reports `unknown`) | CI passes `--build-arg COMMIT_SHA=${GITHUB_SHA::7}` when building the image. |
 | `APP_VERSION` | server (`GET /api/health`) | Optional fallback version label when `COMMIT_SHA` is unset. | No | Empty | Optional; not planned to be set. |
 
 The client reads no environment variables at build or run time (`import.meta.env` is not used). It calls the API with relative `/api/...` paths, so it always uses the origin it was loaded from.
@@ -76,7 +76,7 @@ Production mode needs `DATABASE_URL` and a real `SESSION_SECRET` in the environm
 | Create the Secret Manager secrets | TO FILL (later Lab 5 step) |
 | Run migrations against Cloud SQL | TO FILL (later Lab 5 step) |
 | Deploy to Cloud Run | TO FILL (later Lab 5 step) |
-| GitHub Actions CI and deploy workflows | TO FILL (later Lab 5 step) |
+| GitHub Actions CI workflow | `.github/workflows/ci-docker.yml` (`pull_request` to `main` / `lab5-staging`, `push` to `lab5-staging`, `workflow_dispatch`); deploy workflow: TO FILL (later Lab 5 step) |
 | Service URL | TO FILL (later Lab 5 step) |
 
 > **Note:** `docker-compose.yml` sets `name: cpe334-qms`, so Docker Compose always creates the network `cpe334-qms_default` regardless of the local clone folder name. You can verify the active network name with `docker network ls`.
@@ -167,4 +167,55 @@ The root [`Dockerfile`](../../../Dockerfile) uses three `node:20-bookworm-slim` 
 | API 404 envelope | `GET /api/unknown` | `404 Not Found` JSON `RESOURCE_NOT_FOUND` (not `index.html`) | `404 Not Found` `{"error":{"code":"RESOURCE_NOT_FOUND","message":"Route GET /api/unknown not found.","requestId":"550609d4-1a5d-47dc-b038-2c53679428fd"}}` | **PASS** |
 | Authenticated DB query (`bcrypt` + Prisma) | `POST /api/auth/login` (`customer1@example.com`) | `200 OK` with user identity and session cookies | `200 OK` `{"data":{"user":{"id":"11111111-1111-4111-8111-111111111111","email":"customer1@example.com","role":"CUSTOMER"}}}` | **PASS** |
 | Cleanup | `docker rm -f cpe334-qms-verify` | Temporary verification container removed | Container `cpe334-qms-verify` stopped and removed | **PASS** |
+
+## 8. GitHub Actions CI & Docker Workflow (Lab 5 Step 4 / R-05 / Check C-01)
+
+### 8.1 Workflow Overview (`.github/workflows/ci-docker.yml`)
+
+The Continuous Integration workflow in [`.github/workflows/ci-docker.yml`](../../../.github/workflows/ci-docker.yml) automatically builds, migrates, seeds, tests, and verifies the Docker image on every pull request and staging push:
+
+- **Triggers (`on`):**
+  - `pull_request` targeting `main`, `lab5-staging`, `*-staging`, and `staging/**`
+  - `push` to `lab5-staging`
+  - `workflow_dispatch` for manual on-demand execution
+- **Permissions & Concurrency:**
+  - Read-only repository token (`contents: read`).
+  - Cancels superseded in-progress runs on the same ref (`${{ github.workflow }}-${{ github.ref }}`).
+- **PostgreSQL 16 Service Container (`services.postgres`):**
+  - Image: `postgres:16-alpine` exposed on `localhost:5432`.
+  - Credentials: `POSTGRES_USER=postgres`, `POSTGRES_PASSWORD=postgres`, `POSTGRES_DB=qms_db`.
+  - Health check: `pg_isready -U postgres -d qms_db` (`--health-interval=5s --health-timeout=5s --health-retries=10`) so workflow steps wait until PostgreSQL is ready before connecting.
+
+### 8.2 CI Environment Variables
+
+The job injects non-secret test configuration matching `.env.example` and `server/.env.test`:
+
+| Variable | CI Value | Notes |
+|---|---|---|
+| `PORT` | `3000` | Default HTTP listen port |
+| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/qms_db?schema=public&connection_limit=25` | Target database for `npm run migrate` and `npm run seed` (`NODE_ENV=development`) |
+| `TEST_DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/qms_test_db?schema=public&connection_limit=25` | Isolated database for `npm run migrate:test` and `npm test` (`NODE_ENV=test`) |
+| `SESSION_SECRET` | `ci_test_only_non_secret_session_key_minimum_32_characters!` | Deterministic 58-character CI-only test secret (satisfies `validateEnv()` >= 32 chars and non-placeholder check) |
+
+### 8.3 Pipeline Steps (in Execution Order)
+
+1. **Check out repository** (`actions/checkout@v4`)
+2. **Set up Node.js 20** (`actions/setup-node@v4`, `node-version: '20'`, `cache: 'npm'`)
+3. **Install workspace dependencies** (`npm ci`)
+4. **Generate Prisma client** (`npm run prisma:generate`)
+5. **Run database migrations** (`npx prisma db execute --url "$DATABASE_URL" --file docker/postgres-init/01-create-test-db.sql` to create `qms_test_db` inside the CI service container, `npm run migrate` for `qms_db`, and `npm run migrate:test` for `qms_test_db`)
+6. **Seed database** (`NODE_ENV=development npm run seed` against `qms_db`)
+7. **Run server TypeScript typecheck** (`npm run typecheck --workspace=server`)
+8. **Run server integration test suites** (`NODE_ENV=test npm test` — all Vitest suites against real PostgreSQL 16 in `qms_test_db`)
+9. **Run client test suites** (`npm run test:client` — Vitest + jsdom + React Testing Library)
+10. **Run production build checks** (`npm run build` — compiles `server/dist` and `client/dist`)
+11. **Test Docker image build** (`docker build --build-arg COMMIT_SHA=${GITHUB_SHA::7} -t cpe334-qms:ci .`)
+
+### 8.4 Check C-01 CI Verification Status
+
+| Check | Target | Expected Result | Status |
+|---|---|---|---|
+| Local YAML & script validation | `.github/workflows/ci-docker.yml` | Valid GitHub Actions YAML; all `npm run` scripts and env variables match `package.json` and `server/src/config.ts` | **PASS** (verified locally 2026-11-20) |
+| GitHub Actions PR run (**Check C-01**) | Pull Request `#30` to `lab5-staging` | All 11 steps in `Build, Migrate, Seed, Test & Docker Image` complete with green status (`0` exit code) | **PASS** (Run `#44741265187` — [View Run](https://github.com/TeekhathatTT/CPE334-QMS/actions/runs/44741265187/job/136305214771?pr=30)) |
+
 
