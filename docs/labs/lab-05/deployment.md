@@ -546,16 +546,15 @@ The production release workflow in [`.github/workflows/deploy.yml`](../../../.gi
 4. **Build and push immutable image tagged with full commit SHA (R-08):**
    - Builds `linux/amd64` with `--build-arg COMMIT_SHA=${FULL_SHA::7}` and tags `asia-southeast1-docker.pkg.dev/cpe334-2026-td-qms/qms/cpe334-qms:${FULL_SHA}`.
    - Pushes the tagged image to Artifact Registry and extracts its immutable `sha256` digest (`RepoDigests[0]`).
-5. **Run database migrations via Cloud Run Job (optional / if configured):**
-   - If the optional repository variable `CLOUD_RUN_MIGRATE_JOB` is set, updates that Cloud Run Job with the newly pushed image digest (`gcloud run jobs update`) and runs it to completion (`gcloud run jobs execute --wait`).
-   - Otherwise (current state per Section 9.4 & 9.6, where the lean production `Dockerfile` omits the `prisma` CLI `devDependency`), logs a clear notice and skips the job step so migrations continue to run via Cloud SQL Auth Proxy prior to schema-dependent releases.
-6. **Deploy new revision to Cloud Run:**
+5. **Deploy new revision to Cloud Run:**
    - Runs `gcloud run deploy "${SERVICE}" --image "${IMAGE_DIGEST}" --update-env-vars "COMMIT_SHA=${SHORT_SHA}" --quiet`.
    - Updating the existing `qms` service preserves its runtime service account (`qms-run`), Cloud SQL connection (`qms-pg`), Secret Manager bindings (`qms-database-url`, `qms-session-secret`), `NODE_ENV=production`, resource limits, and public IAM policy without requiring `roles/run.admin`.
-7. **Live revision inspection & automated smoke test:**
+   - **Database migrations:** `.github/workflows/deploy.yml` does **not** run a Cloud Run migration job because the lean production image omits the `prisma` CLI `devDependency` and `qms-github` holds no Cloud Run Jobs IAM roles. Database migrations continue to be executed via the Cloud SQL Auth Proxy prior to schema-dependent releases (Section 9.4).
+6. **Live revision inspection & automated smoke test:**
    - Prints the live service URL, `status.latestReadyRevisionName`, and deployed image digest to the workflow log and `$GITHUB_STEP_SUMMARY`.
-   - Polls `GET /api/health` (up to 5 attempts) and asserts HTTP `200`, `status === "ok"`, `database === "ok"`, and `version === "${SHORT_SHA}"`.
-   - Verifies `GET /` returns HTTP `200` (built SPA served on the same origin).
+   - Polls `GET /api/health` (up to 5 attempts, `--max-time 10` per request) and asserts HTTP `200`, `status === "ok"`, `database === "ok"`, and `version === "${SHORT_SHA}"`.
+   - Verifies `GET /` (`--max-time 10`) returns HTTP `200` (built SPA served on the same origin).
+   - **Rollback note:** If the post-deploy smoke test fails, the workflow fails and alerts the team, but the newly deployed Cloud Run revision remains live and requires a manual rollback (covered in Lab 5 Ep.8).
 
 ### 11.3 Required GitHub Variables & GCP IAM Roles for `qms-github`
 
@@ -569,7 +568,6 @@ The production release workflow in [`.github/workflows/deploy.yml`](../../../.gi
 | `GCP_SERVICE_ACCOUNT` | Yes (set in Step 6) | `qms-github@cpe334-2026-td-qms.iam.gserviceaccount.com` |
 | `CLOUD_RUN_SERVICE` | Yes (set in Step 6) | `qms` |
 | `ARTIFACT_REGISTRY_REPO` | Optional (defaults to `qms`) | `qms` |
-| `CLOUD_RUN_MIGRATE_JOB` | Optional (unset per §9.4) | *(leave unset unless a Cloud Run migration job is provisioned)* |
 
 **GCP IAM Roles Required Before First `main` Deploy** (building on Section 10.3):
 

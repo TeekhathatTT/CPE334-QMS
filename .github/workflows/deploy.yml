@@ -29,7 +29,6 @@ jobs:
       AR_REPO: ${{ vars.ARTIFACT_REGISTRY_REPO || 'qms' }}
       IMAGE_NAME: cpe334-qms
       SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
-      MIGRATE_JOB: ${{ vars.CLOUD_RUN_MIGRATE_JOB }}
       FULL_SHA: ${{ github.sha }}
 
     steps:
@@ -73,27 +72,9 @@ jobs:
           echo "Pushed image tag:    ${IMAGE_TAGGED}"
           echo "Pushed image digest: ${IMAGE_DIGEST}"
 
-      - name: Run database migrations via Cloud Run Job (if configured)
-        env:
-          IMAGE_DIGEST: ${{ steps.build-push.outputs.image_digest }}
-        run: |
-          if [ -n "${MIGRATE_JOB}" ]; then
-            echo "Updating and executing Cloud Run migration job: ${MIGRATE_JOB}"
-            gcloud run jobs update "${MIGRATE_JOB}" \
-              --project "${PROJECT_ID}" \
-              --region "${REGION}" \
-              --image "${IMAGE_DIGEST}" \
-              --quiet
-
-            gcloud run jobs execute "${MIGRATE_JOB}" \
-              --project "${PROJECT_ID}" \
-              --region "${REGION}" \
-              --wait
-          else
-            echo "CLOUD_RUN_MIGRATE_JOB is not set; skipping Cloud Run Job migration step."
-            echo "Per docs/labs/lab-05/deployment.md §9.4, the production image omits the Prisma CLI devDependency and schema migrations are applied via Cloud SQL Auth Proxy prior to schema-dependent releases."
-          fi
-
+      # Database migrations are intentionally not run here: the lean production image omits
+      # the Prisma CLI devDependency and qms-github has no Cloud Run Jobs IAM. Apply schema
+      # migrations via Cloud SQL Auth Proxy prior to schema-dependent releases (deployment.md §9.4).
       - name: Deploy new revision to Cloud Run
         env:
           SHORT_SHA: ${{ steps.build-push.outputs.short_sha }}
@@ -138,7 +119,7 @@ jobs:
           # Retry briefly to allow Cloud Run routing to settle on the new revision
           HEALTH_OK=0
           for attempt in 1 2 3 4 5; do
-            HEALTH_CODE="$(curl -sS -o /tmp/health.json -w '%{http_code}' "${SERVICE_URL}/api/health" || echo "000")"
+            HEALTH_CODE="$(curl --max-time 10 -sS -o /tmp/health.json -w '%{http_code}' "${SERVICE_URL}/api/health" || echo "000")"
             HEALTH_BODY="$(cat /tmp/health.json 2>/dev/null || true)"
             echo "Health check attempt ${attempt}: HTTP ${HEALTH_CODE} ${HEALTH_BODY}"
 
@@ -160,7 +141,7 @@ jobs:
             exit 1
           fi
 
-          ROOT_CODE="$(curl -sS -o /tmp/index.html -w '%{http_code}' "${SERVICE_URL}/")"
+          ROOT_CODE="$(curl --max-time 10 -sS -o /tmp/index.html -w '%{http_code}' "${SERVICE_URL}/")"
           echo "Root page check: HTTP ${ROOT_CODE}"
           if [ "${ROOT_CODE}" != "200" ]; then
             echo "::error::Smoke test failed on GET / (expected HTTP 200, got ${ROOT_CODE})."
