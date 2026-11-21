@@ -624,19 +624,40 @@ To provide an unmistakable visual confirmation of the automated release (Check C
 | Automated Smoke Test (`GET /api/health` & `GET /`) | `GET /api/health` HTTP `200` (`status: ok`, `database: ok`, `version: ab5ab9d`) and `GET /` HTTP `200` | **PASS** — `GET /api/health` → HTTP `200` (`{"status":"ok","database":"ok","version":"ab5ab9d"}`); `GET /` → HTTP `200` |
 | Visible UI Change Confirmation | `QMS · Release v1.1` footer visible on live deployment | **PASS** — Confirmed `QMS · Release v1.1` footer rendered on live `/login` and `/customer` pages (`https://qms-twsc7sfm3q-as.a.run.app`) |
 
-## 12. Data Persistence Verification Across Redeploy (Lab 5 Step 8 / Issue #23 / Check C-05)
+> **Technical notes:**
+> - Both `https://qms-twsc7sfm3q-as.a.run.app` and `https://qms-1036193964355.asia-southeast1.run.app` are canonical URLs pointing to the same Cloud Run service (`qms` in `asia-southeast1`).
+> - The `sha256` digests recorded in the GitHub Actions deployment summaries are OCI image index digests (multi-arch / attestation index), whereas the Cloud Run Console displays the resolved `linux/amd64` manifest digest for the same image.
+
+Screenshots for Check C-06 are in [`evidence/`](evidence/):
+
+| Figure | Screenshot | What it shows | Result |
+|---|---|---|---|
+| C-06.1 | [`c06-deploy-run1.png`](evidence/c06-deploy-run1.png) | GitHub Actions Deploy Run #1 (`44943558046`, revision `qms-00002-2h7`, smoke test HTTP `200`) | **PASS** |
+| C-06.2 | [`c06-live-ui-v1-1.png`](evidence/c06-live-ui-v1-1.png) | Live `/login` page showing visible UI change (`QMS · Release v1.1` footer) | **PASS** |
+
+## 12. Data Persistence Verification Across Redeploy and Service Restart (Lab 5 Step 8 / Issue #23 / Check C-05 / R-04)
 
 **Execution Date:** 2026-11-22  
-**Live Service URL:** `https://qms-twsc7sfm3q-as.a.run.app`  
+**Live Service URL:** `https://qms-twsc7sfm3q-as.a.run.app` (same Cloud Run service `qms` in `asia-southeast1` as `https://qms-1036193964355.asia-southeast1.run.app`)  
 **Database Instance:** Cloud SQL PostgreSQL 16 (`qms-pg`, `cpe334-2026-td-qms:asia-southeast1:qms-pg`)  
-**Overall Result:** **PASS** — Application data persisted intact in Cloud SQL across a full Cloud Run container rebuild and revision replacement (`qms-00002-2h7` → `qms-00003-jd9`).
+**Overall Result:** **PASS** — Application data persisted intact in Cloud SQL across both a full Cloud Run container rebuild/redeploy (`qms-00002-2h7` → `qms-00003-jd9`) and an in-place service restart on the same image (`qms-00003-jd9` → `qms-c05-restart`).
 
 ### 12.1 Verification Steps & Evidence
 
 | Phase | Action / Observation | Details / Recorded Values | Status |
 |---|---|---|---|
 | **1. Before Redeploy** (`qms-00002-2h7`) | Signed in as `customer1@example.com` (`CUSTOMER`) on `https://qms-twsc7sfm3q-as.a.run.app/customer` and joined `General Inquiry Desk` | Created Queue Entry **Queue Number `2`** — Status: `Waiting`, Joined: `11/22/2026, 3:09:36 AM` | **PASS** |
-| **2. Redeploy Trigger** (`workflow_dispatch` on `main`) | Manually triggered `Deploy to Cloud Run` workflow to rebuild and replace the running Cloud Run container with a new revision | Run #2 ([44945131409](https://github.com/TeekhathatTT/CPE334-QMS/actions/runs/44945131409), Success, 1m 29s); deployed new revision `qms-00003-jd9` (digest `sha256:f7a5de7fcd9a21834cae4a49411ff21266ce11d43a04723294767aa482928422`); automated smoke test `GET /api/health` returned HTTP `200` (`database: "ok"`) | **PASS** |
+| **2. Redeploy Trigger** (`workflow_dispatch` on `main`) | Manually triggered `Deploy to Cloud Run` workflow to rebuild and replace the running Cloud Run container with a new revision | Run #2 ([44945131409](https://github.com/TeekhathatTT/CPE334-QMS/actions/runs/44945131409), Success, 1m 29s); deployed new revision `qms-00003-jd9` (OCI image index digest `sha256:f7a5de7fcd9a21834cae4a49411ff21266ce11d43a04723294767aa482928422`); automated smoke test `GET /api/health` returned HTTP `200` (`database: "ok"`) | **PASS** |
 | **3. After Redeploy** (`qms-00003-jd9`) | Refreshed `https://qms-twsc7sfm3q-as.a.run.app/customer` (`My Active Tickets` tab) after traffic shifted to `qms-00003-jd9` | Confirmed **Queue Number `2`** (`General Inquiry Desk`, Status: `Waiting`, Joined: `11/22/2026, 3:09:36 AM`) persisted intact in Cloud SQL (`qms-pg`) with zero data loss | **PASS** |
+| **4. Service Restart on Same Image** (`qms-00003-jd9` → `qms-c05-restart`) | Triggered by project owner via `gcloud run services update qms --region asia-southeast1 --update-labels restart-check=c05` (same image digest `sha256:f7a5de7fcd9a21834cae4a49411ff21266ce11d43a04723294767aa482928422`), then refreshed `https://qms-twsc7sfm3q-as.a.run.app/customer` (`My Active Tickets` tab) | New revision `qms-c05-restart` serving 100% traffic on the same image; confirmed **Queue Number `2`** (`General Inquiry Desk`, Status: `Waiting`, Joined: `11/22/2026, 3:09:36 AM`) remained intact in Cloud SQL (`qms-pg`) | **PASS** |
+
+Screenshots for Check C-05 are in [`evidence/`](evidence/):
+
+| Figure | Screenshot | What it shows | Result |
+|---|---|---|---|
+| C-05.1 | [`c05-before-queue2.png`](evidence/c05-before-queue2.png) | Before redeploy/restart: created Queue #2 (`Waiting`) as `customer1@example.com` | **PASS** |
+| C-05.2 | [`c05-redeploy-run2.png`](evidence/c05-redeploy-run2.png) | Redeploy trigger: GitHub Actions Deploy Run #2 (`44945131409`, new revision `qms-00003-jd9`) | **PASS** |
+| C-05.3 | [`c05-after-redeploy.png`](evidence/c05-after-redeploy.png) | After redeploy (`qms-00003-jd9`): Queue #2 persisted in `My Active Tickets` | **PASS** |
+| C-05.4 | [`c05-after-restart.png`](evidence/c05-after-restart.png) | After service restart (`qms-c05-restart` on same image): Queue #2 still persisted in `My Active Tickets` | **PASS** |
 
 
