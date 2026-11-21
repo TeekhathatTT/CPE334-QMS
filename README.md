@@ -117,7 +117,7 @@ npm run seed
 ```
 
 This provisions:
-- **Default Password**: `Password123!` (salted bcrypt, 10 rounds)
+- **Default Password**: `Password123!` (salted bcrypt, 10 rounds), used only when `NODE_ENV` is `development` or `test` and `SEED_PASSWORD` is not set. Any other environment (for example Cloud SQL) refuses to seed without a private `SEED_PASSWORD` (at least 12 characters, set in the shell, never committed).
 - **Customer Accounts (RFC 4122 UUIDv4)**:
   - `customer1@example.com` (`11111111-1111-4111-8111-111111111111`, Role: `CUSTOMER`, Status: `ACTIVE`)
   - `customer2@example.com` (`22222222-2222-4222-8222-222222222222`, Role: `CUSTOMER`, Status: `ACTIVE`)
