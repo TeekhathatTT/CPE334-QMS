@@ -1,6 +1,6 @@
 # QMS Deployment Guide (Lab 5)
 
-Status: **updated for Lab 5 step 7 — Automated Cloud Run Deployment Workflow (Issue #21)** (builds on Lab 5 steps 2–6). Section 9 records the GCP resources and first deployment; Section 10 records WIF, GitHub Variables, the ruleset and Check C-02; Section 11 records `.github/workflows/deploy.yml`, IAM prerequisites, and the Check C-06 release verification template.
+Status: **updated for Lab 5 steps 7–8 — Check C-06 (Issue #21) and Check C-05 (Issue #23) verified and complete** (builds on Lab 5 steps 2–6). Section 9 records the GCP resources and first deployment; Section 10 records WIF, GitHub Variables, the ruleset and Check C-02; Section 11 records `.github/workflows/deploy.yml` and completed Check C-06 release evidence; Section 12 records Check C-05 data persistence verification across a Cloud Run redeploy.
 
 ## 1. Reference stack
 
@@ -614,11 +614,29 @@ To provide an unmistakable visual confirmation of the automated release (Check C
 | Verification Item | Expected | Recorded Value / Status |
 |---|---|---|
 | Local verification (`npm run test:client` & `npm run build`) | All client tests pass and production build exits `0` | **PASS** (verified locally 2026-11-22) |
-| Feature PR (`lab5/7-auto-deploy-workflow` → `lab5-staging`) | CI check green + 1 approving review + merged | `TO FILL (PR # / URL)` |
-| Release PR (`lab5-staging` → `main`) | CI check green + 1 approving review + merged (R-06, R-09) | `TO FILL (PR # / URL)` |
-| GitHub Actions Deploy Run (`Deploy to Cloud Run`) | Triggered by `push` to `main`; build, push, deploy, and smoke test green | `TO FILL (Run ID / URL)` |
-| Deployed Commit SHA (`main` HEAD) | Matches Artifact Registry full-SHA tag and `/api/health` `version` (R-08) | `TO FILL (<full SHA> / <short SHA>)` |
-| Live Cloud Run Revision | New revision serving 100% traffic (`status.latestReadyRevisionName`) | `TO FILL (qms-00002-...)` |
-| Live `GET /api/health` | `200 {"status":"ok","database":"ok","version":"<short SHA>"}` | `TO FILL` |
-| Visible UI Change Confirmation | `QMS · Release v1.1` footer visible on `https://qms-1036193964355.asia-southeast1.run.app/login` | `TO FILL (screenshot / confirmation)` |
+| Feature PR (`lab5/7-auto-deploy-workflow` → `lab5-staging`) | CI check green + 1 approving review + merged | **PASS** — [#35](https://github.com/TeekhathatTT/CPE334-QMS/pull/35) |
+| Release PR (`lab5-staging` → `main`) | CI check green + 1 approving review + merged (R-06, R-09) | **PASS** — [#36](https://github.com/TeekhathatTT/CPE334-QMS/pull/36) |
+| GitHub Actions Deploy Run (`Deploy to Cloud Run`) | Triggered by `push` to `main`; build, push, deploy, and smoke test green | **PASS** — Run #1 ([44943558046](https://github.com/TeekhathatTT/CPE334-QMS/actions/runs/44943558046), Success, 1m 30s) |
+| Deployed Commit SHA (`main` HEAD) | Matches Artifact Registry full-SHA tag and `/api/health` `version` (R-08) | **PASS** — `ab5ab9d5eb3471c154a36bf317c8d90073741060` (short: `ab5ab9d`) |
+| Image Digest | Immutable digest pushed to Artifact Registry and deployed | `asia-southeast1-docker.pkg.dev/cpe334-2026-td-qms/qms/cpe334-qms@sha256:4c19c8a5b0031faa411d999e2b6712a584ede53bd10de100fc9d9c2e64247cba` |
+| Cloud Run Service & Revision | New revision serving 100% traffic (`status.latestReadyRevisionName`) | **PASS** — `qms` (`asia-southeast1`), revision `qms-00002-2h7` |
+| Live Service URL | Canonical Cloud Run URL | `https://qms-twsc7sfm3q-as.a.run.app` |
+| Automated Smoke Test (`GET /api/health` & `GET /`) | `GET /api/health` HTTP `200` (`status: ok`, `database: ok`, `version: ab5ab9d`) and `GET /` HTTP `200` | **PASS** — `GET /api/health` → HTTP `200` (`{"status":"ok","database":"ok","version":"ab5ab9d"}`); `GET /` → HTTP `200` |
+| Visible UI Change Confirmation | `QMS · Release v1.1` footer visible on live deployment | **PASS** — Confirmed `QMS · Release v1.1` footer rendered on live `/login` and `/customer` pages (`https://qms-twsc7sfm3q-as.a.run.app`) |
+
+## 12. Data Persistence Verification Across Redeploy (Lab 5 Step 8 / Issue #23 / Check C-05)
+
+**Execution Date:** 2026-11-22  
+**Live Service URL:** `https://qms-twsc7sfm3q-as.a.run.app`  
+**Database Instance:** Cloud SQL PostgreSQL 16 (`qms-pg`, `cpe334-2026-td-qms:asia-southeast1:qms-pg`)  
+**Overall Result:** **PASS** — Application data persisted intact in Cloud SQL across a full Cloud Run container rebuild and revision replacement (`qms-00002-2h7` → `qms-00003-jd9`).
+
+### 12.1 Verification Steps & Evidence
+
+| Phase | Action / Observation | Details / Recorded Values | Status |
+|---|---|---|---|
+| **1. Before Redeploy** (`qms-00002-2h7`) | Signed in as `customer1@example.com` (`CUSTOMER`) on `https://qms-twsc7sfm3q-as.a.run.app/customer` and joined `General Inquiry Desk` | Created Queue Entry **Queue Number `2`** — Status: `Waiting`, Joined: `11/22/2026, 3:09:36 AM` | **PASS** |
+| **2. Redeploy Trigger** (`workflow_dispatch` on `main`) | Manually triggered `Deploy to Cloud Run` workflow to rebuild and replace the running Cloud Run container with a new revision | Run #2 ([44945131409](https://github.com/TeekhathatTT/CPE334-QMS/actions/runs/44945131409), Success, 1m 29s); deployed new revision `qms-00003-jd9` (digest `sha256:f7a5de7fcd9a21834cae4a49411ff21266ce11d43a04723294767aa482928422`); automated smoke test `GET /api/health` returned HTTP `200` (`database: "ok"`) | **PASS** |
+| **3. After Redeploy** (`qms-00003-jd9`) | Refreshed `https://qms-twsc7sfm3q-as.a.run.app/customer` (`My Active Tickets` tab) after traffic shifted to `qms-00003-jd9` | Confirmed **Queue Number `2`** (`General Inquiry Desk`, Status: `Waiting`, Joined: `11/22/2026, 3:09:36 AM`) persisted intact in Cloud SQL (`qms-pg`) with zero data loss | **PASS** |
+
 
