@@ -1,6 +1,6 @@
 # QMS Deployment Guide (Lab 5)
 
-Status: **updated for Lab 5 step 5 — GCP infrastructure and first Cloud Run deployment (Issue #22)** (builds on Lab 5 steps 2–4). Section 9 records the GCP resources and the first deployment. Remaining items marked `TO FILL (later Lab 5 step)` (deploy workflow, release procedure) are completed by later Lab 5 Issues.
+Status: **updated for Lab 5 step 6 — GitHub to GCP with Workload Identity Federation and the required-check merge gate (Issue #20)** (builds on Lab 5 steps 2–5). Section 9 records the GCP resources and the first deployment; Section 10 records WIF, the GitHub Variables, the ruleset and Check C-02. Remaining items marked `TO FILL (later Lab 5 step)` (deploy workflow, release procedure) are completed by later Lab 5 Issues.
 
 ## 1. Reference stack
 
@@ -77,7 +77,7 @@ Production mode needs `DATABASE_URL` and a real `SESSION_SECRET` in the environm
 | Create the Secret Manager secrets | Section 9.2 |
 | Run migrations against Cloud SQL | Section 9.4 (from a laptop through the Cloud SQL Auth Proxy) |
 | Deploy to Cloud Run | Section 9.3 (`gcloud run deploy qms --image=...@sha256:<digest> ...`) |
-| GitHub Actions CI workflow | `.github/workflows/ci-docker.yml` (`pull_request` to `main`, `lab5-staging`, `*-staging` or `staging/**`; `push` to `lab5-staging`; `workflow_dispatch`; see section 8.1); deploy workflow: TO FILL (later Lab 5 step) |
+| GitHub Actions CI workflow | `.github/workflows/ci-docker.yml` (`pull_request` to `main`, `lab5-staging`, `*-staging` or `staging/**`; `push` to `lab5-staging`; `workflow_dispatch`; see section 8.1); GCP auth smoke test `.github/workflows/gcp-auth-check.yml` (section 10.5); deploy workflow: TO FILL (later Lab 5 step) |
 | Service URL | https://qms-1036193964355.asia-southeast1.run.app |
 
 > **Note:** `docker-compose.yml` sets `name: cpe334-qms`, so Docker Compose always creates the network `cpe334-qms_default` regardless of the local clone folder name. You can verify the active network name with `docker network ls`.
@@ -410,3 +410,115 @@ gcloud sql instances patch qms-pg --activation-policy=ALWAYS --project=$PROJECT_
 ```
 
 While the instance is stopped, the UI loads but every database request fails. Keep it running during grading (handout Section 12). Tear down only after the course ends.
+
+## 10. GitHub to GCP with Workload Identity Federation, and the Merge Gate (Lab 5 Step 6 / Issue #20 / R-06 / Check C-02)
+
+Done by @TeekhathatTT on 2026-11-21 and 2026-11-22. Every command that created or changed GCP or GitHub state was shown, explained and approved before it ran (handout Section 9). No service account key was created at any point; GitHub signs in with a short-lived OIDC token. Cloud SQL does not need to run for anything in this section.
+
+Sources used for flags, roles and settings: Google Cloud "Workload Identity Federation with deployment pipelines" and "Cloud Run IAM roles"; the `google-github-actions/auth` README and releases; GitHub REST "Repository rules".
+
+### 10.1 What was created
+
+| Item | Value |
+|---|---|
+| APIs enabled for WIF | `iam`, `iamcredentials`, `sts`, `cloudresourcemanager` (`*.googleapis.com`) |
+| Workload identity pool | `github` (location `global`) |
+| OIDC provider | `qms-repo`, issuer `https://token.actions.githubusercontent.com` |
+| Provider resource name | `projects/1036193964355/locations/global/workloadIdentityPools/github/providers/qms-repo` |
+| Attribute mapping | `google.subject=assertion.sub`, `attribute.repository=assertion.repository`, `attribute.repository_id=assertion.repository_id`, `attribute.repository_owner_id=assertion.repository_owner_id`, `attribute.ref=assertion.ref` |
+| Attribute condition | `assertion.repository_id=='1445593383' && assertion.repository_owner_id=='45238320'`: the numeric IDs of `TeekhathatTT/CPE334-QMS` and its owner. Tokens from any other repository are rejected, and a re-created repository with the same name gets a new ID (the GCP page recommends ID claims over name claims) |
+| GitHub service account | `qms-github@cpe334-2026-td-qms.iam.gserviceaccount.com`: dedicated, not `qms-run` and not the default compute account; no user-managed keys (`keys list --managed-by=user` returns 0 items) |
+| Smoke-test workflow | `.github/workflows/gcp-auth-check.yml` |
+| Repository ruleset | `R-06 merge gate (main and staging)`, id `27801092` |
+
+### 10.2 GCP commands (run once)
+
+```bash
+PROJECT_ID=cpe334-2026-td-qms
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+REGION=asia-southeast1
+REPO=TeekhathatTT/CPE334-QMS
+GH_SA=qms-github@$PROJECT_ID.iam.gserviceaccount.com
+
+gcloud services enable iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com \
+  cloudresourcemanager.googleapis.com --project=$PROJECT_ID
+
+gcloud iam workload-identity-pools create github --project=$PROJECT_ID --location=global \
+  --display-name="GitHub Actions" --description="GitHub Actions OIDC for $REPO"
+
+gcloud iam workload-identity-pools providers create-oidc qms-repo --project=$PROJECT_ID \
+  --location=global --workload-identity-pool=github --display-name="CPE334-QMS repo" \
+  --issuer-uri="https://token.actions.githubusercontent.com" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_id=assertion.repository_id,attribute.repository_owner_id=assertion.repository_owner_id,attribute.ref=assertion.ref" \
+  --attribute-condition="assertion.repository_id=='1445593383' && assertion.repository_owner_id=='45238320'"
+
+gcloud iam service-accounts create qms-github --project=$PROJECT_ID \
+  --display-name="GitHub Actions (QMS)" --description="Impersonated by GitHub Actions via WIF; no keys"
+
+# Only workflows of this repository may impersonate the account (binding on the account, not the project)
+gcloud iam service-accounts add-iam-policy-binding $GH_SA --project=$PROJECT_ID \
+  --role=roles/iam.workloadIdentityUser \
+  --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/$REPO"
+
+# Read-only access on the qms service only (enough for the smoke test)
+gcloud run services add-iam-policy-binding qms --project=$PROJECT_ID --region=$REGION \
+  --member="serviceAccount:$GH_SA" --role=roles/run.viewer
+```
+
+### 10.3 Roles of `qms-github`
+
+| Role | Scope | Status | Why |
+|---|---|---|---|
+| `roles/iam.workloadIdentityUser` | the `qms-github` account; member `principalSet://.../attribute.repository/TeekhathatTT/CPE334-QMS` | **Granted** | Lets this repository's workflows exchange their OIDC token for the account |
+| `roles/run.viewer` | Cloud Run service `qms` | **Granted** | `gcloud run services describe qms` in the smoke test |
+| `roles/artifactregistry.writer` | Artifact Registry repository `qms` | Planned for step 7, **not granted** | Push the release image |
+| `roles/run.developer` | Cloud Run service `qms` | Planned for step 7, **not granted** | Deploy a new revision (no `setIamPolicy`, unlike `run.admin`) |
+| `roles/iam.serviceAccountUser` | the runtime account `qms-run` only | Planned for step 7, **not granted** | Deploy a revision that runs as `qms-run` |
+
+Branch scope: the impersonation binding is repository-wide for now, because the account is read-only and the smoke test runs from a feature branch. When step 7 adds the write roles, narrow the binding to `principalSet://.../attribute.ref/refs/heads/main` (the provider condition already limits tokens to this repository), so only `main` can deploy.
+
+### 10.4 GitHub repository Variables
+
+Non-secret identifiers, stored under **Settings → Secrets and variables → Actions → Variables** (not Secrets; there is no JSON key secret): `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_WIF_PROVIDER`, `GCP_SERVICE_ACCOUNT`, `CLOUD_RUN_SERVICE`. Their values match 9.1 and 10.1. Set with `gh variable set <NAME> -R TeekhathatTT/CPE334-QMS --body "<value>"` and checked with `gh variable list`.
+
+### 10.5 Connection smoke test (`gcp-auth-check.yml`)
+
+- Permissions `contents: read` and `id-token: write` only; every action pinned to a full commit SHA (`actions/checkout` v7.0.1, `google-github-actions/auth` v3.0.0, `google-github-actions/setup-gcloud` v3.0.1).
+- Triggers: `workflow_dispatch`, and `push` to `feature/lab5/6-wif-merge-gate` when the workflow file changes. It never runs on `pull_request`, so code from a fork never gets cloud access. GitHub offers a manual `workflow_dispatch` run only once the file is on the default branch (`main`); until then the branch-limited `push` trigger runs it.
+- Runs one read-only command and prints only the service name, latest revision and URL.
+
+| Run | Result | Cause |
+|---|---|---|
+| [Run 44926093682](https://github.com/TeekhathatTT/CPE334-QMS/actions/runs/44926093682), attempts 1 and 2, commit `a23e69e` | Failure at the auth step: `must specify exactly one of "workload_identity_provider" or "credentials_json"` | The repository Variables did not exist yet (`gh variable list` was empty) |
+| Same run, attempt 3, after the Variables were created | **PASS** | Signed in as `qms-github@cpe334-2026-td-qms.iam.gserviceaccount.com` through WIF; `gcloud run services describe qms` returned service `qms`, latest ready revision `qms-00001-fh7`; the action removed its short-lived credentials file at the end |
+
+### 10.6 Merge gate (R-06)
+
+Repository ruleset `R-06 merge gate (main and staging)` (id `27801092`), created with `gh api -X POST repos/TeekhathatTT/CPE334-QMS/rulesets` and read back with `gh api repos/TeekhathatTT/CPE334-QMS/rulesets/27801092`:
+
+| Setting | Value read back |
+|---|---|
+| Enforcement | `active` |
+| Branches | `refs/heads/main`, `refs/heads/lab5-staging`, `refs/heads/lab6-staging` |
+| Bypass actors | none (`current_user_can_bypass: never`, including the repository admin) |
+| Pull request | required; `required_approving_review_count: 1`; `dismiss_stale_reviews_on_push: true`; code owner review off; merge methods merge, squash, rebase. `require_extra_approval_for_unattributed_changes: true` is a GitHub default, not set by us |
+| Required status check | `Build, Migrate, Seed, Test & Docker Image` from the GitHub Actions app (`integration_id` 15368); `strict_required_status_checks_policy: false` (branches need not be up to date, to avoid re-running CI on every open PR after each merge) |
+| Force push / deletion | blocked (`non_fast_forward`, `deletion`) |
+
+The required check uses the exact name GitHub shows for the job in `ci-docker.yml` (job id `build-test-and-docker`), read from a real check run. The handout's "test-and-docker" is only an example name.
+
+What this means for every Pull Request into `main`, `lab5-staging` or `lab6-staging`: CI must pass and the teammate must approve (the author's own approval does not count, R-09); a new push removes an earlier approval; nobody can push directly to these branches or skip the check.
+
+### 10.7 Check C-02 (R-06)
+
+| Item | Value |
+|---|---|
+| Pull Request | [#33](https://github.com/TeekhathatTT/CPE334-QMS/pull/33) `[C-02 DEMO, DO NOT MERGE]`, from the temporary branch `tmp/lab5-c02-failing-check` into `lab5-staging`, label `lab5` |
+| Commit | `36c0783` (one new file `server/tests/c02-demo-failing.test.ts`; no existing test or application code changed) |
+| Failed run | [Run 44927871890](https://github.com/TeekhathatTT/CPE334-QMS/actions/runs/44927871890/job/136917840870): `Build, Migrate, Seed, Test & Docker Image` failed after 59 s at `tests/c02-demo-failing.test.ts:9` (`AssertionError: expected 2 to be 3`); Test Files 1 failed, 12 passed; Tests 1 failed, 140 passed |
+| Merge state | `mergeStateStatus: BLOCKED` (GitHub API); merge button disabled |
+| Outcome | PR closed without merging; branch, commit and run kept (R-10); `lab5-staging` and `main` unchanged |
+
+| Figure | Screenshot | What it shows | Result |
+|---|---|---|---|
+| C-02.1 | [`c02-01-review-required-merge-blocked.png`](evidence/c02-01-review-required-merge-blocked.png) | PR #34 (this Episode's PR, commit `2591804`): "All checks have passed", but "Review required" and "Merging is blocked" until 1 approving review; the merge button is disabled. Shows the ruleset's approval rule applies to the repository admin too (R-06, R-09). The failing-check case for C-02 is recorded by PR #33, its failed run and `mergeStateStatus: BLOCKED` in the table above | **PASS** |
