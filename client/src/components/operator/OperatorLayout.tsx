@@ -30,6 +30,9 @@ export function OperatorLayout() {
       <main className="mx-auto w-full max-w-5xl px-4 py-6">
         <Outlet />
       </main>
+      <footer className="mx-auto w-full max-w-5xl px-4 pb-6 text-center text-xs text-slate-500">
+        QMS · Release v1.1
+      </footer>
     </div>
   );
 }

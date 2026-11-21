@@ -152,6 +152,10 @@ export function LoginPage() {
             )}
           </button>
         </form>
+
+        <footer className="mt-6 border-t border-slate-100 pt-4 text-center text-xs text-slate-500">
+          QMS · Release v1.1
+        </footer>
       </div>
     </main>
   );

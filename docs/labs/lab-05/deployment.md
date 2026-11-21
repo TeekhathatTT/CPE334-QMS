@@ -1,6 +1,6 @@
 # QMS Deployment Guide (Lab 5)
 
-Status: **updated for Lab 5 step 6 — GitHub to GCP with Workload Identity Federation and the required-check merge gate (Issue #20)** (builds on Lab 5 steps 2–5). Section 9 records the GCP resources and the first deployment; Section 10 records WIF, the GitHub Variables, the ruleset and Check C-02. Remaining items marked `TO FILL (later Lab 5 step)` (deploy workflow, release procedure) are completed by later Lab 5 Issues.
+Status: **updated for Lab 5 step 7 — Automated Cloud Run Deployment Workflow (Issue #21)** (builds on Lab 5 steps 2–6). Section 9 records the GCP resources and first deployment; Section 10 records WIF, GitHub Variables, the ruleset and Check C-02; Section 11 records `.github/workflows/deploy.yml`, IAM prerequisites, and the Check C-06 release verification template.
 
 ## 1. Reference stack
 
@@ -77,7 +77,7 @@ Production mode needs `DATABASE_URL` and a real `SESSION_SECRET` in the environm
 | Create the Secret Manager secrets | Section 9.2 |
 | Run migrations against Cloud SQL | Section 9.4 (from a laptop through the Cloud SQL Auth Proxy) |
 | Deploy to Cloud Run | Section 9.3 (`gcloud run deploy qms --image=...@sha256:<digest> ...`) |
-| GitHub Actions CI workflow | `.github/workflows/ci-docker.yml` (`pull_request` to `main`, `lab5-staging`, `*-staging` or `staging/**`; `push` to `lab5-staging`; `workflow_dispatch`; see section 8.1); GCP auth smoke test `.github/workflows/gcp-auth-check.yml` (section 10.5); deploy workflow: TO FILL (later Lab 5 step) |
+| GitHub Actions CI & deploy workflows | CI: `.github/workflows/ci-docker.yml` (section 8.1); GCP auth smoke test: `.github/workflows/gcp-auth-check.yml` (section 10.5); automated release deploy: `.github/workflows/deploy.yml` (`push` to `main`, `workflow_dispatch`; section 11) |
 | Service URL | https://qms-1036193964355.asia-southeast1.run.app |
 
 > **Note:** `docker-compose.yml` sets `name: cpe334-qms`, so Docker Compose always creates the network `cpe334-qms_default` regardless of the local clone folder name. You can verify the active network name with `docker network ls`.
@@ -522,3 +522,105 @@ What this means for every Pull Request into `main`, `lab5-staging` or `lab6-stag
 | Figure | Screenshot | What it shows | Result |
 |---|---|---|---|
 | C-02.1 | [`c02-01-review-required-merge-blocked.png`](evidence/c02-01-review-required-merge-blocked.png) | PR #34 (this Episode's PR, commit `2591804`): "All checks have passed", but "Review required" and "Merging is blocked" until 1 approving review; the merge button is disabled. Shows the ruleset's approval rule applies to the repository admin too (R-06, R-09). The failing-check case for C-02 is recorded by PR #33, its failed run and `mergeStateStatus: BLOCKED` in the table above | **PASS** |
+
+## 11. Automated Deployment Workflow to Cloud Run (Lab 5 Step 7 / Issue #21 / R-07, R-08, R-09, R-10 / Check C-06)
+
+### 11.1 Workflow Overview (`.github/workflows/deploy.yml`)
+
+The production release workflow in [`.github/workflows/deploy.yml`](../../../.github/workflows/deploy.yml) deploys accepted changes from `main` to Cloud Run automatically with zero static GCP credentials:
+
+- **Triggers (`on`):**
+  - `push` to `main` (runs automatically after an approved Release PR `lab5-staging` → `main` merges through the R-06 merge gate)
+  - `workflow_dispatch` (manual release trigger once the workflow is on `main`)
+- **Permissions & Concurrency:**
+  - `contents: read` and `id-token: write` (OIDC token exchange via WIF only — no static JSON keys).
+  - `concurrency: { group: deploy-main, cancel-in-progress: false }` prevents overlapping Cloud Run deployments from racing each other.
+- **Pinned Actions:**
+  - Matches Issue #20 supply-chain pinning: `actions/checkout` (`v7.0.1`), `google-github-actions/auth` (`v3.0.0`), and `google-github-actions/setup-gcloud` (`v3.0.1`).
+
+### 11.2 Pipeline Steps (in Execution Order)
+
+1. **Check out repository** (`actions/checkout`, `persist-credentials: false`).
+2. **Authenticate to GCP via WIF** (`google-github-actions/auth` using `vars.GCP_PROJECT_ID`, `vars.GCP_WIF_PROVIDER`, `vars.GCP_SERVICE_ACCOUNT`).
+3. **Set up `gcloud` & Docker registry auth** (`gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet`).
+4. **Build and push immutable image tagged with full commit SHA (R-08):**
+   - Builds `linux/amd64` with `--build-arg COMMIT_SHA=${FULL_SHA::7}` and tags `asia-southeast1-docker.pkg.dev/cpe334-2026-td-qms/qms/cpe334-qms:${FULL_SHA}`.
+   - Pushes the tagged image to Artifact Registry and extracts its immutable `sha256` digest (`RepoDigests[0]`).
+5. **Run database migrations via Cloud Run Job (optional / if configured):**
+   - If the optional repository variable `CLOUD_RUN_MIGRATE_JOB` is set, updates that Cloud Run Job with the newly pushed image digest (`gcloud run jobs update`) and runs it to completion (`gcloud run jobs execute --wait`).
+   - Otherwise (current state per Section 9.4 & 9.6, where the lean production `Dockerfile` omits the `prisma` CLI `devDependency`), logs a clear notice and skips the job step so migrations continue to run via Cloud SQL Auth Proxy prior to schema-dependent releases.
+6. **Deploy new revision to Cloud Run:**
+   - Runs `gcloud run deploy "${SERVICE}" --image "${IMAGE_DIGEST}" --update-env-vars "COMMIT_SHA=${SHORT_SHA}" --quiet`.
+   - Updating the existing `qms` service preserves its runtime service account (`qms-run`), Cloud SQL connection (`qms-pg`), Secret Manager bindings (`qms-database-url`, `qms-session-secret`), `NODE_ENV=production`, resource limits, and public IAM policy without requiring `roles/run.admin`.
+7. **Live revision inspection & automated smoke test:**
+   - Prints the live service URL, `status.latestReadyRevisionName`, and deployed image digest to the workflow log and `$GITHUB_STEP_SUMMARY`.
+   - Polls `GET /api/health` (up to 5 attempts) and asserts HTTP `200`, `status === "ok"`, `database === "ok"`, and `version === "${SHORT_SHA}"`.
+   - Verifies `GET /` returns HTTP `200` (built SPA served on the same origin).
+
+### 11.3 Required GitHub Variables & GCP IAM Roles for `qms-github`
+
+**GitHub Repository Variables** (**Settings → Secrets and variables → Actions → Variables** — no secrets required):
+
+| Variable | Required? | Value (`cpe334-2026-td-qms`) |
+|---|---|---|
+| `GCP_PROJECT_ID` | Yes (set in Step 6) | `cpe334-2026-td-qms` |
+| `GCP_REGION` | Yes (set in Step 6) | `asia-southeast1` |
+| `GCP_WIF_PROVIDER` | Yes (set in Step 6) | `projects/1036193964355/locations/global/workloadIdentityPools/github/providers/qms-repo` |
+| `GCP_SERVICE_ACCOUNT` | Yes (set in Step 6) | `qms-github@cpe334-2026-td-qms.iam.gserviceaccount.com` |
+| `CLOUD_RUN_SERVICE` | Yes (set in Step 6) | `qms` |
+| `ARTIFACT_REGISTRY_REPO` | Optional (defaults to `qms`) | `qms` |
+| `CLOUD_RUN_MIGRATE_JOB` | Optional (unset per §9.4) | *(leave unset unless a Cloud Run migration job is provisioned)* |
+
+**GCP IAM Roles Required Before First `main` Deploy** (building on Section 10.3):
+
+| Role | Resource Scope | Purpose |
+|---|---|---|
+| `roles/artifactregistry.writer` | Artifact Registry repository `qms` (`asia-southeast1`) | Push full-SHA tagged release images |
+| `roles/run.developer` | Cloud Run service `qms` (`asia-southeast1`) | Deploy new revisions and describe service status |
+| `roles/iam.serviceAccountUser` | Runtime service account `qms-run@cpe334-2026-td-qms.iam.gserviceaccount.com` | Deploy revisions running as `qms-run` |
+
+Grant commands (run once by a project owner before merging the Release PR to `main`, plus narrowing the WIF binding to `refs/heads/main` per Section 10.3):
+
+```bash
+PROJECT_ID=cpe334-2026-td-qms
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+REGION=asia-southeast1
+GH_SA=qms-github@$PROJECT_ID.iam.gserviceaccount.com
+RUN_SA=qms-run@$PROJECT_ID.iam.gserviceaccount.com
+
+gcloud artifacts repositories add-iam-policy-binding qms \
+  --project=$PROJECT_ID --location=$REGION \
+  --member="serviceAccount:$GH_SA" --role=roles/artifactregistry.writer
+
+gcloud run services add-iam-policy-binding qms \
+  --project=$PROJECT_ID --region=$REGION \
+  --member="serviceAccount:$GH_SA" --role=roles/run.developer
+
+gcloud iam service-accounts add-iam-policy-binding $RUN_SA \
+  --project=$PROJECT_ID \
+  --member="serviceAccount:$GH_SA" --role=roles/iam.serviceAccountUser
+
+# Narrow WIF impersonation to main only once write roles are granted (Section 10.3)
+gcloud iam service-accounts add-iam-policy-binding $GH_SA --project=$PROJECT_ID \
+  --role=roles/iam.workloadIdentityUser \
+  --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.ref/refs/heads/main"
+gcloud iam service-accounts remove-iam-policy-binding $GH_SA --project=$PROJECT_ID \
+  --role=roles/iam.workloadIdentityUser \
+  --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/TeekhathatTT/CPE334-QMS"
+```
+
+### 11.4 Visible Release Change & Check C-06 Release Verification
+
+To provide an unmistakable visual confirmation of the automated release (Check C-06), this change adds a subtle footer (`QMS · Release v1.1`) to the login screen ([`LoginPage.tsx`](../../../client/src/pages/LoginPage.tsx)), customer layout ([`CustomerLayout.tsx`](../../../client/src/components/customer/CustomerLayout.tsx)), and operator layout ([`OperatorLayout.tsx`](../../../client/src/components/operator/OperatorLayout.tsx)).
+
+| Verification Item | Expected | Recorded Value / Status |
+|---|---|---|
+| Local verification (`npm run test:client` & `npm run build`) | All client tests pass and production build exits `0` | **PASS** (verified locally 2026-11-22) |
+| Feature PR (`lab5/7-auto-deploy-workflow` → `lab5-staging`) | CI check green + 1 approving review + merged | `TO FILL (PR # / URL)` |
+| Release PR (`lab5-staging` → `main`) | CI check green + 1 approving review + merged (R-06, R-09) | `TO FILL (PR # / URL)` |
+| GitHub Actions Deploy Run (`Deploy to Cloud Run`) | Triggered by `push` to `main`; build, push, deploy, and smoke test green | `TO FILL (Run ID / URL)` |
+| Deployed Commit SHA (`main` HEAD) | Matches Artifact Registry full-SHA tag and `/api/health` `version` (R-08) | `TO FILL (<full SHA> / <short SHA>)` |
+| Live Cloud Run Revision | New revision serving 100% traffic (`status.latestReadyRevisionName`) | `TO FILL (qms-00002-...)` |
+| Live `GET /api/health` | `200 {"status":"ok","database":"ok","version":"<short SHA>"}` | `TO FILL` |
+| Visible UI Change Confirmation | `QMS · Release v1.1` footer visible on `https://qms-1036193964355.asia-southeast1.run.app/login` | `TO FILL (screenshot / confirmation)` |
+
