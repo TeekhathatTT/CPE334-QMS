@@ -521,4 +521,4 @@ What this means for every Pull Request into `main`, `lab5-staging` or `lab6-stag
 
 | Figure | Screenshot | What it shows | Result |
 |---|---|---|---|
-| C-02.1 | [`c02-01-required-check-failed-merge-blocked.png`](evidence/c02-01-required-check-failed-merge-blocked.png) | PR #33 from a temporary branch: the required check `CI & Docker Build / Build, Migrate, Seed, Test & Docker Image (pull_request)` (badge "Required") failed after 59 s, "Merging is blocked", and the merge button is disabled. Commit `36c0783` | **PASS** |
+| C-02.1 | [`c02-01-review-required-merge-blocked.png`](evidence/c02-01-review-required-merge-blocked.png) | PR #34 (this Episode's PR, commit `2591804`): "All checks have passed", but "Review required" and "Merging is blocked" until 1 approving review; the merge button is disabled. Shows the ruleset's approval rule applies to the repository admin too (R-06, R-09). The failing-check case for C-02 is recorded by PR #33, its failed run and `mergeStateStatus: BLOCKED` in the table above | **PASS** |
