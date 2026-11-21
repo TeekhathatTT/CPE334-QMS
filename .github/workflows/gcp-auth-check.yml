@@ -1,0 +1,55 @@
+# Lab 5 Ep.6 (Issue #20): proves GitHub Actions can sign in to GCP with
+# Workload Identity Federation (no JSON key) and run one read-only command.
+# Values come from repository Variables (not secrets; see docs/labs/lab-05/deployment.md section 10).
+name: GCP Auth Check (WIF)
+
+on:
+  # Manual run. GitHub lists a workflow_dispatch workflow only once the file is on the default branch (main).
+  workflow_dispatch:
+  # Until then: run when this file changes on the Ep.6 branch. Push events come only from people with
+  # write access, so fork pull requests never reach this workflow or the cloud.
+  push:
+    branches:
+      - feature/lab5/6-wif-merge-gate
+    paths:
+      - .github/workflows/gcp-auth-check.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gcp-auth-check:
+    name: GCP auth check (WIF, read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Read-only check of the Cloud Run service
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: ${{ vars.GCP_REGION }}
+          SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+        run: |
+          gcloud auth list --filter=status:ACTIVE --format="value(account)"
+          gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$REGION" \
+            --format="table(metadata.name,status.latestReadyRevisionName,status.url)"
