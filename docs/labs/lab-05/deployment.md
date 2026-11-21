@@ -333,7 +333,12 @@ kill $PROXY; unset DATABASE_URL SEED_PASSWORD
 ```
 
 - The seed used to hash a fixed password that is published in this public repository. Seeding Cloud SQL with it would let anyone sign in to the public URL. The seed now requires `SEED_PASSWORD` whenever `NODE_ENV` is not `development` or `test` (branch `fix/lab5/seed-password-env`, separate PR). The value is generated in the shell, stored only in Secret Manager as `qms-seed-password`, and shared with the team and the Lab 6 partner team privately.
-- TO FILL: migration and seed results against `qms-pg` (not applied yet at the time of writing; see 9.5).
+Results against `qms-pg` on 2026-11-21 (Cloud SQL Auth Proxy on `127.0.0.1:5434`):
+
+| Step | Command | Result |
+|---|---|---|
+| Migrate | `npm run migrate` (`prisma migrate deploy`) | Applied `20261111000000_init` and `20261112090500_auth_sessions`; "All migrations have been successfully applied." Exit 0 |
+| Seed | `NODE_ENV=production npm run seed` from `fix/lab5/seed-password-env` @ `7aca1b2`, `SEED_PASSWORD` from `qms-seed-password` v1 (20 characters, never printed) | Customers `customer1@example.com`, `customer2@example.com`; operators `operator1@example.com`, `operator2@example.com`; queues `General Inquiry Desk`, `Specialized Consultation`; `operator1` assigned to `General Inquiry Desk`. Exit 0 |
 
 ### 9.5 Verification (Check C-04 / R-03)
 
@@ -345,13 +350,21 @@ Read-only checks with `curl` against the live URL on 2026-11-21, revision `qms-0
 | UI served from the same origin | `curl -s -o /dev/null -w "%{http_code} %{content_type}" $URL/` | `200 text/html` | `200 text/html; charset=UTF-8`, title "Queue and Service Management System (QMS)" | **PASS** |
 | Client-side route on refresh | `curl ... $URL/login` | `200 text/html` | `200 text/html; charset=UTF-8` | **PASS** |
 | Unknown API path | `curl -s $URL/api/unknown` | `404 RESOURCE_NOT_FOUND` JSON | `404 {"error":{"code":"RESOURCE_NOT_FOUND",...}}` | **PASS** |
-| Login before migration | `POST $URL/api/auth/login` (unknown user) | `401` once the schema exists | `500`; Cloud Run log: Prisma `P2021` (`public.User` does not exist) | **Open**: migration pending |
+| Login before migration | `POST $URL/api/auth/login` (unknown user) | `401` once the schema exists | `500`; Cloud Run log: Prisma `P2021` (`public.User` does not exist) | Expected before migration; fixed by 9.4 |
+| Login after migration | `POST $URL/api/auth/login` (unknown user) | `401 UNAUTHORIZED` | `401 {"error":{"code":"UNAUTHORIZED","message":"Invalid email or password.",...}}` | **PASS** |
+| Public dev password refused | `POST $URL/api/auth/login` as `customer1@example.com` with the README dev password | `401` (cloud accounts use the private `SEED_PASSWORD`) | `401 UNAUTHORIZED` | **PASS** |
 
-Browser evidence for C-04 (screenshots with the URL visible and no password on screen): TO FILL after the migration and seed:
+Browser evidence for C-04 on 2026-11-21 (Brave, URL bar visible, no password on screen), revision `qms-00001-fh7`, commit `ebb7a74`. Screenshots are in [`evidence/`](evidence/):
 
-- [ ] Sign in as a customer and as an operator
-- [ ] Customer joins a queue; operator calls next
-- [ ] One rule rejection (for example a duplicate join, or a customer opening an operator page)
+| Figure | Screenshot | What it shows | Result |
+|---|---|---|---|
+| C-04.1 | [`c04-01-login-page.png`](evidence/c04-01-login-page.png) | `/login` served from the public Cloud Run URL (13:40) | **PASS** |
+| C-04.2 | [`c04-02-customer-signed-in.png`](evidence/c04-02-customer-signed-in.png) | Sign in: `customer1@example.com`, role `CUSTOMER`, available queue `General Inquiry Desk` (13:43) | **PASS** |
+| C-04.3 | [`c04-03-customer-joined-queue-1.png`](evidence/c04-03-customer-joined-queue-1.png) | Main business action (customer): "You joined General Inquiry Desk.", queue number `1`, status `Waiting` (13:45) | **PASS** |
+| C-04.4 | [`c04-04-duplicate-join-rejected.png`](evidence/c04-04-duplicate-join-rejected.png) | Rule rejection: joining the same queue again shows "You already have an active entry in this queue." (`409 DUPLICATE_ACTIVE_ENTRY`) (13:46) | **PASS** |
+| C-04.5 | [`c04-05-operator-signed-in.png`](evidence/c04-05-operator-signed-in.png) | Sign in: `operator1@example.com`, role `OPERATOR`, assigned queue `General Inquiry Desk` (13:46) | **PASS** |
+| C-04.6 | [`c04-06-operator-queue-before-call-next.png`](evidence/c04-06-operator-queue-before-call-next.png) | Operator queue view: `Waiting: 1`, entry #1 for customer `11111111-…` joined 1:45:35 PM, **before** Call Next (13:46) | **PASS** (data from the customer is visible to the operator) |
+| C-04.7 | [`c04-07-operator-call-next.png`](evidence/c04-07-operator-call-next.png) | Main business action (operator): **Call Next** shows "Called queue number 1."; entry #1 moves to Active Service with status `Called` (called 1:53:31 PM); counters `Waiting: 0 · Active: 1 · Completed: 0` (13:53) | **PASS** |
 
 ### 9.6 Choices that differ from the Starter Kit, and cost control
 
