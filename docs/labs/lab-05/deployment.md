@@ -279,6 +279,13 @@ printf '%s' "postgresql://qms_app:${DB_PASS}@localhost/qms_db?host=/cloudsql/${C
 printf '%s' "$SESSION" | gcloud secrets create qms-session-secret --data-file=- --replication-policy=automatic --project=$PROJECT_ID
 unset DB_PASS SESSION
 
+# Password for the seeded demo accounts (needed before the seed in 9.4; create once)
+SEED_PW=$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-20)   # 20 characters, never echoed
+printf '%s' "$SEED_PW" | gcloud secrets create qms-seed-password --data-file=- --replication-policy=automatic --project=$PROJECT_ID
+unset SEED_PW
+# To rotate it later: add a new version the same way, then run the seed again (9.4)
+#   printf '%s' "$NEW_PW" | gcloud secrets versions add qms-seed-password --data-file=- --project=$PROJECT_ID
+
 # Runtime service account with least privilege (no Editor, not the default compute account)
 gcloud iam service-accounts create qms-run --display-name="QMS Cloud Run runtime" --project=$PROJECT_ID
 gcloud projects add-iam-policy-binding $PROJECT_ID --member=serviceAccount:$SA --role=roles/cloudsql.client --condition=None
@@ -287,6 +294,8 @@ gcloud secrets add-iam-policy-binding qms-session-secret --member=serviceAccount
 ```
 
 Checked afterwards (read-only): `qms-run` holds only `roles/cloudsql.client` on the project, and `roles/secretmanager.secretAccessor` only on the two secrets.
+
+`qms-seed-password` is deliberately **not** granted to `qms-run`: the running service never seeds. Only the person who runs 9.4 reads it, with their own account (project Owner or Editor, which can access secrets). If a later deploy workflow runs the seed, grant `roles/secretmanager.secretAccessor` on `qms-seed-password` to that workflow's service account only.
 
 ### 9.3 Build, push and deploy (first manual release)
 
@@ -318,8 +327,24 @@ First release:
 
 The production image contains no Prisma CLI (`prisma` is a dev dependency), so `prisma migrate deploy` cannot run inside the container. Migrations and the seed run from a checkout of the release commit, through the Cloud SQL Auth Proxy, **before** users need the new schema. Migrations are additive (`prisma migrate deploy` applies only pending migrations).
 
+Before you start: the secret `qms-seed-password` must exist (created once in 9.2), and you must be signed in with `gcloud auth login` as a project Owner or Editor.
+
+**Install the Cloud SQL Auth Proxy v2** (one of these; both give the same `cloud-sql-proxy` binary):
+
+- **Google Cloud CLI component** (used here; tested on Windows 11 with Google Cloud SDK 594.0.0, component "Cloud SQL Proxy v2" version 2.26.3):
+  ```bash
+  gcloud components install cloud-sql-proxy
+  ```
+  On Windows with the Cloud SDK's bundled Python, a non-interactive shell refuses to update components (`Cannot use bundled Python installation to update Google Cloud CLI in non-interactive mode`). Run it in an interactive terminal, or first follow the command that error prints (`gcloud components copy-bundled-python`, then set `CLOUDSDK_PYTHON` to the path it returns). The binary lands in the SDK `bin` folder.
+- **Direct download of the Windows binary** (no gcloud component needed):
+  ```powershell
+  Invoke-WebRequest https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.26.3/cloud-sql-proxy.x64.exe -OutFile cloud-sql-proxy.exe
+  ```
+  Check the installed version with `cloud-sql-proxy --version` (here: `2.26.3+windows.amd64`).
+
+`--gcloud-auth` makes the proxy use the `gcloud auth login` credentials ("Use gcloud's user credentials as a source of IAM credentials", from `cloud-sql-proxy --help`), so no Application Default Credentials or key file is needed.
+
 ```bash
-gcloud components install cloud-sql-proxy
 cloud-sql-proxy --gcloud-auth --address 127.0.0.1 --port 5434 "$CONN" &     # 5433 is used by the local Compose database
 PROXY=$!
 # Read the Cloud Run URL from Secret Manager and point it at the proxy, inside the shell only (never printed):
@@ -333,6 +358,7 @@ kill $PROXY; unset DATABASE_URL SEED_PASSWORD
 ```
 
 - The seed used to hash a fixed password that is published in this public repository. Seeding Cloud SQL with it would let anyone sign in to the public URL. The seed now requires `SEED_PASSWORD` whenever `NODE_ENV` is not `development` or `test` (branch `fix/lab5/seed-password-env`, separate PR). The value is generated in the shell, stored only in Secret Manager as `qms-seed-password`, and shared with the team and the Lab 6 partner team privately.
+
 Results against `qms-pg` on 2026-11-21 (Cloud SQL Auth Proxy on `127.0.0.1:5434`):
 
 | Step | Command | Result |
