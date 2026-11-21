@@ -5,9 +5,39 @@ import { Role, AccountStatus, QueueAvailability, PrismaClient } from '@prisma/cl
 import { prisma } from '../src/db';
 import { hashPassword } from '../src/auth/password';
 
-export async function seed(client: PrismaClient = prisma) {
-  // Development-only password for every seeded account (documented in README).
-  const passwordHash = await hashPassword('Password123!');
+/** Fixed password for local development and automated tests only (documented in README). */
+export const DEV_SEED_PASSWORD = 'Password123!';
+export const MIN_SEED_PASSWORD_LENGTH = 12;
+
+/**
+ * Chooses the password for every seeded account.
+ *
+ * - SEED_PASSWORD, when set, is used as-is (at least 12 characters, never the public dev password).
+ * - Without it, the fixed dev password is allowed only when NODE_ENV is development or test.
+ *   Any other environment (production, unset, a cloud database reached through a proxy) must
+ *   set SEED_PASSWORD privately, because the dev password is published in this public repository.
+ */
+export function resolveSeedPassword(env: NodeJS.ProcessEnv = process.env): string {
+  const provided = env.SEED_PASSWORD;
+  if (provided !== undefined && provided !== '') {
+    if (provided === DEV_SEED_PASSWORD) {
+      throw new Error('SEED_PASSWORD must not be the public development password.');
+    }
+    if (provided.length < MIN_SEED_PASSWORD_LENGTH) {
+      throw new Error(`SEED_PASSWORD must be at least ${MIN_SEED_PASSWORD_LENGTH} characters.`);
+    }
+    return provided;
+  }
+  if (env.NODE_ENV === 'development' || env.NODE_ENV === 'test') {
+    return DEV_SEED_PASSWORD;
+  }
+  throw new Error(
+    'SEED_PASSWORD is required unless NODE_ENV is development or test. Set it in the shell, never in a committed file.'
+  );
+}
+
+export async function seed(client: PrismaClient = prisma, password: string = resolveSeedPassword()) {
+  const passwordHash = await hashPassword(password);
 
   // 1. Customers (RFC 4122 UUIDv4)
   const customer1 = await client.user.upsert({

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma } from '../src/db';
-import { seed } from '../prisma/seed';
+import { seed, resolveSeedPassword, DEV_SEED_PASSWORD, MIN_SEED_PASSWORD_LENGTH } from '../prisma/seed';
 import bcrypt from 'bcrypt';
 import { Role, AccountStatus, QueueAvailability } from '@prisma/client';
 
@@ -110,5 +110,49 @@ describe('Database Integration: Idempotent Seed Script', () => {
     expect(userCount).toBe(4);
     expect(queueCount).toBe(2);
     expect(assignmentCount).toBe(1);
+  });
+
+  it('hashes an explicitly supplied password instead of the development password', async () => {
+    const privatePassword = 'ci-only-private-seed-pass-1';
+    await seed(prisma, privatePassword);
+
+    const operator1 = await prisma.user.findUnique({
+      where: { id: '33333333-3333-4333-8333-333333333333' },
+    });
+    expect(await bcrypt.compare(privatePassword, operator1!.passwordHash)).toBe(true);
+    expect(await bcrypt.compare(DEV_SEED_PASSWORD, operator1!.passwordHash)).toBe(false);
+
+    // Restore the shared fixture password for later suites.
+    await seed(prisma, DEV_SEED_PASSWORD);
+  });
+});
+
+describe('resolveSeedPassword', () => {
+  it('uses the development password only in development or test', () => {
+    expect(resolveSeedPassword({ NODE_ENV: 'development' })).toBe(DEV_SEED_PASSWORD);
+    expect(resolveSeedPassword({ NODE_ENV: 'test' })).toBe(DEV_SEED_PASSWORD);
+  });
+
+  it('refuses to fall back to the development password in production or when NODE_ENV is unset', () => {
+    expect(() => resolveSeedPassword({ NODE_ENV: 'production' })).toThrow(/SEED_PASSWORD is required/);
+    expect(() => resolveSeedPassword({})).toThrow(/SEED_PASSWORD is required/);
+    expect(() => resolveSeedPassword({ NODE_ENV: 'production', SEED_PASSWORD: '' })).toThrow(
+      /SEED_PASSWORD is required/
+    );
+  });
+
+  it('uses SEED_PASSWORD when it is set and valid', () => {
+    expect(resolveSeedPassword({ NODE_ENV: 'production', SEED_PASSWORD: 'a-long-private-value' })).toBe(
+      'a-long-private-value'
+    );
+  });
+
+  it('rejects a short SEED_PASSWORD or the public development password', () => {
+    expect(() => resolveSeedPassword({ NODE_ENV: 'production', SEED_PASSWORD: 'short' })).toThrow(
+      new RegExp(`at least ${MIN_SEED_PASSWORD_LENGTH} characters`)
+    );
+    expect(() => resolveSeedPassword({ NODE_ENV: 'production', SEED_PASSWORD: DEV_SEED_PASSWORD })).toThrow(
+      /must not be the public development password/
+    );
   });
 });

@@ -1,0 +1,94 @@
+name: CI & Docker Build
+
+on:
+  pull_request:
+    branches:
+      - main
+      - lab5-staging
+      - '*-staging'
+      - 'staging/**'
+  push:
+    branches:
+      - lab5-staging
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-and-docker:
+    name: Build, Migrate, Seed, Test & Docker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: qms_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d qms_db"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      PORT: '3000'
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/qms_db?schema=public&connection_limit=25
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/qms_test_db?schema=public&connection_limit=25
+      SESSION_SECRET: ci_test_only_non_secret_session_key_minimum_32_characters!
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Run database migrations (dev and isolated test databases)
+        run: |
+          npx prisma db execute --url "$DATABASE_URL" --file docker/postgres-init/01-create-test-db.sql
+          npm run migrate
+          npm run migrate:test
+
+      - name: Seed database (idempotent)
+        env:
+          NODE_ENV: development
+        run: npm run seed
+
+      - name: Run server TypeScript typecheck
+        run: npm run typecheck --workspace=server
+
+      - name: Run server integration test suites (PostgreSQL 16)
+        env:
+          NODE_ENV: test
+        run: npm test
+
+      - name: Run client test suites (Vitest + React Testing Library)
+        run: npm run test:client
+
+      - name: Run production build checks (server + client)
+        run: npm run build
+
+      - name: Test Docker image build
+        env:
+          # On pull_request events GITHUB_SHA is the temporary merge commit; use the PR head commit instead.
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: docker build --build-arg COMMIT_SHA=${SHA::7} -t cpe334-qms:ci .
