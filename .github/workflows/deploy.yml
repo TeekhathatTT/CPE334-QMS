@@ -1,0 +1,164 @@
+# Lab 5 Step 7 (Issue #21): Automated deployment of accepted changes on `main`
+# to Google Cloud Run via Workload Identity Federation (R-07, R-08, R-09, R-10, Check C-06).
+# Uses GitHub repository Variables (no static JSON keys; see docs/labs/lab-05/deployment.md §10–§11).
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build, Push & Deploy to Cloud Run
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      AR_REPO: ${{ vars.ARTIFACT_REGISTRY_REPO || 'qms' }}
+      IMAGE_NAME: cpe334-qms
+      SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+      FULL_SHA: ${{ github.sha }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Configure Docker authentication for Artifact Registry
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: Build and push Docker image tagged with full commit SHA (R-08)
+        id: build-push
+        run: |
+          SHORT_SHA="${FULL_SHA::7}"
+          IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}"
+          IMAGE_TAGGED="${IMAGE_BASE}:${FULL_SHA}"
+
+          docker build \
+            --platform linux/amd64 \
+            --build-arg "COMMIT_SHA=${SHORT_SHA}" \
+            -t "${IMAGE_TAGGED}" \
+            .
+
+          docker push "${IMAGE_TAGGED}"
+
+          IMAGE_DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE_TAGGED}")"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "image_tagged=${IMAGE_TAGGED}" >> "$GITHUB_OUTPUT"
+          echo "image_digest=${IMAGE_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Pushed image tag:    ${IMAGE_TAGGED}"
+          echo "Pushed image digest: ${IMAGE_DIGEST}"
+
+      # Database migrations are intentionally not run here: the lean production image omits
+      # the Prisma CLI devDependency and qms-github has no Cloud Run Jobs IAM. Apply schema
+      # migrations via Cloud SQL Auth Proxy prior to schema-dependent releases (deployment.md §9.4).
+      - name: Deploy new revision to Cloud Run
+        env:
+          SHORT_SHA: ${{ steps.build-push.outputs.short_sha }}
+          IMAGE_DIGEST: ${{ steps.build-push.outputs.image_digest }}
+        run: |
+          # Deploying to an existing Cloud Run service preserves its runtime service account,
+          # Cloud SQL connection, Secret Manager bindings, resource limits, and public IAM policy
+          # without requiring roles/run.admin (roles/run.developer + roles/iam.serviceAccountUser suffice).
+          gcloud run deploy "${SERVICE}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${IMAGE_DIGEST}" \
+            --update-env-vars "COMMIT_SHA=${SHORT_SHA}" \
+            --quiet
+
+      - name: Inspect live Cloud Run revision and run smoke test
+        id: verify
+        env:
+          SHORT_SHA: ${{ steps.build-push.outputs.short_sha }}
+          IMAGE_TAGGED: ${{ steps.build-push.outputs.image_tagged }}
+          IMAGE_DIGEST: ${{ steps.build-push.outputs.image_digest }}
+        run: |
+          SERVICE_URL="$(gcloud run services describe "${SERVICE}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --format='value(status.url)')"
+          LATEST_REVISION="$(gcloud run services describe "${SERVICE}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --format='value(status.latestReadyRevisionName)')"
+          LIVE_IMAGE="$(gcloud run services describe "${SERVICE}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --format='value(spec.template.spec.containers[0].image)')"
+
+          echo "Service URL:     ${SERVICE_URL}"
+          echo "Latest revision: ${LATEST_REVISION}"
+          echo "Live image:      ${LIVE_IMAGE}"
+          echo "Tagged image:    ${IMAGE_TAGGED}"
+          echo "Expected SHA:    ${SHORT_SHA}"
+
+          # Retry briefly to allow Cloud Run routing to settle on the new revision
+          HEALTH_OK=0
+          for attempt in 1 2 3 4 5; do
+            HEALTH_CODE="$(curl --max-time 10 -sS -o /tmp/health.json -w '%{http_code}' "${SERVICE_URL}/api/health" || echo "000")"
+            HEALTH_BODY="$(cat /tmp/health.json 2>/dev/null || true)"
+            echo "Health check attempt ${attempt}: HTTP ${HEALTH_CODE} ${HEALTH_BODY}"
+
+            if [ "${HEALTH_CODE}" = "200" ]; then
+              STATUS_VAL="$(jq -r '.status // empty' /tmp/health.json)"
+              DB_VAL="$(jq -r '.database // empty' /tmp/health.json)"
+              VER_VAL="$(jq -r '.version // empty' /tmp/health.json)"
+
+              if [ "${STATUS_VAL}" = "ok" ] && [ "${DB_VAL}" = "ok" ] && [ "${VER_VAL}" = "${SHORT_SHA}" ]; then
+                HEALTH_OK=1
+                break
+              fi
+            fi
+            sleep 5
+          done
+
+          if [ "${HEALTH_OK}" -ne 1 ]; then
+            echo "::error::Smoke test failed on GET /api/health (expected HTTP 200 with status=ok, database=ok, version=${SHORT_SHA})."
+            exit 1
+          fi
+
+          ROOT_CODE="$(curl --max-time 10 -sS -o /tmp/index.html -w '%{http_code}' "${SERVICE_URL}/")"
+          echo "Root page check: HTTP ${ROOT_CODE}"
+          if [ "${ROOT_CODE}" != "200" ]; then
+            echo "::error::Smoke test failed on GET / (expected HTTP 200, got ${ROOT_CODE})."
+            exit 1
+          fi
+
+          {
+            echo "### Cloud Run Deployment Summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "|---|---|"
+            echo "| Commit SHA | \`${FULL_SHA}\` (short: \`${SHORT_SHA}\`) |"
+            echo "| Image Tag | \`${IMAGE_TAGGED}\` |"
+            echo "| Image Digest | \`${IMAGE_DIGEST}\` |"
+            echo "| Cloud Run Service | \`${SERVICE}\` (\`${REGION}\`) |"
+            echo "| Latest Ready Revision | \`${LATEST_REVISION}\` |"
+            echo "| Service URL | ${SERVICE_URL} |"
+            echo "| \`GET /api/health\` | HTTP \`${HEALTH_CODE}\` — \`${HEALTH_BODY}\` |"
+            echo "| \`GET /\` | HTTP \`${ROOT_CODE}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
