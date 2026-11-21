@@ -88,4 +88,7 @@ jobs:
         run: npm run build
 
       - name: Test Docker image build
-        run: docker build --build-arg COMMIT_SHA=${GITHUB_SHA::7} -t cpe334-qms:ci .
+        env:
+          # On pull_request events GITHUB_SHA is the temporary merge commit; use the PR head commit instead.
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: docker build --build-arg COMMIT_SHA=${SHA::7} -t cpe334-qms:ci .
