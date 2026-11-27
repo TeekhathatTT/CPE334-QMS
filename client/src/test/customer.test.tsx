@@ -158,6 +158,8 @@ describe('Join queue', () => {
 
   it.each([
     [409, 'DUPLICATE_ACTIVE_ENTRY', 'You already have an active entry in this queue.', false],
+    // UI-002 (Lab 7 BR-06, CR51-AC2): the 2-active-entry cap has its own safe copy.
+    [409, 'MAX_ACTIVE_ENTRIES_REACHED', 'You can hold at most 2 active queue entries at the same time.', false],
     [409, 'QUEUE_NOT_AVAILABLE', 'This queue is not available right now.', true],
     [404, 'RESOURCE_NOT_FOUND', 'This queue is no longer available.', true],
     [403, 'FORBIDDEN', "We couldn't verify this request. Please refresh the page or sign in again.", false],

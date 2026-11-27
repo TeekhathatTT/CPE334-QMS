@@ -1,0 +1,38 @@
+# Lab 7 Part B (#52) GREEN run - server
+# Implementation commit: bfa2464 (tests from 2664740)
+# Command: cd server && npx vitest run tests/queue-registration.test.ts
+# Node v22.20.0 | vitest/2.1.9 win32-x64 node-v22.20.0 | Version 1.63.0 | PostgreSQL 16.15 | 2026-11-27T05:08:39Z
+
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 C:/Users/UNS_CT/Desktop/CPE_2569/CPE334/Lab5/QMS/qms/server
+
+stderr | tests/queue-registration.test.ts > Issue #4: Service Queue Creation & Queue Number Generation > 2. Normal Queue Registration (POST /api/queues/:queueId/entries) > rolls back lastQueueNumber atomically when entry creation fails inside the transaction (NUMBER-002)
+[Unhandled Error] PrismaClientKnownRequestError: 
+Invalid `prisma.queueEntry.create()` invocation:
+
+
+Unique constraint failed on the fields: (`serviceQueueId`,`queueNumber`)
+    at $n.handleRequestError (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at l (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at __vite_ssr_import_1__.prisma.$transaction.maxWait (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\server\src\services\queueService.ts:157:25)
+    at Proxy._transactionWithCallback (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:130:8000)
+    at Module.joinQueue (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\server\src\services\queueService.ts:88:19)
+    at C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\server\src\routes\queues.ts:47:21 {
+  code: 'P2002',
+  clientVersion: '5.22.0',
+  meta: {
+    modelName: 'QueueEntry',
+    target: [ 'serviceQueueId', 'queueNumber' ]
+  }
+}
+
+ ✓ tests/queue-registration.test.ts (32 tests) 5112ms
+
+ Test Files  1 passed (1)
+      Tests  32 passed (32)
+   Start at  12:05:55
+   Duration  6.09s (transform 179ms, setup 0ms, collect 694ms, tests 5.11s, environment 0ms, prepare 108ms)
+

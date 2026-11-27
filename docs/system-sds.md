@@ -1,6 +1,8 @@
 # System-Level Software Design Specification
 
-This specification describes the intended Sprint 1 design. The repository currently contains documentation only; schema, runtime configuration, and UI behavior described here are implementation contracts, not claims about existing code.
+> **Version:** 1.1 | **Last Updated:** 2026-11-27 | **Sprint 1 Baseline:** commit `e304cd9` (`main`), deployed revision `qms-00005-5kz` | **Change Ref:** Issue #51 (Lab 7 Part A — BR-06)
+
+This specification describes the Sprint 1 baseline design and approved post-baseline contract updates. Implementation decisions recorded in §§10–12 document verified Sprint 1 behaviors.
 
 ## 1. Architecture Overview
 
@@ -40,7 +42,7 @@ Authorization and ownership checks are server-side. UI control visibility is not
 | `GET /api/auth/me` | `401 UNAUTHORIZED` | May read own authenticated identity | May read own authenticated identity | Returns current session user's ID, email, and role. |
 | Access any protected endpoint without a valid session | `401 UNAUTHORIZED` | — | — | Authentication is required before protected business operations. |
 | `GET /api/queues` | `401 UNAUTHORIZED` | May list OPEN queues | May list OPEN queues | Only OPEN queues are returned. |
-| `POST /api/queues/{queueId}/entries` | `401 UNAUTHORIZED` | May join an OPEN queue | `403 FORBIDDEN` | A closed queue or duplicate active entry returns the corresponding `409` error. |
+| `POST /api/queues/{queueId}/entries` | `401 UNAUTHORIZED` | May join an OPEN queue | `403 FORBIDDEN` | Closed queue returns `409 QUEUE_NOT_AVAILABLE`; same-queue duplicate returns `409 DUPLICATE_ACTIVE_ENTRY`; holding 2 active entries across queues returns `409 MAX_ACTIVE_ENTRIES_REACHED` (`BR-06`). |
 | `GET /api/me/queue-entries` | `401 UNAUTHORIZED` | May list own entries | `403 FORBIDDEN` | Results are scoped to the authenticated customer. |
 | `GET /api/me/queue-entries/{entryId}` | `401 UNAUTHORIZED` | May read own entry | `403 FORBIDDEN` | Another customer's or missing entry returns `404 RESOURCE_NOT_FOUND`; resource existence is not disclosed. |
 | `GET /api/operator/queues` | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May list assigned queues | Assignment scope is enforced by the API. |
@@ -153,19 +155,21 @@ Prisma models can declare ordinary fields, primary keys, unique constraints, and
 
 ## 4. Concurrency and Integrity Design
 
-### 4.1 Queue-number allocation
+### 4.1 Queue-number allocation and cross-queue active entry cap (BR-03, BR-05, BR-06)
 
-Queue number allocation uses the PostgreSQL row-level locking decision in BR-03 and AD-02. The implementation must perform these logical steps in one database transaction:
+Queue number allocation uses the PostgreSQL row-level locking decision in BR-03 and AD-02, extended in Issue #51 (Lab 7 Part A) to enforce the cross-queue 2-active-entry cap (BR-06) safely under concurrent joins to *distinct* queues by the same customer. The implementation must perform these logical steps in one database transaction:
 
-1. Begin a transaction and acquire a row-level lock on the target `ServiceQueue` row using a locking strategy supported by the selected Prisma/PostgreSQL versions.
-2. Confirm the queue exists and is `OPEN`.
-3. Confirm the customer is eligible to join, including the no-active-entry rule.
-4. Increment that queue's `lastQueueNumber`.
-5. Use the newly allocated value as `QueueEntry.queueNumber`.
-6. Insert the `QueueEntry` with status `WAITING` and a server-generated `joinedAt`.
-7. Commit the transaction before returning success.
+1. Begin a transaction and acquire a **customer-scoped serialization lock** (`SELECT id FROM "User" WHERE id = $customerId::uuid FOR NO KEY UPDATE`) *before* locking the target `ServiceQueue` row. Consistent lock ordering (`User` → `ServiceQueue`) prevents deadlocks while serializing concurrent joins by the same customer across distinct queues so two racing joins cannot bypass the 2-active-entry cap. Using `FOR NO KEY UPDATE` (rather than `FOR UPDATE`) avoids conflicting with PostgreSQL `FOR KEY SHARE` locks taken by foreign-key inserts (such as `Session` rows during login).
+2. Acquire a row-level lock on the target `ServiceQueue` row (`SELECT ... FROM "ServiceQueue" WHERE id = $queueId::uuid FOR UPDATE`).
+3. Confirm the queue exists (`404 RESOURCE_NOT_FOUND`) and is `OPEN` (`409 QUEUE_NOT_AVAILABLE`).
+4. Confirm the customer does not already hold an active entry (`status IN ('WAITING', 'CALLED', 'SERVING')`) in the **same** queue; if so, reject with `409 DUPLICATE_ACTIVE_ENTRY` (BR-05 / `CR51-AC4` takes precedence over BR-06).
+5. Count the customer's active entries (`status IN ('WAITING', 'CALLED', 'SERVING')`) across **all** queues; if the count is `>= 2`, reject with `409 MAX_ACTIVE_ENTRIES_REACHED` (BR-06 / `CR51-AC2`) before mutating `lastQueueNumber`. Terminal statuses (`COMPLETED`, and future `CANCELLED`/`NO_SHOW` once implemented) are excluded from the active count.
+6. Increment that queue's `lastQueueNumber`.
+7. Use the newly allocated value as `QueueEntry.queueNumber`.
+8. Insert the `QueueEntry` with status `WAITING` and a server-generated `joinedAt` (`clock_timestamp()` captured after acquiring the queue lock).
+9. Commit the transaction before returning `201 Created`.
 
-The counter increment and entry insert are atomic: any failure rolls back both. The unique constraint on `(serviceQueueId, queueNumber)` is the final duplicate-number guard; the partial unique index is the final active-entry guard. Application-level checks alone are insufficient. The design requires a database row lock but does not prescribe a specific SQL statement or Prisma API until implementation versions are selected.
+The counter increment and entry insert are atomic: any validation failure (including `409 MAX_ACTIVE_ENTRIES_REACHED`) or DB error rolls back the entire transaction so `lastQueueNumber` is never leaked. The unique constraint on `(serviceQueueId, queueNumber)` remains the final duplicate-number guard, and the partial unique index `QueueEntry_active_customer_queue_uidx` remains the final same-queue duplicate guard. No schema migration is required for BR-06 because `QueueEntry_customer_joinedAt_idx` already indexes `customerId` and the active-status filter `IN ('WAITING', 'CALLED', 'SERVING')` is forward-compatible with future terminal statuses.
 
 ### 4.2 Entry lifecycle and call-next
 
@@ -219,7 +223,7 @@ HTTP status represents the protocol-level result; `code` is a stable machine-rea
 | 401 | `UNAUTHORIZED` | Missing, invalid, or expired session; invalid credentials |
 | 403 | `FORBIDDEN` | Authenticated user has the wrong role or lacks queue assignment |
 | 404 | `RESOURCE_NOT_FOUND` | Unknown resource; also used for customer cross-owner lookup |
-| 409 | `QUEUE_NOT_AVAILABLE`, `DUPLICATE_ACTIVE_ENTRY`, `INVALID_STATE_TRANSITION`, `CONCURRENT_MODIFICATION` | Closed/ineligible queue, duplicate active join, invalid transition, or stale/conflicting mutation |
+| 409 | `QUEUE_NOT_AVAILABLE`, `DUPLICATE_ACTIVE_ENTRY`, `MAX_ACTIVE_ENTRIES_REACHED`, `INVALID_STATE_TRANSITION`, `CONCURRENT_MODIFICATION` | Closed/ineligible queue, same-queue duplicate active join, cross-queue 2-active-entry cap reached (`BR-06`), invalid transition, or stale/conflicting mutation |
 | 500 | `INTERNAL_ERROR` | Unexpected server failure; safe generic message only |
 
 The contract does not use `422 Unprocessable Content`.
@@ -235,7 +239,7 @@ The contract does not use `422 Unprocessable Content`.
 | `401 Unauthorized` | Missing/invalid session or invalid credentials |
 | `403 Forbidden` | Authenticated user lacks role permission or operator assignment |
 | `404 Not Found` | Resource absent or customer-private entry not owned by requester |
-| `409 Conflict` | Queue availability, duplicate active entry, invalid transition, or concurrent modification |
+| `409 Conflict` | Queue availability, duplicate active entry, cross-queue active entry cap reached (`BR-06`), invalid transition, or concurrent modification |
 | `500 Internal Server Error` | Unexpected server failure with a safe error body |
 
 ## 6. UI Conventions and Common States
@@ -353,4 +357,11 @@ These record choices the specification left open for the operator workflow and e
 | 2 | Concurrency-safe Start & Complete | `POST /api/operator/queue-entries/:entryId/start` and `/complete` acquire a row-level lock (`SELECT "id", "serviceQueueId", "status", clock_timestamp() AS "now" FROM "QueueEntry" WHERE "id" = $1::uuid FOR UPDATE`) inside a transaction, verify `OperatorAssignment` (`403 FORBIDDEN` if unassigned), verify expected status (`CALLED` for start, `SERVING` for complete; `409 INVALID_STATE_TRANSITION` otherwise), and record `serviceStartedAt` / `completedAt` directly from the `clock_timestamp()` captured when the row lock is acquired (`CONCURRENCY-004`). Note: the database schema only enforces `CHECK` constraints for `"queueNumber" > 0` (`QueueEntry_queueNumber_positive_chk`) and `"lastQueueNumber" >= 0` (`ServiceQueue_lastQueueNumber_non_negative_chk`); it does not define database `CHECK` constraints on lifecycle timestamp ordering or use `GREATEST(...)`. |
 | 3 | Operator Queue Management layout | `/operator` lists the operator's assigned queues (`OPEN` and `CLOSED`) with availability badges and links to `/operator/queues/:id`. `/operator/queues/:id` groups entries into three sections: **Active Service** (`CALLED` and `SERVING`), **Waiting Queue — FIFO** (`WAITING` in `joinedAt ASC, id ASC` order), and **Completed** (`COMPLETED`), with a top-level **Call Next** action and per-entry **Start Service** (enabled only for `CALLED`) and **Complete Service** (enabled only for `SERVING`) controls. |
 | 4 | Refreshing, conflict recovery & error mapping | Every operator mutation (`call-next`, `start`, `complete`) immediately re-fetches `GET /api/operator/queues/:queueId/entries` upon completion. If a concurrent operator action causes `409 INVALID_STATE_TRANSITION`, the UI shows a user-safe conflict banner and automatically refreshes the entry list so stale buttons are updated immediately. Action-level `403` errors distinguish CSRF verification failures (`"We couldn't verify this request. Please refresh the page or sign in again."`) from RBAC permission errors (`"You do not have permission to perform this action."`), and action-level `404` errors distinguish queue-level `call-next` (`"We couldn't find that service queue."`) from entry-level `start`/`complete` (`"We couldn't find that queue entry."`). Both `/operator` and `/operator/queues/:id` also poll every 10 seconds while visible (`usePolling`). |
+
+## 13. Revision History
+
+| Version | Date | Ref | Summary of Changes |
+|---|---|---|---|
+| 1.0 | 2026-11-11 | Sprint 1 Baseline | Initial System-Level SDS and verified Sprint 1 implementation decisions §§10–12 (accepted at `main` commit `e304cd9`, Cloud Run revision `qms-00005-5kz`). |
+| 1.1 | 2026-11-27 | Issue #51 (Lab 7 Part A) | Updated §2 Role Matrix, §4.1 transaction locking & active-entry cap enforcement (`User` `FOR NO KEY UPDATE` → `ServiceQueue` `FOR UPDATE` lock order, `BR-05` precedence before `BR-06`, max 2 active entries across all queues; `CR51-AC1`–`CR51-AC4`), and §§5.3–5.4 error contract (`409 MAX_ACTIVE_ENTRIES_REACHED`). Confirmed no DB migration is required. |
 
