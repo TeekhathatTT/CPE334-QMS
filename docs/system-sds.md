@@ -43,13 +43,14 @@ Authorization and ownership checks are server-side. UI control visibility is not
 | `POST /api/queues/{queueId}/entries` | `401 UNAUTHORIZED` | May join an OPEN queue | `403 FORBIDDEN` | A closed queue or duplicate active entry returns the corresponding `409` error. |
 | `GET /api/me/queue-entries` | `401 UNAUTHORIZED` | May list own entries | `403 FORBIDDEN` | Results are scoped to the authenticated customer. |
 | `GET /api/me/queue-entries/{entryId}` | `401 UNAUTHORIZED` | May read own entry | `403 FORBIDDEN` | Another customer's or missing entry returns `404 RESOURCE_NOT_FOUND`; resource existence is not disclosed. |
+| `POST /api/me/queue-entries/{entryId}/cancel` (Sprint 2, F-07) | `401 UNAUTHORIZED` | May cancel own `WAITING` entry | `403 FORBIDDEN` | Another customer's or missing entry returns `404 RESOURCE_NOT_FOUND`; a non-`WAITING` entry returns `409 INVALID_STATE_TRANSITION`; a change during the request returns `409 CONCURRENT_MODIFICATION`. Queue availability is not checked. |
 | `GET /api/operator/queues` | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May list assigned queues | Assignment scope is enforced by the API. |
 | `GET /api/operator/queues/{queueId}/entries` | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May list assigned queue entries | Unassigned queue access returns `403 FORBIDDEN`; queue order is deterministic FIFO. |
 | `POST /api/operator/queues/{queueId}/call-next` | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May call next in an assigned queue | Unassigned access returns `403 FORBIDDEN`; invalid transitions return `409 INVALID_STATE_TRANSITION`; empty queue returns `204` with no body. |
 | `POST /api/operator/queue-entries/{entryId}/start` | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May start an entry in an assigned queue | Unassigned access returns `403 FORBIDDEN`; missing resource returns `404 RESOURCE_NOT_FOUND`; invalid transition returns `409 INVALID_STATE_TRANSITION`. |
 | `POST /api/operator/queue-entries/{entryId}/complete` | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May complete an entry in an assigned queue | Unassigned access returns `403 FORBIDDEN`; missing resource returns `404 RESOURCE_NOT_FOUND`; invalid transition returns `409 INVALID_STATE_TRANSITION`. |
 | Customer queue position calculation | Not available | Not specified by the Sprint 1 API | Not specified by the Sprint 1 API | Sprint 1 exposes entry status and FIFO-ordered operator entries; a customer-facing position endpoint is not defined. |
-| Customer cancellation or withdrawal | Not available | Planned for Sprint 2 (F-07) | — | Not part of Sprint 1. |
+| Customer cancellation or withdrawal | Not available | Planned for Sprint 2 (F-07) | — | Not part of Sprint 1. *Rev. 2026-11-27:* specified as `POST /api/me/queue-entries/{entryId}/cancel`, see §13. |
 | No-show handling | Not available | — | Planned for Sprint 2 (F-08) | Not part of Sprint 1. |
 
 ### 2.1 Authorization rules
@@ -114,8 +115,11 @@ The composite primary key is `(operatorId, serviceQueueId)`. Only OPERATOR users
 | `calledAt` | `timestamptz` | Nullable |
 | `serviceStartedAt` | `timestamptz` | Nullable |
 | `completedAt` | `timestamptz` | Nullable |
+| `cancelledAt` (Sprint 2, F-07) | `timestamptz` | Nullable; set only together with `status = CANCELLED` |
 
 The lifecycle and active-state definitions match the SRS: active states are `WAITING`, `CALLED`, and `SERVING`; `COMPLETED` is terminal. Completed entries remain for historical review.
+
+*Rev. 2026-11-27 (F-07):* the `status` enum gains `CANCELLED` (`WAITING`, `CALLED`, `SERVING`, `COMPLETED`, `CANCELLED`). `CANCELLED` is terminal and not active; cancelled entries also remain for history. The active states, and therefore the partial unique index below, are unchanged. See §13.
 
 #### Required database constraints and indexes
 
@@ -170,6 +174,8 @@ The counter increment and entry insert are atomic: any failure rolls back both. 
 ### 4.2 Entry lifecycle and call-next
 
 Allowed transitions are `WAITING -> CALLED -> SERVING -> COMPLETED`. Lifecycle status and corresponding server-generated UTC timestamp are committed atomically. Call-next selects the oldest eligible WAITING entry by `joinedAt ASC, id ASC` and claims it in a transaction so concurrent operators cannot claim the same entry. If no eligible entry exists, the API returns `204 No Content` without changing state. Stale or conflicting mutations use the API's `409` conflict contract.
+
+*Rev. 2026-11-27 (F-07):* one more transition, `WAITING -> CANCELLED`, performed by the owning customer with a conditional update (`... WHERE id = ? AND customerId = ? AND status = 'WAITING'`). It is mutually exclusive with Call Next on the same row; see §13 and the [F-07 feature SDS §10](./features/sprint-2-f07-customer-cancellation.md#10-concurrency-design).
 
 ## 5. API Conventions
 
@@ -354,3 +360,16 @@ These record choices the specification left open for the operator workflow and e
 | 3 | Operator Queue Management layout | `/operator` lists the operator's assigned queues (`OPEN` and `CLOSED`) with availability badges and links to `/operator/queues/:id`. `/operator/queues/:id` groups entries into three sections: **Active Service** (`CALLED` and `SERVING`), **Waiting Queue — FIFO** (`WAITING` in `joinedAt ASC, id ASC` order), and **Completed** (`COMPLETED`), with a top-level **Call Next** action and per-entry **Start Service** (enabled only for `CALLED`) and **Complete Service** (enabled only for `SERVING`) controls. |
 | 4 | Refreshing, conflict recovery & error mapping | Every operator mutation (`call-next`, `start`, `complete`) immediately re-fetches `GET /api/operator/queues/:queueId/entries` upon completion. If a concurrent operator action causes `409 INVALID_STATE_TRANSITION`, the UI shows a user-safe conflict banner and automatically refreshes the entry list so stale buttons are updated immediately. Action-level `403` errors distinguish CSRF verification failures (`"We couldn't verify this request. Please refresh the page or sign in again."`) from RBAC permission errors (`"You do not have permission to perform this action."`), and action-level `404` errors distinguish queue-level `call-next` (`"We couldn't find that service queue."`) from entry-level `start`/`complete` (`"We couldn't find that queue entry."`). Both `/operator` and `/operator/queues/:id` also poll every 10 seconds while visible (`usePolling`). |
 
+
+## 13. Sprint 2 design changes (F-07 Customer cancellation, rev. 2026-11-27)
+
+Contract v1, pending review. The full design is in [features/sprint-2-f07-customer-cancellation.md](./features/sprint-2-f07-customer-cancellation.md); this section records only what F-07 changes in this system design.
+
+| # | Area | Change |
+|---|---|---|
+| 1 | Status model | `QueueStatus` gains the terminal value `CANCELLED`. The only new transition is `WAITING -> CANCELLED`, by the owning customer. Active states stay `WAITING`, `CALLED`, `SERVING`. |
+| 2 | Data model | `QueueEntry.cancelledAt timestamptz NULL`. Migration `20261127090000_f07_queue_entry_cancelled` (`ALTER TYPE "QueueStatus" ADD VALUE 'CANCELLED'`; `ALTER TABLE "QueueEntry" ADD COLUMN "cancelledAt" TIMESTAMPTZ`). The partial unique index `QueueEntry_active_customer_queue_uidx` and all other constraints and indexes are unchanged. No `CHECK` constraint is added for the new value (it cannot be used in the transaction that adds it). |
+| 3 | API list | New `POST /api/me/queue-entries/{entryId}/cancel` (CUSTOMER, session + CSRF, no body, `200` with the updated entry). `cancelledAt` is added to every `QueueEntry` payload. `GET /api/operator/queues/{queueId}/entries` excludes `CANCELLED` entries. Details: [sprints/sprint-2/api-spec.md](./sprints/sprint-2/api-spec.md). |
+| 4 | Concurrency | One transaction: read and check owner and status, then a conditional `UPDATE ... WHERE status = 'WAITING'`, with `cancelledAt = clock_timestamp()`. Zero rows updated → `409 CONCURRENT_MODIFICATION`. Call Next is unchanged and never claims a cancelled or cancel-locked row (`FOR UPDATE SKIP LOCKED`). |
+| 5 | Unchanged | Queue catalog, queue-number allocation and join, authentication, session and CSRF middleware, operator Start and Complete, seed data, Docker image. |
+| 6 | Deployment | The migration is additive and must be applied to the deployed database before the new revision serves traffic. Rolling back below this release after `CANCELLED` rows exist requires handling those rows first. |

@@ -83,7 +83,7 @@ F-06 is the cross-cutting verification responsibility for this entire baseline; 
 | F-04 | Customer queue join and own-state retrieval | 1 |
 | F-05 | Operator lifecycle management | 1 |
 | F-06 | Integration and regression verification | 1 |
-| F-07 | Customer cancellation and queue withdrawal | 2 |
+| F-07 | Customer cancellation and queue withdrawal | 2 (specified, contract v1) |
 | F-08 | No-show handling and recovery | 2 |
 | F-09 | Multi-counter support | 2 |
 | F-10 | Priority queue policy | 2 |
@@ -104,6 +104,47 @@ Every baseline functional requirement (FR-01–FR-13), business rule (BR-01–BR
 
 These features are intentionally deferred from Sprint 1. Their future-specific requirements have not yet been defined in the current SRS; this is planned future scope, not an uncovered Sprint 1 baseline.
 
+*Rev. 2026-11-27:* F-07 now has requirements (FR-14, BR-13, BR-14, AC-17–AC-24 in SRS v2.0); see the Sprint 2 section below. F-08–F-13 are still unspecified.
+
 ### Approved Changes
 
 No approved requirement changes were recorded during this update.
+
+*Rev. 2026-11-27:* the F-07 change below is proposed in contract v1 and is **pending review** by @Khwanklao. It is not yet an approved change.
+
+| Change | Date | Affected IDs | Status |
+|---|---|---|---|
+| F-07 customer cancellation (SRS v2.0) | 2026-11-27 | adds FR-14, BR-13, BR-14, AC-17–AC-24; revises BR-05, BR-09 | proposed, review pending |
+
+## Sprint 2 — F-07 Customer Cancellation Traceability
+
+Planned only. "Result" is `not run` until the test has been executed; nothing in this section is evidence of a pass. Test specification: [sprints/sprint-2/tests.md](./sprints/sprint-2/tests.md).
+
+### Requirements to tests
+
+| Requirement | Feature | Sprint | AC | Planned test ID(s) | Test file (planned) | Result | Contract version |
+|---|---|---|---|---|---|---|---|
+| FR-14 | F-07 | 2 | AC-17–AC-24 | CANCEL-001–CANCEL-020 | `server/tests/f07-cancel-rule.test.ts`, `server/tests/f07-customer-cancellation.test.ts`, `client/src/test/f07-leaveQueue.test.tsx`, `e2e/tests/f07-cancellation.spec.ts` | not run | v1 |
+| BR-13 | F-07 | 2 | AC-18, AC-19, AC-20 | CANCEL-001, CANCEL-003–CANCEL-009 | `server/tests/f07-cancel-rule.test.ts`, `server/tests/f07-customer-cancellation.test.ts` | not run | v1 |
+| BR-14 | F-07 | 2 | AC-17, AC-22, AC-23 | CANCEL-002, CANCEL-012–CANCEL-015, CANCEL-020 | `server/tests/f07-customer-cancellation.test.ts` | not run | v1 |
+| BR-05 (rev. 2.0) | F-04, F-07 | 2 | AC-21 | CANCEL-010, CANCEL-011, CANCEL-017 | `server/tests/f07-customer-cancellation.test.ts`, `e2e/tests/f07-cancellation.spec.ts` | not run | v1 |
+| BR-09 (rev. 2.0) | F-05, F-07 | 2 | AC-18 | CANCEL-001, CANCEL-003 | `server/tests/f07-cancel-rule.test.ts`, `server/tests/f07-customer-cancellation.test.ts` | not run | v1 |
+| BR-01, BR-10 (F-05 cross-feature) | F-05, F-07 | 2 | AC-22 | CANCEL-012, CANCEL-013 | `server/tests/f07-customer-cancellation.test.ts` | not run | v1 |
+| BR-07, NFR-02, NFR-08 | F-02, F-07 | 2 | AC-19 | CANCEL-004–CANCEL-008 | `server/tests/f07-customer-cancellation.test.ts` | not run | v1 |
+| BR-12, NFR-03, NFR-05 | F-07 | 2 | AC-23 | CANCEL-014, CANCEL-020 | `server/tests/f07-customer-cancellation.test.ts` | not run | v1 |
+| FR-07, FR-13 | F-04, F-07 | 2 | AC-17 | CANCEL-002, CANCEL-015 | `server/tests/f07-customer-cancellation.test.ts` | not run | v1 |
+| NFR-06 | F-07 | 2 | AC-24 | CANCEL-016, CANCEL-019 | `client/src/test/f07-leaveQueue.test.tsx`, `e2e/tests/f07-cancellation.spec.ts` | not run | v1 |
+| FR-01–FR-13 (regression) | F-06 | 2 | AC-01–AC-16 | REG-S2-001 | existing Sprint 1 suites | not run | v1 |
+
+### Acceptance criteria to planned tests
+
+| Acceptance Criteria | Test ID(s) | Result |
+|---|---|---|
+| AC-17 | CANCEL-002, CANCEL-015, CANCEL-017 | not run |
+| AC-18 | CANCEL-001, CANCEL-003, CANCEL-018 | not run |
+| AC-19 | CANCEL-004, CANCEL-005, CANCEL-006, CANCEL-007, CANCEL-008 | not run |
+| AC-20 | CANCEL-009 | not run |
+| AC-21 | CANCEL-010, CANCEL-011, CANCEL-017 | not run |
+| AC-22 | CANCEL-012, CANCEL-013 | not run |
+| AC-23 | CANCEL-014, CANCEL-020 | not run |
+| AC-24 | CANCEL-016, CANCEL-017, CANCEL-018, CANCEL-019 | not run |
