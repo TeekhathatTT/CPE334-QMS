@@ -274,3 +274,20 @@ describe('F-08 NOSHOW-016: customer view of a NO_SHOW entry', () => {
     expect(screen.getByRole('button', { name: 'Leave queue' })).toBeInTheDocument();
   });
 });
+
+describe('F-08 NOSHOW-023: return blocked by the BR-06 cap (AC-45)', () => {
+  it('Return to queue on 409 MAX_ACTIVE_ENTRIES_REACHED shows the cap message and reloads the list', async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockOperator(
+      { entries: [missed(NO_SHOW_1_ID, 4, 1)] },
+      { [`POST ${recoverPath(NO_SHOW_1_ID)}`]: () => errorResponse(409, 'MAX_ACTIVE_ENTRIES_REACHED') }
+    );
+    renderApp(`/operator/queues/${OPEN_QUEUE.id}`);
+
+    await user.click(await screen.findByRole('button', { name: 'Return queue number 4 to the queue' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'This customer already has 2 active queue entries, so this entry cannot be returned right now.'
+    );
+    await waitFor(() => expect(callsTo(fetchMock, 'GET', ENTRIES_PATH).length).toBeGreaterThanOrEqual(2));
+  });
+});
