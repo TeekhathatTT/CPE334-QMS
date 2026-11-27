@@ -6,7 +6,7 @@
 | Sprint | 2 (Deliverable 2, Part B) |
 | Issue | #40 |
 | Contract version | v1 (2026-11-27) |
-| Status | Specified, awaiting contract review |
+| Status | Implemented and verified locally at `61e9daf` (contract review by @Khwanklao pending in PR #56; not yet released) |
 | Author / reviewer | @TeekhathatTT / @Khwanklao |
 | Governing documents | [SRS](../srs.md) v2.0, [System SDS](../system-sds.md) §13, [Sprint 2 API spec](../sprints/sprint-2/api-spec.md), [Sprint 2 UI spec](../sprints/sprint-2/ui-spec.md), [Sprint 2 test spec](../sprints/sprint-2/tests.md) |
 
@@ -214,13 +214,13 @@ Changed:
 ## 13. Definition of Done
 
 - [ ] Contract v1 reviewed by @Khwanklao and the review recorded
-- [ ] Red tests committed and the red run saved (`docs/sprints/sprint-2/evidence/f07-red-run.txt`)
-- [ ] Migration applied to the local and test databases; partial unique index unchanged
-- [ ] All CANCEL-001 – CANCEL-020 tests executed and passing
-- [ ] Sprint 1 regression (server, client, E2E) executed and passing with no Sprint 1 test edited
-- [ ] Server typecheck, client typecheck and build pass
-- [ ] Green run saved (`docs/sprints/sprint-2/evidence/f07-green-run.txt`)
-- [ ] Traceability, test spec and completion table updated with actual results and commit SHA
+- [x] Red tests committed and the red run saved (`docs/sprints/sprint-2/evidence/f07-red-run.txt`, red commit `477febb`)
+- [x] Migration applied to the local and test databases; partial unique index unchanged (CANCEL-011)
+- [x] All CANCEL-001 – CANCEL-020 tests executed and passing (`61e9daf`)
+- [x] Sprint 1 regression (server, client, E2E) executed and passing with no Sprint 1 test edited
+- [x] Server typecheck, client typecheck, build and `docker build` pass
+- [x] Green run saved (`docs/sprints/sprint-2/evidence/f07-green-run.txt`)
+- [x] Traceability, test spec and completion table updated with actual results and commit SHA
 - [ ] PR into `sprint2-staging` reviewed by @Khwanklao, CI green
 - [ ] Not part of F-07 DoD: NFR-04 p95 measurement of the cancel mutation (PERF-001 is not extended); production migration and release deploy
 

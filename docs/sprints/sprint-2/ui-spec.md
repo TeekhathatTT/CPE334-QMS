@@ -3,6 +3,7 @@
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-11-27 | F-07 contract v1: "Leave queue" control on the customer entry detail page, `Cancelled` status |
+| 1.1 | 2026-11-27 | Implementation note for §3.2 "Idle": the Leave queue button sits on its own row **below** the footer row (status text and Refresh), not in the same row as Refresh, so that the confirmation panel can open in place at full width. Behavior, text, order of focus and all acceptance criteria are unchanged. |
 
 This document extends the [Sprint 1 UI specification](../sprint-1/ui-spec.md). All Sprint 1 rules (accessibility, responsiveness, error states, session expiry) still apply. Requirements: [SRS](../../srs.md) FR-14, BR-13, BR-14, AC-24. API: [api-spec.md](./api-spec.md) §3.1. Design: [F-07 feature SDS](../../features/sprint-2-f07-customer-cancellation.md).
 
