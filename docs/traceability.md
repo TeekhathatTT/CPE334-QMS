@@ -118,7 +118,8 @@ No approved requirement changes were recorded during this update.
 | F-08 no-show handling and recovery (SRS v3.0) | 2026-11-27 | adds FR-15, FR-16, BR-15–BR-17, AC-25–AC-34, error code `RECOVERY_LIMIT_REACHED`; revises BR-05, BR-09 | proposed, review pending |
 | F-09 multi-counter support (SRS v4.0) | 2026-11-27 | adds FR-17–FR-19, BR-18–BR-20, AC-35–AC-44, error codes `COUNTER_CLOSED` and `NO_WAITING_ENTRIES`; updates BR-10 and BR-16 notes | superseded by v4.1 (review fixes) |
 | F-09 multi-counter support (SRS v4.1, contract v1.1) | 2026-11-27 | refines BR-19 (legacy Call Next trade-off), BR-20 & AC-41(c) (composite FK `MATCH SIMPLE`), AC-40(a) (parallel `SKIP LOCKED` wording), AC-42 & AC-43 (disabled non-owned counters, 0-usable-counter fallback, `CALLED`/`SERVING`-only badges) | approved and merged to `sprint2-staging` (@TeekhathatTT) |
-| F-09 multi-counter support (SRS v4.2, contract v1.2) | 2026-11-27 | aligns AC-37 / COUNTER-004 unknown `queueId` to `404 RESOURCE_NOT_FOUND` (matching existing `requireQueueAssignment` middleware) | implemented locally, PR review pending (@TeekhathatTT) |
+| F-09 multi-counter support (SRS v4.2, contract v1.2) | 2026-11-27 | aligns AC-37 / COUNTER-004 unknown `queueId` to `404 RESOURCE_NOT_FOUND` (matching existing `requireQueueAssignment` middleware) | superseded by v4.3 (implementation PR review fixes) |
+| F-09 multi-counter support (SRS v4.3, contract v1.3) | 2026-11-27 | adds `ON UPDATE RESTRICT` to BR-20/AC-41(c), strict counter loading/error/poll-error fallback gate + `403`/`409` refetch to AC-42, `(serviceQueueId, name)` seed upsert + honest E2E regression wording + `COUNTER-019` legacy fallback E2E to AC-44 | implemented locally, PR re-review pending (@TeekhathatTT) |
 
 ## Sprint 2 — F-07 Customer Cancellation Traceability
 
@@ -196,27 +197,27 @@ Contract v1 (2026-11-27, issue #41). Every result below is `planned` until the t
 
 ## Sprint 2 — F-09 Multi-counter Support Traceability
 
-Contract v1.2 (2026-11-27, issue #42, SRS v4.2, author @Khwanklao). *Rev. 2026-11-27 (results):* every test below was executed locally on `feature/sprint2/42-multi-counter-impl` (see [sprints/sprint-2/tests.md §8.5](./sprints/sprint-2/tests.md#85-execution-results-f-09) and [evidence/perf-s2-003.txt](./sprints/sprint-2/evidence/perf-s2-003.txt)). Release status: pending PR review and release. Test specification: [sprints/sprint-2/tests.md §8](./sprints/sprint-2/tests.md#8-f-09-multi-counter-support).
+Contract v1.3 (2026-11-27, issue #42, SRS v4.3, author @Khwanklao). *Rev. 2026-11-27 (results):* every test below was executed locally on `feature/sprint2/42-multi-counter-impl` (see [sprints/sprint-2/tests.md §8.5](./sprints/sprint-2/tests.md#85-execution-results-f-09) and [evidence/perf-s2-003.txt](./sprints/sprint-2/evidence/perf-s2-003.txt)). Release status: pending PR re-review and release. Test specification: [sprints/sprint-2/tests.md §8](./sprints/sprint-2/tests.md#8-f-09-multi-counter-support).
 
 ### Requirements to tests
 
 | Requirement | Feature | Sprint | AC | Test ID(s) | Test file | Result | Contract version |
 |---|---|---|---|---|---|---|---|
-| FR-17 | F-09 | 2 | AC-35, AC-36, AC-37, AC-42 | COUNTER-001–COUNTER-005, COUNTER-014, COUNTER-016, COUNTER-018 | `server/tests/f09-counter-rule.test.ts`, `server/tests/f09-multi-counter.test.ts`, `client/src/test/f09-multiCounter.test.tsx`, `e2e/tests/f09-multi-counter.spec.ts` | passed (local, 2026-11-27) | v1.2 |
-| FR-18 | F-09 | 2 | AC-37–AC-42 | COUNTER-001, COUNTER-005–COUNTER-012, COUNTER-014, COUNTER-016, COUNTER-017, COUNTER-018 | same four files | passed (local, 2026-11-27) | v1.2 |
-| FR-19 | F-09 | 2 | AC-38, AC-42, AC-43, AC-44 | COUNTER-006, COUNTER-014–COUNTER-018 | `server/tests/f09-multi-counter.test.ts`, `client/src/test/f09-multiCounter.test.tsx`, `e2e/tests/f09-multi-counter.spec.ts` | passed (local, 2026-11-27) | v1.2 |
-| BR-18 | F-09 | 2 | AC-35, AC-36, AC-37 | COUNTER-001–COUNTER-005, COUNTER-013 | `server/tests/f09-counter-rule.test.ts`, `server/tests/f09-multi-counter.test.ts` | passed (local, 2026-11-27) | v1.2 |
-| BR-19 (rev. 4.1) | F-09 | 2 | AC-38, AC-39, AC-40 | COUNTER-001, COUNTER-006–COUNTER-011 | same | passed (local, 2026-11-27) | v1.2 |
-| BR-20 (rev. 4.1) | F-09 | 2 | AC-38, AC-41 | COUNTER-006, COUNTER-009, COUNTER-012, COUNTER-013 | `server/tests/f09-multi-counter.test.ts` | passed (local, 2026-11-27) | v1.2 |
-| BR-10 (rev. 4.0 note) | F-05, F-09 | 2 | AC-39 | COUNTER-008, COUNTER-009 | `server/tests/f09-multi-counter.test.ts` | passed (local, 2026-11-27) | v1.2 |
-| BR-16 (rev. 4.0 note, F-08 cross-feature) | F-08, F-09 | 2 | AC-41 | COUNTER-012, COUNTER-017 | `server/tests/f09-multi-counter.test.ts`, `e2e/tests/f09-multi-counter.spec.ts` | passed (local, 2026-11-27) | v1.2 |
-| BR-14 (F-07 cross-feature) | F-07, F-09 | 2 | AC-41 | COUNTER-012 | `server/tests/f09-multi-counter.test.ts` | passed (local, 2026-11-27) | v1.2 |
-| BR-07, FR-03, NFR-02, NFR-08 | F-02, F-09 | 2 | AC-35, AC-37, AC-42, AC-43 | COUNTER-002, COUNTER-004, COUNTER-005, COUNTER-014, COUNTER-015 | `server/tests/f09-multi-counter.test.ts`, `client/src/test/f09-multiCounter.test.tsx` | passed (local, 2026-11-27) | v1.2 |
-| BR-12, NFR-03, NFR-05 | F-09 | 2 | AC-36, AC-40, AC-41 | COUNTER-003, COUNTER-010, COUNTER-011, COUNTER-013 | `server/tests/f09-multi-counter.test.ts` | passed (local, 2026-11-27) | v1.2 |
-| NFR-06 | F-09 | 2 | AC-42, AC-43 | COUNTER-014, COUNTER-015, COUNTER-018 | `client/src/test/f09-multiCounter.test.tsx`, `e2e/tests/f09-multi-counter.spec.ts` | passed (local, 2026-11-27) | v1.2 |
-| NFR-07 | F-01, F-09 | 2 | AC-44 | COUNTER-013 | `server/tests/f09-multi-counter.test.ts` | passed (local, 2026-11-27) | v1.2 |
-| NFR-04 | F-09 | 2 | AC-44 (operations of AC-35, AC-36, AC-38) | PERF-S2-003 | `server/tests/nfr/perf-s2-003-multi-counter.ts` | passed (local, 2026-11-27; worst read p95 `103.9 ms`, worst mutation p95 `94.6 ms`; `docs/sprints/sprint-2/evidence/perf-s2-003.txt`) | v1.2 |
-| FR-01–FR-16 (regression) | F-06 | 2 | AC-01–AC-34, AC-44 | REG-S2-003 | existing Sprint 1, F-07, and F-08 suites (6 E2E specs updated per Option A for `Counter 1`) | passed (local, 2026-11-27; Server 236/236, Client 120/120, E2E 21/21) | v1.2 |
+| FR-17 | F-09 | 2 | AC-35, AC-36, AC-37, AC-42 | COUNTER-001–COUNTER-005, COUNTER-014, COUNTER-016, COUNTER-018, COUNTER-019 | `server/tests/f09-counter-rule.test.ts`, `server/tests/f09-multi-counter.test.ts`, `client/src/test/f09-multiCounter.test.tsx`, `e2e/tests/f09-multi-counter.spec.ts` | passed (local, 2026-11-27) | v1.3 |
+| FR-18 | F-09 | 2 | AC-37–AC-42 | COUNTER-001, COUNTER-005–COUNTER-012, COUNTER-014, COUNTER-016–COUNTER-019 | same four files | passed (local, 2026-11-27) | v1.3 |
+| FR-19 | F-09 | 2 | AC-38, AC-42, AC-43, AC-44 | COUNTER-006, COUNTER-014–COUNTER-019 | `server/tests/f09-multi-counter.test.ts`, `client/src/test/f09-multiCounter.test.tsx`, `e2e/tests/f09-multi-counter.spec.ts` | passed (local, 2026-11-27) | v1.3 |
+| BR-18 | F-09 | 2 | AC-35, AC-36, AC-37 | COUNTER-001–COUNTER-005, COUNTER-013 | `server/tests/f09-counter-rule.test.ts`, `server/tests/f09-multi-counter.test.ts` | passed (local, 2026-11-27) | v1.3 |
+| BR-19 (rev. 4.1) | F-09 | 2 | AC-38, AC-39, AC-40 | COUNTER-001, COUNTER-006–COUNTER-011 | same | passed (local, 2026-11-27) | v1.3 |
+| BR-20 (rev. 4.3) | F-09 | 2 | AC-38, AC-41 | COUNTER-006, COUNTER-009, COUNTER-012, COUNTER-013 | `server/tests/f09-multi-counter.test.ts` | passed (local, 2026-11-27) | v1.3 |
+| BR-10 (rev. 4.0 note) | F-05, F-09 | 2 | AC-39 | COUNTER-008, COUNTER-009, COUNTER-019 | `server/tests/f09-multi-counter.test.ts`, `e2e/tests/f09-multi-counter.spec.ts` | passed (local, 2026-11-27) | v1.3 |
+| BR-16 (rev. 4.0 note, F-08 cross-feature) | F-08, F-09 | 2 | AC-41 | COUNTER-012, COUNTER-017 | `server/tests/f09-multi-counter.test.ts`, `e2e/tests/f09-multi-counter.spec.ts` | passed (local, 2026-11-27) | v1.3 |
+| BR-14 (F-07 cross-feature) | F-07, F-09 | 2 | AC-41 | COUNTER-012 | `server/tests/f09-multi-counter.test.ts` | passed (local, 2026-11-27) | v1.3 |
+| BR-07, FR-03, NFR-02, NFR-08 | F-02, F-09 | 2 | AC-35, AC-37, AC-42, AC-43 | COUNTER-002, COUNTER-004, COUNTER-005, COUNTER-014, COUNTER-015 | `server/tests/f09-multi-counter.test.ts`, `client/src/test/f09-multiCounter.test.tsx` | passed (local, 2026-11-27) | v1.3 |
+| BR-12, NFR-03, NFR-05 | F-09 | 2 | AC-36, AC-40, AC-41 | COUNTER-003, COUNTER-010, COUNTER-011, COUNTER-013 | `server/tests/f09-multi-counter.test.ts` | passed (local, 2026-11-27) | v1.3 |
+| NFR-06 | F-09 | 2 | AC-42, AC-43 | COUNTER-014, COUNTER-015, COUNTER-018 | `client/src/test/f09-multiCounter.test.tsx`, `e2e/tests/f09-multi-counter.spec.ts` | passed (local, 2026-11-27) | v1.3 |
+| NFR-07 | F-01, F-09 | 2 | AC-44 | COUNTER-013 | `server/tests/f09-multi-counter.test.ts` | passed (local, 2026-11-27) | v1.3 |
+| NFR-04 | F-09 | 2 | AC-44 (operations of AC-35, AC-36, AC-38) | PERF-S2-003 | `server/tests/nfr/perf-s2-003-multi-counter.ts` | passed (local, 2026-11-27; worst read p95 `103.9 ms`, worst mutation p95 `94.6 ms`; `docs/sprints/sprint-2/evidence/perf-s2-003.txt`) | v1.3 |
+| FR-01–FR-16 (regression) | F-06 | 2 | AC-01–AC-34, AC-44 | REG-S2-003, COUNTER-019 | existing Sprint 1, F-07, and F-08 suites (202 server + 105 client unmodified; 6 E2E specs updated for `Counter 1` + `COUNTER-019` legacy fallback E2E) | passed (local, 2026-11-27; Server 236/236, Client 125/125, E2E 22/22) | v1.3 |
 
 ### Acceptance criteria to tests
 
@@ -226,9 +227,9 @@ Contract v1.2 (2026-11-27, issue #42, SRS v4.2, author @Khwanklao). *Rev. 2026-1
 | AC-36 | COUNTER-003, COUNTER-016 | passed (local, 2026-11-27) |
 | AC-37 | COUNTER-001, COUNTER-004, COUNTER-005 | passed (local, 2026-11-27) |
 | AC-38 | COUNTER-006, COUNTER-008, COUNTER-016 | passed (local, 2026-11-27) |
-| AC-39 | COUNTER-001, COUNTER-007, COUNTER-008, COUNTER-009, COUNTER-016, COUNTER-017 | passed (local, 2026-11-27) |
+| AC-39 | COUNTER-001, COUNTER-007, COUNTER-008, COUNTER-009, COUNTER-016, COUNTER-017, COUNTER-019 | passed (local, 2026-11-27) |
 | AC-40 | COUNTER-010, COUNTER-011 | passed (local, 2026-11-27) |
 | AC-41 | COUNTER-012, COUNTER-013, COUNTER-017 | passed (local, 2026-11-27) |
-| AC-42 | COUNTER-014, COUNTER-016, COUNTER-017, COUNTER-018 | passed (local, 2026-11-27) |
-| AC-43 | COUNTER-015, COUNTER-016, COUNTER-017, COUNTER-018 | passed (local, 2026-11-27) |
-| AC-44 | COUNTER-013, PERF-S2-003, REG-S2-003 | passed (local, 2026-11-27) |
+| AC-42 | COUNTER-014, COUNTER-016, COUNTER-017, COUNTER-018, COUNTER-019 | passed (local, 2026-11-27) |
+| AC-43 | COUNTER-015, COUNTER-016, COUNTER-017, COUNTER-018, COUNTER-019 | passed (local, 2026-11-27) |
+| AC-44 | COUNTER-013, COUNTER-019, PERF-S2-003, REG-S2-003 | passed (local, 2026-11-27) |

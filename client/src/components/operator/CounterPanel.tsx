@@ -16,6 +16,7 @@ export const NO_COUNTERS_TEXT = 'No counters configured for this queue.';
 interface CounterPanelProps {
   counters: Counter[];
   currentUserId: string | null;
+  disabled?: boolean;
   togglingIds: ReadonlySet<string>;
   callingIds: ReadonlySet<string>;
   onToggleStatus: (counter: Counter) => void;
@@ -29,6 +30,7 @@ export function isCounterOwnedByOther(counter: Counter, currentUserId: string | 
 export function CounterPanel({
   counters,
   currentUserId,
+  disabled = false,
   togglingIds,
   callingIds,
   onToggleStatus,
@@ -50,8 +52,8 @@ export function CounterPanel({
             const isToggling = togglingIds.has(counter.id);
             const isCalling = callingIds.has(counter.id);
             const busy = isToggling || isCalling;
-            const toggleDisabled = busy || ownedByOther;
-            const callNextDisabled = busy || ownedByOther || !isOpen;
+            const toggleDisabled = disabled || busy || ownedByOther;
+            const callNextDisabled = disabled || busy || ownedByOther || !isOpen;
 
             return (
               <li

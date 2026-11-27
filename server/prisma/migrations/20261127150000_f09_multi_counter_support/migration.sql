@@ -47,4 +47,4 @@ ALTER TABLE "Counter" ADD CONSTRAINT "Counter_assignedOperatorId_fkey"
 
 -- AddForeignKey (composite FK, PostgreSQL MATCH SIMPLE default, enforcing BR-20 at DB layer per BR-12)
 ALTER TABLE "QueueEntry" ADD CONSTRAINT "QueueEntry_counterId_serviceQueueId_fkey"
-    FOREIGN KEY ("counterId", "serviceQueueId") REFERENCES "Counter"("id", "serviceQueueId") ON DELETE RESTRICT ON UPDATE CASCADE;
+    FOREIGN KEY ("counterId", "serviceQueueId") REFERENCES "Counter"("id", "serviceQueueId") ON DELETE RESTRICT ON UPDATE RESTRICT;

@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { app } from '../src/app';
 import { prisma } from '../src/db';
 import { seed } from '../prisma/seed';
+import { provisionCounters } from '../prisma/provision-counters';
 import {
   resetAndSeed,
   login,
@@ -560,7 +561,7 @@ describe('F-09: multi-counter support', () => {
     expect((await entryRow(b.id))?.counterId).toBeNull();
   });
 
-  it('COUNTER-013 (AC-41, AC-44): DB enforces unique (serviceQueueId, name), composite FK (counterId, serviceQueueId), MATCH SIMPLE NULL, and idempotent seeding', async () => {
+  it('COUNTER-013 (AC-41, AC-44): DB enforces unique (serviceQueueId, name), composite FK (ON DELETE/UPDATE RESTRICT, MATCH SIMPLE NULL), and idempotent provision -> seed', async () => {
     const e = await joined(customer1, OPEN_QUEUE_ID);
 
     // (a) Duplicate (serviceQueueId, name) rejected with 23505.
@@ -604,7 +605,30 @@ describe('F-09: multi-counter support', () => {
       UPDATE "QueueEntry" SET "counterId" = NULL WHERE "id" = ${e.id}::uuid`;
     expect((await entryRow(e.id))?.counterId).toBeNull();
 
-    // (e) Idempotent re-seed keeps 4 deterministic counters and preserves toggled CLOSED status on C1.
+    // (e) Blocking #3: ON UPDATE RESTRICT rejects updating Counter.serviceQueueId while a QueueEntry references it.
+    // Rename simultaneously so the (serviceQueueId, name) unique constraint does not mask the FK 23503 check.
+    expect((await counterCallNext(operator1, COUNTER_Q1_1)).status).toBe(200);
+    let updateCascadeErr: unknown;
+    try {
+      await prisma.$executeRaw`
+        UPDATE "Counter"
+        SET "serviceQueueId" = ${CLOSED_QUEUE_ID}::uuid, "name" = 'Counter 1 Reassigned'
+        WHERE "id" = ${COUNTER_Q1_1}::uuid`;
+    } catch (err) {
+      updateCascadeErr = err;
+    }
+    expect(updateCascadeErr, 'updating Counter.serviceQueueId while referenced must fail ON UPDATE RESTRICT').toBeInstanceOf(
+      Prisma.PrismaClientKnownRequestError
+    );
+    expect(String((updateCascadeErr as Error).message)).toMatch(/23503|foreign key/i);
+    // Verify pg_constraint explicitly records confupdtype = 'r' and confdeltype = 'r'.
+    const fkMeta = await prisma.$queryRaw<Array<{ confupdtype: string; confdeltype: string }>>`
+      SELECT confupdtype::text, confdeltype::text
+      FROM pg_constraint
+      WHERE conname = 'QueueEntry_counterId_serviceQueueId_fkey'`;
+    expect(fkMeta).toEqual([{ confupdtype: 'r', confdeltype: 'r' }]);
+
+    // (f) Idempotent re-seed keeps 4 deterministic counters and preserves toggled CLOSED status on C1.
     expect((await updateCounterStatus(operator1, COUNTER_Q1_1, { status: 'CLOSED' })).status).toBe(200);
     await seed(prisma);
     const allCounters = await prisma.$queryRaw<CounterRowSnapshot[]>`
@@ -614,5 +638,25 @@ describe('F-09: multi-counter support', () => {
     expect(allCounters).toHaveLength(4);
     expect(allCounters.map((c) => c.id)).toEqual([COUNTER_Q1_1, COUNTER_Q1_2, COUNTER_Q2_1, COUNTER_Q2_2]);
     expect(allCounters.find((c) => c.id === COUNTER_Q1_1)?.status).toBe('CLOSED');
+
+    // (g) Non-blocking #1: provisionCounters() followed by seed() succeeds with zero P2002 errors and preserves IDs/status.
+    await prisma.queueEntry.deleteMany({});
+    await prisma.counter.deleteMany({});
+    const provisioned = await provisionCounters(prisma);
+    expect(provisioned).toEqual({ queuesScanned: 2, countersCreated: 4 });
+    const provisionedBefore = await prisma.counter.findMany({
+      orderBy: [{ serviceQueueId: 'asc' }, { name: 'asc' }],
+    });
+    await prisma.counter.update({
+      where: { id: provisionedBefore[0].id },
+      data: { status: 'CLOSED' },
+    });
+    await seed(prisma);
+    const afterSeed = await prisma.counter.findMany({
+      orderBy: [{ serviceQueueId: 'asc' }, { name: 'asc' }],
+    });
+    expect(afterSeed).toHaveLength(4);
+    expect(afterSeed.map((c) => c.id)).toEqual(provisionedBefore.map((c) => c.id));
+    expect(afterSeed[0].status).toBe('CLOSED');
   });
 });

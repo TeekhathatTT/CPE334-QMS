@@ -249,4 +249,45 @@ test.describe('F-09 multi-counter support', () => {
       await c1.dispose();
     }
   });
+
+  test('COUNTER-019: zero-usable-counter legacy fallback (204 neutral empty message and Sprint 1 customer prompt)', async ({
+    page,
+    browser,
+  }) => {
+    // Remove counters on OPEN_QUEUE_ID so the queue has zero usable counters.
+    await testDb().counter.deleteMany({ where: { serviceQueueId: OPEN_QUEUE_ID } });
+
+    await loginViaUi(page, OPERATOR1.email);
+    await page.goto(`/operator/queues/${OPEN_QUEUE_ID}`);
+    await expect(page.getByText('No counters configured for this queue.')).toBeVisible();
+
+    // Legacy queue-level Call Next is rendered and hits 204 neutral empty state (not a 409 alert).
+    const legacyCallNextBtn = page.getByRole('button', { name: 'Call Next' });
+    await expect(legacyCallNextBtn).toBeEnabled();
+    await legacyCallNextBtn.click();
+    await expect(page.getByRole('status').filter({ hasText: 'No waiting entries to call right now.' })).toBeVisible();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+
+    // Calling a waiting customer via the legacy fallback succeeds with counterId = null and Sprint 1 customer prompt.
+    const c1 = await ApiUser.login(CUSTOMER1.email);
+    try {
+      const a = await c1.join(OPEN_QUEUE_ID);
+      await legacyCallNextBtn.click();
+      await expect(page.getByRole('status').filter({ hasText: `Called queue number ${a.queueNumber}.` })).toBeVisible();
+      expect(await entryDbRow(a.id)).toEqual({ status: 'CALLED', counterId: null });
+
+      const customerCtx = await browser.newContext();
+      const customerPage = await customerCtx.newPage();
+      try {
+        await loginViaUi(customerPage, CUSTOMER1.email);
+        await customerPage.goto(`/customer/entries/${a.id}`);
+        await expect(customerPage.getByTestId('entry-message')).toHaveText('Please go to the service desk.');
+        await expect(customerPage.getByTestId('entry-counter-badge')).toHaveCount(0);
+      } finally {
+        await customerCtx.close();
+      }
+    } finally {
+      await c1.dispose();
+    }
+  });
 });

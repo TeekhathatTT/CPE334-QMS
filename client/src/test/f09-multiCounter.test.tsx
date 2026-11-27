@@ -312,6 +312,120 @@ describe('F-09 COUNTER-014: operator Counters panel, ownership states, fallback,
       await waitFor(() => expect(callsTo(fetchMock, 'GET', COUNTERS_PATH).length + callsTo(fetchMock, 'GET', ENTRIES_PATH).length).toBeGreaterThanOrEqual(3));
     }
   });
+
+  it('does not render legacy Call Next while GET /counters is still loading (Blocking #2)', async () => {
+    let releaseCounters!: () => void;
+    mockOperator(
+      { counters: [], entries: [waitingEntry(1)] },
+      {
+        [`GET ${COUNTERS_PATH}`]: () =>
+          new Promise<Response>((resolve) => {
+            releaseCounters = () => resolve(countersResponse([]));
+          }),
+      }
+    );
+
+    renderApp(`/operator/queues/${OPEN_QUEUE.id}`);
+    expect(await screen.findByText('Loading counters...')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Call Next' })).not.toBeInTheDocument();
+
+    await act(async () => releaseCounters());
+    expect(await screen.findByText(TEXT.noCounters)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Call Next' })).toBeEnabled();
+  });
+
+  it.each([
+    ['500 INTERNAL_ERROR', () => errorResponse(500, 'INTERNAL_ERROR')],
+    ['403 FORBIDDEN', () => errorResponse(403, 'FORBIDDEN', 'You are not assigned to this queue.')],
+  ])('does not render legacy Call Next when initial GET /counters fails with %s, showing an error and Retry (Blocking #2)', async (_name, failHandler) => {
+    const user = userEvent.setup();
+    let attempts = 0;
+    mockOperator(
+      { counters: [makeCounter()], entries: [waitingEntry(1)] },
+      {
+        [`GET ${COUNTERS_PATH}`]: () => {
+          attempts += 1;
+          if (attempts === 1) return failHandler();
+          return countersResponse([makeCounter()]);
+        },
+      }
+    );
+
+    renderApp(`/operator/queues/${OPEN_QUEUE.id}`);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "We couldn't load counters for this queue. Please try again."
+    );
+    expect(screen.queryByRole('button', { name: 'Call Next' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('heading', { name: 'Counters (1)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Call next customer to Counter 1' })).toBeEnabled();
+  });
+
+  it('disables counter actions and shows Retry banner when a subsequent 10 s poll of GET /counters fails, then re-enables on Retry (Non-blocking #3)', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const user = userEvent.setup();
+    let counterAttempts = 0;
+    mockOperator(
+      { counters: [makeCounter()], entries: [waitingEntry(1)] },
+      {
+        [`GET ${COUNTERS_PATH}`]: () => {
+          counterAttempts += 1;
+          if (counterAttempts === 2) return errorResponse(500, 'INTERNAL_ERROR');
+          return countersResponse([makeCounter()]);
+        },
+      }
+    );
+
+    renderApp(`/operator/queues/${OPEN_QUEUE.id}`);
+    expect(await screen.findByRole('button', { name: 'Call next customer to Counter 1' })).toBeEnabled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_500);
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not refresh counters. Counter actions are paused until counters are reloaded.'
+    );
+    expect(screen.getByRole('button', { name: 'Close Counter 1' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Call next customer to Counter 1' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Call Next' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Close Counter 1' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Call next customer to Counter 1' })).toBeEnabled();
+  });
+
+  it('refetches GET /counters after non-CSRF 403 and 409 NO_WAITING_ENTRIES on counter actions (Non-blocking #2)', async () => {
+    const user = userEvent.setup();
+
+    // Case A: non-CSRF 403 (e.g., counter was reassigned to another operator).
+    const fetchMock403 = mockOperator(
+      { counters: [makeCounter()], entries: [waitingEntry(1)] },
+      {
+        [`POST ${counterCallNextPath(C1_ID)}`]: () =>
+          errorResponse(403, 'FORBIDDEN', 'You are not authorized to operate this counter.'),
+      }
+    );
+    const first = renderApp(`/operator/queues/${OPEN_QUEUE.id}`);
+    await user.click(await screen.findByRole('button', { name: 'Call next customer to Counter 1' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('You do not have permission to perform this action.');
+    await waitFor(() => expect(callsTo(fetchMock403, 'GET', COUNTERS_PATH).length).toBeGreaterThanOrEqual(2));
+    first.unmount();
+
+    // Case B: 409 NO_WAITING_ENTRIES also refetches GET /counters.
+    const fetchMock409 = mockOperator(
+      { counters: [makeCounter()], entries: [] },
+      {
+        [`POST ${counterCallNextPath(C1_ID)}`]: () => errorResponse(409, 'NO_WAITING_ENTRIES'),
+      }
+    );
+    renderApp(`/operator/queues/${OPEN_QUEUE.id}`);
+    await user.click(await screen.findByRole('button', { name: 'Call next customer to Counter 1' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(TEXT.noWaiting);
+    await waitFor(() => expect(callsTo(fetchMock409, 'GET', COUNTERS_PATH).length).toBeGreaterThanOrEqual(2));
+  });
 });
 
 describe('F-09 COUNTER-015: customer assigned counter prompt, null fallback, and strict badge rule', () => {

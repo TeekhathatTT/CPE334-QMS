@@ -84,7 +84,7 @@ function describeActionFailure(err: unknown, target: 'queue' | 'entry' | 'counte
         return { text: OPERATOR_ACTION_ERROR_TEXT.COUNTER_CLOSED, refetchEntries: true, refetchCounters: true };
       }
       if (err.code === 'NO_WAITING_ENTRIES') {
-        return { text: OPERATOR_ACTION_ERROR_TEXT.NO_WAITING_ENTRIES, refetchEntries: true };
+        return { text: OPERATOR_ACTION_ERROR_TEXT.NO_WAITING_ENTRIES, refetchEntries: true, refetchCounters: true };
       }
       if (err.code === 'RECOVERY_LIMIT_REACHED') {
         return { text: OPERATOR_ACTION_ERROR_TEXT.RECOVERY_LIMIT, refetchEntries: true };
@@ -110,7 +110,11 @@ function describeActionFailure(err: unknown, target: 'queue' | 'entry' | 'counte
       if (isCsrfForbidden(err)) {
         return { text: OPERATOR_ACTION_ERROR_TEXT.CSRF, refetchEntries: false };
       }
-      return { text: OPERATOR_ACTION_ERROR_TEXT.FORBIDDEN, refetchEntries: false };
+      return {
+        text: OPERATOR_ACTION_ERROR_TEXT.FORBIDDEN,
+        refetchEntries: false,
+        refetchCounters: target === 'counter',
+      };
     }
   }
   return { text: OPERATOR_ACTION_ERROR_TEXT.GENERIC, refetchEntries: false };
@@ -128,6 +132,12 @@ interface FeedbackBanner {
   text: string;
 }
 
+type CountersStatus = 'loading' | 'loaded' | 'error';
+
+export const OPERATOR_COUNTERS_LOAD_ERROR_TEXT = "We couldn't load counters for this queue. Please try again.";
+export const OPERATOR_COUNTERS_POLL_ERROR_TEXT =
+  'Could not refresh counters. Counter actions are paused until counters are reloaded.';
+
 /** `/operator/queues/:id` — manage queue lifecycle actions: call next, start, complete (ui-spec §3, §5.2). */
 export function OperatorQueueDetailPage() {
   const { id = '' } = useParams();
@@ -135,7 +145,8 @@ export function OperatorQueueDetailPage() {
   const [view, setView] = useState<ViewState>({ state: 'loading' });
   const [queues, setQueues] = useState<QueueSummary[] | undefined>(undefined);
   const [counters, setCounters] = useState<Counter[]>([]);
-  const [countersLoaded, setCountersLoaded] = useState(false);
+  const [countersStatus, setCountersStatus] = useState<CountersStatus>('loading');
+  const [countersPollError, setCountersPollError] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [callingNext, setCallingNext] = useState(false);
@@ -151,6 +162,7 @@ export function OperatorQueueDetailPage() {
   const callingNextRef = useRef(false);
   const entryActionInFlightRef = useRef(new Set<string>());
   const counterActionInFlightRef = useRef(new Set<string>());
+  const countersLoadedRef = useRef(false);
   const entriesRef = useRef<QueueEntry[] | null>(null);
   const activeQueueIdRef = useRef(id);
   activeQueueIdRef.current = id;
@@ -177,11 +189,21 @@ export function OperatorQueueDetailPage() {
     try {
       const data = await listQueueCounters(requestedQueueId);
       if (!mounted.current || activeQueueIdRef.current !== requestedQueueId) return;
+      countersLoadedRef.current = true;
       setCounters(data);
-      setCountersLoaded(true);
-    } catch {
-      // Counter list degrades gracefully when unavailable (e.g., legacy tests without /counters mock);
-      // 401 is handled globally by apiRequest.
+      setCountersStatus('loaded');
+      setCountersPollError(false);
+    } catch (err) {
+      if (!mounted.current || activeQueueIdRef.current !== requestedQueueId || isSessionExpiredError(err)) {
+        return;
+      }
+      if (countersLoadedRef.current) {
+        // Subsequent poll/refresh failed: keep visible counters disabled and surface a Retry banner.
+        setCountersPollError(true);
+      } else {
+        // Initial load failed: never fall back to legacy Call Next; show explicit error with Retry.
+        setCountersStatus('error');
+      }
     }
   }, [id]);
 
@@ -230,9 +252,11 @@ export function OperatorQueueDetailPage() {
 
   useEffect(() => {
     entriesRef.current = null;
+    countersLoadedRef.current = false;
     setView({ state: 'loading' });
     setCounters([]);
-    setCountersLoaded(false);
+    setCountersStatus('loading');
+    setCountersPollError(false);
     setRefreshFailed(false);
     setFeedback(null);
     setAnnouncement('');
@@ -260,6 +284,13 @@ export function OperatorQueueDetailPage() {
   const handleRetry = () => {
     setView({ state: 'loading' });
     void loadEntries();
+    void loadCounters();
+  };
+
+  const handleRetryCounters = () => {
+    if (!countersLoadedRef.current) {
+      setCountersStatus('loading');
+    }
     void loadCounters();
   };
 
@@ -477,6 +508,8 @@ export function OperatorQueueDetailPage() {
 
   const currentUserId = user?.id ?? null;
   const hasUsableCounter = counters.some((c) => !isCounterOwnedByOther(c, currentUserId));
+  // Blocking #2: only render legacy queue-level Call Next once `/counters` has succeeded with zero usable counters.
+  const showLegacyCallNext = countersStatus === 'loaded' && !countersPollError && !hasUsableCounter;
 
   const queueMeta = queues?.find((q) => q.id === id);
   const queueTitle = queueMeta?.name ?? UNKNOWN_QUEUE_NAME;
@@ -560,7 +593,7 @@ export function OperatorQueueDetailPage() {
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              {!hasUsableCounter && (
+              {showLegacyCallNext && (
                 <button
                   type="button"
                   onClick={handleCallNext}
@@ -606,15 +639,27 @@ export function OperatorQueueDetailPage() {
             </div>
           )}
 
-          {countersLoaded && (
-            <CounterPanel
-              counters={counters}
-              currentUserId={currentUserId}
-              togglingIds={togglingCounterIds}
-              callingIds={callingCounterIds}
-              onToggleStatus={(counter) => void handleToggleCounterStatus(counter)}
-              onCallNext={(counter) => void handleCounterCallNext(counter)}
-            />
+          {countersStatus === 'loading' && <LoadingNote>Loading counters...</LoadingNote>}
+
+          {countersStatus === 'error' && (
+            <ErrorNote onRetry={handleRetryCounters}>{OPERATOR_COUNTERS_LOAD_ERROR_TEXT}</ErrorNote>
+          )}
+
+          {countersStatus === 'loaded' && (
+            <>
+              {countersPollError && (
+                <ErrorNote onRetry={handleRetryCounters}>{OPERATOR_COUNTERS_POLL_ERROR_TEXT}</ErrorNote>
+              )}
+              <CounterPanel
+                counters={counters}
+                currentUserId={currentUserId}
+                disabled={countersPollError}
+                togglingIds={togglingCounterIds}
+                callingIds={callingCounterIds}
+                onToggleStatus={(counter) => void handleToggleCounterStatus(counter)}
+                onCallNext={(counter) => void handleCounterCallNext(counter)}
+              />
+            </>
           )}
 
           {/* Section 1: Active Entries (CALLED / SERVING) */}

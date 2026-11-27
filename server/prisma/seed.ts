@@ -155,7 +155,8 @@ export async function seed(client: PrismaClient = prisma, password: string = res
   });
 
   // 5. Default Counters (F-09, local dev/test only — production uses prisma/provision-counters.ts).
-  // Notice: `status` is intentionally omitted from `update` so re-seeding preserves operational counter state.
+  // Upserts by `(serviceQueueId, name)` with `update: {}` so running `provision-counters.ts` before
+  // `seed.ts` never triggers P2002 and re-seeding preserves existing IDs and operational status.
   const counterDefs = [
     { id: 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1', serviceQueueId: queue1.id, name: 'Counter 1' },
     { id: 'cccccccc-cccc-4ccc-8ccc-ccccccccccc2', serviceQueueId: queue1.id, name: 'Counter 2' },
@@ -166,11 +167,13 @@ export async function seed(client: PrismaClient = prisma, password: string = res
   const counters = [];
   for (const def of counterDefs) {
     const counter = await client.counter.upsert({
-      where: { id: def.id },
-      update: {
-        serviceQueueId: def.serviceQueueId,
-        name: def.name,
+      where: {
+        serviceQueueId_name: {
+          serviceQueueId: def.serviceQueueId,
+          name: def.name,
+        },
       },
+      update: {},
       create: {
         id: def.id,
         serviceQueueId: def.serviceQueueId,

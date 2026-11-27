@@ -108,7 +108,7 @@ model QueueEntry {
   counterId        String?       @db.Uuid
   customer         User          @relation(fields: [customerId], references: [id], onDelete: Restrict)
   serviceQueue     ServiceQueue  @relation(fields: [serviceQueueId], references: [id], onDelete: Restrict)
-  counter          Counter?      @relation(fields: [counterId, serviceQueueId], references: [id, serviceQueueId], onDelete: Restrict)
+  counter          Counter?      @relation(fields: [counterId, serviceQueueId], references: [id, serviceQueueId], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([serviceQueueId, queueNumber], map: "QueueEntry_serviceQueueId_queueNumber_key")
   @@index([serviceQueueId, joinedAt(sort: Asc), id(sort: Asc)], map: "QueueEntry_fifo_idx")
