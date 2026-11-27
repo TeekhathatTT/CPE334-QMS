@@ -43,3 +43,24 @@ Contract `7e42e1f` · red `f6a4183` · first fully green `37fd6c0` · green evid
 | Regression (AC-01 – AC-24) | No existing test file edited | REG-S2-002: all Sprint 1 and F-07 tests inside the full green run (server 161, client 91, E2E 15) | passed at `37fd6c0` | pending release |
 
 Not verified for F-08: Firefox/WebKit E2E; the Cloud SQL migration and Cloud Run deployment; latency on Cloud Run / Cloud SQL and under concurrent load; the "return wins" outcome of the NOSHOW-014 race (not observed in 20 rounds).
+
+## F-09 Multi-counter support (issue #42)
+
+Contract v1 (2026-11-27, author @Khwanklao, pending review by @TeekhathatTT); not yet implemented or executed. Design: [features/sprint-2-f09-multi-counter.md](../../features/sprint-2-f09-multi-counter.md).
+
+| AC | Implementation | Executed verification | Result | Accepted release |
+|---|---|---|---|---|
+| AC-35 Assigned operator lists queue counters in deterministic order | pending (`listQueueCounters`, `GET /api/operator/queues/:queueId/counters`) | none (planned: COUNTER-002, COUNTER-016) | pending | pending release |
+| AC-36 Assigned operator toggles counter `OPEN` ↔ `CLOSED`; invalid payloads `400`; `CLOSED` queue allowed | pending (`updateCounterStatus`, `PATCH /api/operator/counters/:counterId/status`) | none (planned: COUNTER-003, COUNTER-016) | pending | pending release |
+| AC-37 Access control, CSRF, `assignedOperatorId` scoping, UUID validation | pending (route middleware + service ownership/assignment checks + `counterPolicy.ts`) | none (planned: COUNTER-001, COUNTER-004, COUNTER-005) | pending | pending release |
+| AC-38 Counter-scoped Call Next assigns `counterId`/`counterName` in FIFO order across operator & customer views | pending (`callNextEntryForCounter`, `POST /api/operator/counters/:counterId/call-next`, `formatQueueEntry`) | none (planned: COUNTER-006, COUNTER-008, COUNTER-016) | pending | pending release |
+| AC-39 Closed counter `409 COUNTER_CLOSED` (in-flight finishable); empty `409 NO_WAITING_ENTRIES`; legacy Call Next `204` preserved | pending (`callNextEntryForCounter`; legacy `callNextEntry` unchanged) | none (planned: COUNTER-001, COUNTER-007, COUNTER-008, COUNTER-009, COUNTER-016, COUNTER-017) | pending | pending release |
+| AC-40 Races: parallel multi-counter Call Next; Call Next vs Close Counter | pending (`Counter` `FOR UPDATE` → `QueueEntry` `FOR UPDATE SKIP LOCKED`) | none (planned: COUNTER-010, COUNTER-011 — 15 rounds each) | pending | pending release |
+| AC-41 Cross-feature F-08 recovery clears `counterId`; F-07/NO_SHOW skipped; DB constraints enforced | pending (`recoverNoShowEntry` clears `counterId`; migration `20261127150000_f09_multi_counter_support`) | none (planned: COUNTER-012, COUNTER-013, COUNTER-017) | pending | pending release |
+| AC-42 Operator UI Counters panel, toggle, counter Call Next, active badges, keyboard & 360/1280 px | pending (`CounterPanel.tsx`, `OperatorQueueDetailPage.tsx`) | none (planned: COUNTER-014, COUNTER-016, COUNTER-017, COUNTER-018) | pending | pending release |
+| AC-43 Customer UI assigned counter prompt (`CALLED`/`SERVING`), `null` fallback, My Active Tickets badge, 360/1280 px | pending (`EntryDetailPage.tsx`, `MyTicketsList.tsx`) | none (planned: COUNTER-015, COUNTER-016, COUNTER-017, COUNTER-018) | pending | pending release |
+| AC-44 Idempotent deterministic counter seeding, NFR-04 performance, full regression | pending (`server/prisma/seed.ts`, `perf-s2-003-multi-counter.ts`) | none (planned: COUNTER-013, PERF-S2-003, REG-S2-003) | pending | pending release |
+| NFR-04 for F-09 (counter list, status toggle, counter Call Next, joined reads) | pending | none (planned: PERF-S2-003) | pending | pending release |
+| Regression (AC-01 – AC-34) | pending (no existing test file to be edited) | none (planned: REG-S2-003) | pending | pending release |
+
+Not yet verified for F-09: contract-only phase; no migrations, code, or tests have been implemented or executed yet.

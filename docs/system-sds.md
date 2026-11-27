@@ -54,6 +54,9 @@ Authorization and ownership checks are server-side. UI control visibility is not
 | No-show handling | Not available | — | Planned for Sprint 2 (F-08) | Not part of Sprint 1. *Rev. 2026-11-27:* specified as the two rows below, see §14. |
 | `POST /api/operator/queue-entries/{entryId}/no-show` (Sprint 2, F-08) | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May mark a `CALLED` entry in an assigned queue no-show | Unassigned access returns `403 FORBIDDEN`; a missing entry `404`; any other status `409 INVALID_STATE_TRANSITION`. Queue availability is not checked. |
 | `POST /api/operator/queue-entries/{entryId}/recover` (Sprint 2, F-08) | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May return a `NO_SHOW` entry in an assigned queue to the queue once | Unassigned `403`; missing `404`; not `NO_SHOW` `409 INVALID_STATE_TRANSITION`; already returned once `409 RECOVERY_LIMIT_REACHED`; customer has another active entry in the queue `409 DUPLICATE_ACTIVE_ENTRY`. |
+| `GET /api/operator/queues/{queueId}/counters` (Sprint 2, F-09) | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May list counters in an assigned queue | Unassigned (or unknown queue) returns `403 FORBIDDEN`; deterministic order `name ASC, id ASC`. |
+| `PATCH /api/operator/counters/{counterId}/status` (Sprint 2, F-09) | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May open or close a counter in an assigned queue | Unassigned or mismatched `assignedOperatorId` returns `403 FORBIDDEN`; missing counter `404`; invalid body `400 INVALID_ARGUMENT`. Queue availability is not checked. |
+| `POST /api/operator/counters/{counterId}/call-next` (Sprint 2, F-09) | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May call next in an assigned queue for an `OPEN` counter | Unassigned or mismatched `assignedOperatorId` returns `403 FORBIDDEN`; missing counter `404`; closed counter `409 COUNTER_CLOSED`; empty queue `409 NO_WAITING_ENTRIES`. |
 
 ### 2.1 Authorization rules
 
@@ -121,6 +124,7 @@ The composite primary key is `(operatorId, serviceQueueId)`. Only OPERATOR users
 | `noShowAt` (Sprint 2, F-08) | `timestamptz` | Nullable; time of the latest no-show |
 | `recoveredAt` (Sprint 2, F-08) | `timestamptz` | Nullable; time the entry was returned to the queue |
 | `noShowCount` (Sprint 2, F-08) | `INTEGER` | Required, default 0, `CHECK ("noShowCount" >= 0 AND "noShowCount" <= 2)` |
+| `counterId` (Sprint 2, F-09) | UUID | Nullable foreign key to `Counter` (`ON DELETE SET NULL`); `NULL` for `WAITING`/`CANCELLED` and legacy calls |
 
 The lifecycle and active-state definitions match the SRS: active states are `WAITING`, `CALLED`, and `SERVING`; `COMPLETED` is terminal. Completed entries remain for historical review.
 
@@ -394,3 +398,17 @@ Contract v1, pending review. The full design is in [features/sprint-2-f08-no-sho
 | 4 | Concurrency | No-show: lock the entry `FOR UPDATE`, check assignment and `CALLED`, update (same as Start, §4.2). Recover: lock the queue row (the lock join uses, §4.1), then the entry, then check assignment, state, limit and other active entries, then update. Lock order is queue row before entry row. |
 | 5 | Unchanged | Join and queue-number allocation, Call Next, Start, Complete, `aheadCount`, the operator list filter, F-07 cancel, authentication, session, CSRF and RBAC middleware, seed data, Docker image. |
 | 6 | Deployment | The migration is additive and must be applied to the deployed database before the new revision serves traffic. Rolling back below this release after `NO_SHOW` rows exist requires handling those rows first. |
+
+## 15. Sprint 2 design changes (F-09 Multi-counter support, rev. 2026-11-27)
+
+Contract v1, pending review by @TeekhathatTT. The full design is in [features/sprint-2-f09-multi-counter.md](./features/sprint-2-f09-multi-counter.md); this section records only what F-09 changes in this system design.
+
+| # | Area | Change |
+|---|---|---|
+| 1 | Status model | `QueueStatus` is unchanged. Adds `CounterStatus` enum (`OPEN`, `CLOSED`) on the new `Counter` entity (`OPEN` ↔ `CLOSED`). |
+| 2 | Data model | New table `Counter` (`id`, `serviceQueueId` FK → `ServiceQueue`, `name` unique per queue `Counter_serviceQueueId_name_key`, `status` default `OPEN`, optional `assignedOperatorId` FK → `User`, `createdAt`, `updatedAt`) and nullable `QueueEntry.counterId` FK → `Counter` (`ON DELETE SET NULL`). Migration `20261127150000_f09_multi_counter_support`. Existing indexes and constraints (including `QueueEntry_active_customer_queue_uidx` and `QueueEntry_noShowCount_range_check`) are unchanged. |
+| 3 | API list | New `GET /api/operator/queues/{queueId}/counters`, `PATCH /api/operator/counters/{counterId}/status` (CSRF + JSON body `{ "status": "OPEN" \| "CLOSED" }`), and `POST /api/operator/counters/{counterId}/call-next` (CSRF, no body). Additive `counterId` and `counterName` added to every `QueueEntry` payload. New `409` error codes: `COUNTER_CLOSED` and `NO_WAITING_ENTRIES`. Legacy `POST /api/operator/queues/{queueId}/call-next` preserved (`counterId = NULL`, `204` when empty). `recoverNoShowEntry` (F-08) clears `counterId = NULL` alongside `calledAt = NULL`. Details: [sprints/sprint-2/api-spec.md](./sprints/sprint-2/api-spec.md) §12–§16. |
+| 4 | Concurrency | Counter status toggle locks `Counter` `FOR UPDATE`. Counter-scoped Call Next locks `Counter` `FOR UPDATE` (checking existence, assignment, `assignedOperatorId`, and `OPEN` status), then selects the oldest `WAITING` entry in `counter.serviceQueueId` with `FOR UPDATE SKIP LOCKED`. Lock order is strictly `Counter` → `QueueEntry` (and `ServiceQueue` → `QueueEntry` elsewhere), forming an acyclic lock graph with zero deadlock cycles. |
+| 5 | Seed data | `server/prisma/seed.ts` idempotently upserts deterministic `Counter 1` and `Counter 2` (`OPEN`, `assignedOperatorId: null`) for each seeded queue, omitting `status` from `update` so re-seeding preserves operational counter state. |
+| 6 | Unchanged | Queue catalog, customer join and queue-number allocation, `aheadCount`, legacy Call Next SQL, Start/Complete/No-show transitions, F-07 cancel, authentication/session/CSRF middleware, Docker build. |
+| 7 | Deployment | Purely additive migration (new enum, new table, nullable FK column); apply migration before serving the new revision and run idempotent seeding/provisioning so existing queues have default counters. |

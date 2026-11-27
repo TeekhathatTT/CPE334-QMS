@@ -7,6 +7,7 @@
 | 1.2 | 2026-11-27 | Adds PERF-S2-001 (NFR-04 for the cancel mutation and the operations F-07 changed) after PR #56 review. §5 first bullet revised (old text kept in §5). CANCEL-001 – CANCEL-020 unchanged. |
 | 2.0 | 2026-11-27 | F-08 contract v1 (issue #41): adds §7 with NOSHOW-001 – NOSHOW-020, REG-S2-002 and PERF-S2-002. Nothing in §7 has been run yet. §1–§6 (F-07) unchanged. |
 | 2.1 | 2026-11-27 | F-08 red and green runs executed: §7.1 status column and the new §7.5 hold the actual results. F-08 test definitions unchanged, except the NOSHOW-017 position check now uses an exact text match (commit `3714852`, same assertion). |
+| 3.0 | 2026-11-27 | F-09 contract v1 (issue #42): adds §8 with COUNTER-001 – COUNTER-018, REG-S2-003 and PERF-S2-003. Nothing in §8 has been run yet. §1–§7 (F-07, F-08) unchanged. |
 
 This document is the plan for verifying F-07. It is not evidence that anything passed. A test counts as passed only after it has been executed and its raw output saved under `docs/sprints/sprint-2/evidence/`. Requirements: [SRS](../../srs.md) v2.0 §10 (AC-17–AC-24). API: [api-spec.md](./api-spec.md). UI: [ui-spec.md](./ui-spec.md). Design: [F-07 feature SDS](../../features/sprint-2-f07-customer-cancellation.md).
 
@@ -230,3 +231,76 @@ Actual test files:
 | REG-S2-002 | existing Sprint 1 and F-07 suites (no file edited) | — |
 
 Not run: Firefox and WebKit E2E.
+
+---
+
+## 8. F-09 Multi-counter support
+
+Added in v3.0 (contract v1, issue #42). §1 conventions apply. In addition, "unchanged" for F-09 tests covers `Counter.status`, `Counter.assignedOperatorId`, `Counter.updatedAt`, and `QueueEntry.counterId` alongside all existing `QueueEntry` fields. Nothing in §8 has been executed yet. Requirements: [SRS](../../srs.md) v4.0 §10.2 (AC-35–AC-44). API: [api-spec.md](./api-spec.md) §12–§16. UI: [ui-spec.md](./ui-spec.md) §10–§13. Design: [F-09 feature SDS](../../features/sprint-2-f09-multi-counter.md).
+
+Helpers used below: `C1` (`cccccccc-cccc-4ccc-8ccc-ccccccccccc1`, `Counter 1`) and `C2` (`cccccccc-cccc-4ccc-8ccc-ccccccccccc2`, `Counter 2`) are the seeded `OPEN` counters of General Inquiry Desk (`queue1`). "operator3" is a second `OPERATOR` user created by a test and assigned to `queue1` when testing `assignedOperatorId` scoping.
+
+### 8.1 Test matrix
+
+| ID | Name | Level | Setup | Input | Expected outcome | AC | Planned file | Status |
+|---|---|---|---|---|---|---|---|---|
+| COUNTER-001 | Counter status and operator-scope policy rules | Unit | none | `canCallNextOnCounter(status)` for `OPEN`/`CLOSED`; `isCounterStatusValid(value)` for valid/invalid strings; `canOperatorUseCounter(isQueueAssigned, assignedOperatorId, operatorId)` across null/matching/mismatched operator IDs | `canCallNextOnCounter` true only for `OPEN`; `isCounterStatusValid` true only for `'OPEN'` and `'CLOSED'`; `canOperatorUseCounter` true only when queue-assigned and (`assignedOperatorId` is `null` or equals `operatorId`) | AC-37, AC-39 | `server/tests/f09-counter-rule.test.ts` | planned |
+| COUNTER-002 | List counters for assigned queue | API+DB | `resetAndSeed()` | operator1 `GET /api/operator/queues/{queue1}/counters` | `200`; `data.counters` has `[Counter 1, Counter 2]` ordered by `name ASC, id ASC`, each with `id`, `serviceQueueId`, `name`, `status: 'OPEN'`, `assignedOperatorId: null`, and RFC 3339 UTC `createdAt`/`updatedAt` | AC-35 | `server/tests/f09-multi-counter.test.ts` | planned |
+| COUNTER-003 | Toggle counter status OPEN ↔ CLOSED and validate payload | API+DB | `resetAndSeed()` | operator1 `PATCH /api/operator/counters/{C1}/status` with `{"status":"CLOSED"}`, repeat `{"status":"CLOSED"}`, then `{"status":"OPEN"}`; also test on `queue2` (`CLOSED` parent queue with operator1 assigned); plus invalid bodies `{}`, `{"status":"PAUSED"}`, `{"status":123}`, `{"status":"OPEN","extra":true}` | Valid toggles return `200` with persisted status in DB on fresh query; repeat returns `200` idempotently; `CLOSED` parent queue succeeds (`200`); all invalid bodies return `400 INVALID_ARGUMENT` with counter unchanged | AC-36 | `server/tests/f09-multi-counter.test.ts` | planned |
+| COUNTER-004 | Access control and validation on GET queue counters | API+DB | `resetAndSeed()` | `GET /api/operator/queues/{id}/counters` by: anonymous; customer1; operator2 (unassigned); operator1 with `not-a-uuid`; operator1 with unknown valid UUIDv4 | `401 UNAUTHORIZED`, `403 FORBIDDEN`, `403 FORBIDDEN`, `400 INVALID_ARGUMENT`, `403 FORBIDDEN` (assignment check) | AC-37 | `server/tests/f09-multi-counter.test.ts` | planned |
+| COUNTER-005 | Access control and validation on PATCH status and POST counter call-next | API+DB | `resetAndSeed()`; customer1 joins `queue1`; also test with `C2.assignedOperatorId = operator3` while operator1 is assigned to `queue1` | Both `PATCH .../counters/{id}/status` and `POST .../counters/{id}/call-next` by: anonymous; customer1 with CSRF; operator2 (unassigned) with CSRF; operator1 on `C2` owned by operator3; operator1 with missing/wrong CSRF; operator1 with `not-a-uuid`; operator1 with unknown valid UUIDv4 | `401`, `403`, `403`, `403`, `403`, `403`, `400 INVALID_ARGUMENT`, `404 RESOURCE_NOT_FOUND`; counters and entries unchanged after each | AC-37 | `server/tests/f09-multi-counter.test.ts` | planned |
+| COUNTER-006 | Counter-scoped Call Next assigns counterId and counterName in FIFO order | API+DB | customer1 (A) and customer2 (B) join `queue1` in order | operator1 calls `POST .../counters/{C1}/call-next`, then `POST .../counters/{C2}/call-next`; read operator entries list and customer1 own list & detail | C1 returns `200` with A (`CALLED`, `calledAt` UTC, `counterId: C1`, `counterName: 'Counter 1'`); C2 returns `200` with B (`counterId: C2`, `counterName: 'Counter 2'`); DB rows match; `GET /api/operator/queues/{queue1}/entries`, `GET /api/me/queue-entries`, and `GET /api/me/queue-entries/{A}` all include `counterId` and `counterName` | AC-38 | `server/tests/f09-multi-counter.test.ts` | planned |
+| COUNTER-007 | Closed counter rejects Call Next; in-flight entries at closed counter can still finish | API+DB | customer1 (A) and customer2 (B) join; A called at C1; C1 toggled to `CLOSED` | operator1 calls `POST .../counters/{C1}/call-next`; then operator1 runs `start` and `complete` on A (and in a sub-case `no-show` on a `CALLED` entry at C1) | `call-next` on closed C1 returns `409 COUNTER_CLOSED` and B stays `WAITING` (`counterId: null`); `start`, `complete`, and `no-show` on A all return `200` preserving `counterId: C1`, `counterName: 'Counter 1'` | AC-39 | `server/tests/f09-multi-counter.test.ts` | planned |
+| COUNTER-008 | Empty queue on counter Call Next returns 409 NO_WAITING_ENTRIES; CLOSED parent queue still callable | API+DB | (a) empty `queue1`; (b) customer1 joins `queue1`, then `queue1` set to `CLOSED` in DB | (a) operator1 `POST .../counters/{C1}/call-next`; (b) operator1 `POST .../counters/{C1}/call-next` | (a) `409 NO_WAITING_ENTRIES`, no DB change; (b) `200` with entry `CALLED` and `counterId: C1` | AC-38, AC-39 | `server/tests/f09-multi-counter.test.ts` | planned |
+| COUNTER-009 | Legacy queue-level Call Next remains backward compatible | API+DB | customer1 joins `queue1` | operator1 `POST /api/operator/queues/{queue1}/call-next` twice | First returns `200` with `counterId: null`, `counterName: null`; second returns `204 No Content` with empty body | AC-39 | `server/tests/f09-multi-counter.test.ts` | planned |
+| COUNTER-010 | Race: parallel multi-counter Call Next across C1 and C2 | API+DB concurrency | 15 rounds each: (a) 2 `WAITING` entries A, B; (b) 1 `WAITING` entry A | Fire `POST .../counters/{C1}/call-next` and `POST .../counters/{C2}/call-next` in parallel (`Promise.all`) | (a) Every round: both `200`, claiming distinct entries `{A, B}` with zero double-claims and matching `counterId` in DB; (b) every round: exactly one `200` (entry `CALLED` with winning counter's `counterId`) and one `409 NO_WAITING_ENTRIES`; zero deadlocks; row invariants hold | AC-40 | `server/tests/f09-multi-counter.test.ts` | planned |
+| COUNTER-011 | Race: counter Call Next vs Close Counter on the same counter | API+DB concurrency | 15 rounds: reset, customer1 joins `queue1`, C1 is `OPEN` | Fire `POST .../counters/{C1}/call-next` and `PATCH .../counters/{C1}/status` (`CLOSED`) in parallel (`Promise.all`) | Every round: zero deadlocks; status update always `200` (`CLOSED`); Call Next is either `200` (won lock first, entry `CALLED` at C1) or `409 COUNTER_CLOSED` (lost lock, entry stays `WAITING` with `counterId: null`); row invariants hold | AC-40 | `server/tests/f09-multi-counter.test.ts` | planned |
+| COUNTER-012 | Cross-feature F-08 recovery clears counterId and F-07 cancel/NO_SHOW skipped | API+DB (cross-feature F-07, F-08) | customer1 (A) and customer2 (B) join; A called at C1, marked `NO_SHOW`, then recovered; B cancelled by customer2 | Verify A after `NO_SHOW` (`counterId: C1`), after `recover` (`WAITING`, `calledAt: null`, `counterId: null`, `counterName: null`), then call next at C2; verify B (`CANCELLED`) has `counterId: null` and is skipped | Recovery clears `counterId` to `null`; subsequent Call Next at C2 assigns A to `C2` (`counterName: 'Counter 2'`); B stays `CANCELLED` with `counterId: null`; next Call Next returns `409 NO_WAITING_ENTRIES` | AC-41 | `server/tests/f09-multi-counter.test.ts` | planned |
+| COUNTER-013 | Database constraints and idempotent counter seeding | API+DB | `resetAndSeed()` | (a) insert duplicate `(serviceQueueId, name)` into `Counter`; (b) update `QueueEntry.counterId` to unknown UUID; (c) toggle C1 to `CLOSED`, re-run `seed()` | (a) unique violation (`23505` / `P2002`); (b) FK violation (`23503`); (c) counter count stays 4 (2 per queue), deterministic IDs unchanged, and C1 remains `CLOSED` on re-seed | AC-41, AC-44 | `server/tests/f09-multi-counter.test.ts` | planned |
+| COUNTER-014 | Operator Counters panel and active entry counter badges (component) | Client | mocked API returning counters (`Counter 1` `OPEN`, `Counter 2` `CLOSED`) and entries with/without `counterName` | Render `OperatorQueueDetailPage`; toggle counter status; click counter Call Next; verify disabled state on closed counter; simulate `409 COUNTER_CLOSED`, `409 NO_WAITING_ENTRIES`, `404`, `403`, `500`, and double-click while busy | Counters section renders badges (`Open`/`Closed`), toggle buttons, and Call Next (disabled on `CLOSED`); active cards show `Counter 1` badge; busy texts and single request on double-click; exact ui-spec §12.3 error messages and refresh on `409`/`404` | AC-42 | `client/src/test/f09-multiCounter.test.tsx` | planned |
+| COUNTER-015 | Customer assigned counter prompt and fallback (component) | Client | mocked API returning entries: `CALLED` with `counterName`, `CALLED` with `null`, `SERVING` with `counterName`, `SERVING` with `null`, `WAITING` with `null` | Render `EntryDetailPage` and `MyTicketsList` | `CALLED` + `Counter 1` renders `"Please proceed to Counter 1."` and badge; `SERVING` + `Counter 1` renders `"Your service is in progress at Counter 1."` and badge; `null` falls back to Sprint 1 text with no counter badge; `MyTicketsList` shows badge only for `CALLED`/`SERVING` with `counterName` | AC-43 | `client/src/test/f09-multiCounter.test.tsx` | planned |
+| COUNTER-016 | E2E: multi-counter Call Next, counter close, in-flight finish, and customer view | E2E | reset DB; customer1 and customer2 join `queue1` | Operator1 in UI calls next at Counter 1 (customer1) and Counter 2 (customer2), closes Counter 2 (verifies Counter 2 Call Next disabled), starts & completes customer2; customer1 opens `/customer/entries/:id` and reloads | Active cards show `Counter 1` / `Counter 2`; Counter 2 closes and still allows Start/Complete on customer2; customer1 sees `"Please proceed to Counter 1."` before and after reload; DB matches | AC-35, AC-36, AC-38, AC-39, AC-42, AC-43 | `e2e/tests/f09-multi-counter.spec.ts` | planned |
+| COUNTER-017 | E2E: operator 409 error feedback and F-08 recovery re-call at different counter | E2E | reset DB; customer1 joins `queue1` | Operator1 calls customer1 at Counter 1, marks no-show, returns to queue, calls at Counter 2; also clicks Call Next when queue is empty (and on a stale-closed counter via API) | After recovery, customer1 is called at Counter 2 and sees `"Please proceed to Counter 2."`; empty counter Call Next shows user-safe `NO_WAITING_ENTRIES` message; stale closed counter shows `COUNTER_CLOSED` message and refreshes | AC-39, AC-41, AC-42, AC-43 | `e2e/tests/f09-multi-counter.spec.ts` | planned |
+| COUNTER-018 | E2E: keyboard-only operation and responsive layout (360 px / 1280 px) | E2E | customer1 joined `queue1` | Operator1 uses Tab/Enter/Space only to toggle Counter 2 closed/open and trigger Counter 1 Call Next; check `scrollWidth <= clientWidth` at `360 × 800` and `1280 × 800` on `/operator/queues/:id` and `/customer/entries/:id` | All controls operable with keyboard alone; zero page-level horizontal overflow on both pages at both widths | AC-42, AC-43 | `e2e/tests/f09-multi-counter.spec.ts` | planned |
+| REG-S2-003 | Sprint 1, F-07, and F-08 regression unchanged | All | none | `npm run test`, `npm run test:client`, `npm run test:e2e`, server and client typecheck | All Sprint 1, F-07, and F-08 tests pass with no existing test file edited | AC-01–AC-34, AC-44 | existing `server/tests/*.test.ts`, `client/src/test/*.test.tsx`, `e2e/tests/*.spec.ts` | planned |
+| PERF-S2-003 | NFR-04 for F-09 | Performance (standalone script) | 1,000 `WAITING` entries in `queue1` with seeded counters; PERF-001 method (5 warm-ups + 100 timed sequential requests per operation) | 1. `GET /api/operator/queues/:id/counters`; 2. `PATCH /api/operator/counters/:id/status` (alternating `CLOSED`/`OPEN`); 3. `POST /api/operator/counters/:id/call-next` (105 calls across C1/C2); 4. `GET /api/operator/queues/:id/entries` (with counter join); 5. `GET /api/me/queue-entries/:id` (called entry with `counterName`) | p95 ≤ 500 ms for reads (1, 4, 5) and ≤ 1,000 ms for mutations (2, 3); functional checks assert valid `counterId`/`counterName` and zero duplicate claims | NFR-04 (AC-35, AC-36, AC-38, AC-44) | `server/tests/nfr/perf-s2-003-multi-counter.ts` (`npm run test:perf:f09 --workspace=server`) | planned |
+
+### 8.2 Acceptance criteria coverage
+
+| AC | Tests |
+|---|---|
+| AC-35 | COUNTER-002, COUNTER-016 |
+| AC-36 | COUNTER-003, COUNTER-016 |
+| AC-37 | COUNTER-001, COUNTER-004, COUNTER-005 |
+| AC-38 | COUNTER-006, COUNTER-008, COUNTER-016 |
+| AC-39 | COUNTER-001, COUNTER-007, COUNTER-008, COUNTER-009, COUNTER-016, COUNTER-017 |
+| AC-40 | COUNTER-010, COUNTER-011 |
+| AC-41 | COUNTER-012, COUNTER-013, COUNTER-017 |
+| AC-42 | COUNTER-014, COUNTER-016, COUNTER-017, COUNTER-018 |
+| AC-43 | COUNTER-015, COUNTER-016, COUNTER-017, COUNTER-018 |
+| AC-44 | COUNTER-013, PERF-S2-003, REG-S2-003 |
+
+### 8.3 Row invariants asserted after every F-09 API+DB scenario
+
+```sql
+-- 1. WAITING and CANCELLED entries must never reference a counter
+SELECT id FROM "QueueEntry"
+WHERE "status" IN ('WAITING', 'CANCELLED') AND "counterId" IS NOT NULL;
+-- expected: zero rows
+
+-- 2. Every assigned counter must belong to the same ServiceQueue as the entry
+SELECT e.id
+FROM "QueueEntry" e
+JOIN "Counter" c ON c.id = e."counterId"
+WHERE c."serviceQueueId" <> e."serviceQueueId";
+-- expected: zero rows
+```
+
+Plus all F-07 (§4) and F-08 (§7.3) row invariants (no two active entries per `(customerId, serviceQueueId)`, no duplicate `(serviceQueueId, queueNumber)`, and valid `CANCELLED`/`NO_SHOW` timestamp/count invariants).
+
+### 8.4 Not planned in F-09
+
+- Firefox and WebKit E2E (optional, `npm run test:e2e:all-browsers`; default run is Chromium).
+- Counter create/rename/delete CRUD tests (out of scope for Sprint 2).
+- Concurrent-load stress tests beyond the multi-counter Call Next and Call Next vs Close Counter races in `COUNTER-010` and `COUNTER-011`.
+- Production Cloud SQL migration, counter seeding, and Cloud Run deploy (handled at release).
