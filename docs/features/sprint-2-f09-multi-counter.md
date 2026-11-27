@@ -6,10 +6,10 @@
 | Sprint | 2 (Deliverable 2, Part B) |
 | Issue | #42 |
 | Depends on | F-03 (queues), F-05 (operator lifecycle); interacts with F-04 (customer reads), F-07 (cancel) and F-08 (no-show recovery) |
-| Contract version | v1 (2026-11-27) |
-| Status | Contract v1, pending review by @TeekhathatTT |
+| Contract version | v1.1 (2026-11-27) |
+| Status | Contract v1.1, pending re-review by @TeekhathatTT |
 | Author / reviewer | @Khwanklao / @TeekhathatTT |
-| Governing documents | [SRS](../srs.md) v4.0 (§1.3, FR-17–FR-19, BR-18–BR-20, §10.2), [System SDS](../system-sds.md) §15, [Sprint 2 API spec](../sprints/sprint-2/api-spec.md) §12–§16, [Sprint 2 UI spec](../sprints/sprint-2/ui-spec.md) §10–§13, [Sprint 2 test spec](../sprints/sprint-2/tests.md) §8 |
+| Governing documents | [SRS](../srs.md) v4.1 (§1.3, FR-17–FR-19, BR-18–BR-20, §10.2), [System SDS](../system-sds.md) §15, [Sprint 2 API spec](../sprints/sprint-2/api-spec.md) v3.1 (§12–§16), [Sprint 2 UI spec](../sprints/sprint-2/ui-spec.md) v3.1 (§10–§13), [Sprint 2 test spec](../sprints/sprint-2/tests.md) v3.1 (§8) |
 
 ## 1. Purpose and scope
 
@@ -90,9 +90,9 @@ Interaction between `Counter.status` and `QueueEntry`:
 
 | ID | Decision and reason |
 |---|---|
-| D-1 | **Nullable `QueueEntry.counterId` FK (`ON DELETE SET NULL`) for additive compatibility.** Keeping `counterId` nullable means Sprint 1, F-07, and F-08 tests and existing database rows without counters remain valid without rewriting legacy tests or backfilling historical calls. |
-| D-2 | **Seeded deterministic counters; no runtime admin CRUD in Sprint 2.** Seed data (`server/prisma/seed.ts`) upserts `Counter 1` and `Counter 2` (`OPEN`, `assignedOperatorId: null`) for each seeded queue using deterministic RFC 4122 UUIDv4s, preserving `status` on re-seed (same pattern as `ServiceQueue.lastQueueNumber`). Admin CRUD for creating/deleting counters is out of scope for F-09 (review note R-3). |
-| D-3 | **New counter-scoped Call Next endpoint; legacy queue-level endpoint preserved.** `POST /api/operator/counters/{counterId}/call-next` handles counter-aware calling. Legacy `POST /api/operator/queues/{queueId}/call-next` stays unchanged (`counterId = NULL`, `204 No Content` when empty) so Sprint 1 (`FLOW-001`–`FLOW-003`, `CONCURRENCY-003`), F-07 (`CANCEL-012`–`CANCEL-014`), and F-08 (`NOSHOW-006`, `NOSHOW-011`) tests pass unmodified (R-6). |
+| D-1 | **Nullable `QueueEntry.counterId` with composite FK (`MATCH SIMPLE`) for additive compatibility and DB-enforced same-queue integrity.** Keeping `counterId` nullable means Sprint 1, F-07, and F-08 tests and existing database rows without counters remain valid without rewriting legacy tests or backfilling historical calls. A PostgreSQL composite foreign key `FOREIGN KEY ("counterId", "serviceQueueId") REFERENCES "Counter"("id", "serviceQueueId")` (`MATCH SIMPLE`, default; `ON DELETE RESTRICT`) backed by `Counter` `UNIQUE ("id", "serviceQueueId")` enforces BR-20 at the database layer (BR-12) while allowing `counterId IS NULL`. |
+| D-2 | **Seeded deterministic counters for dev/test; dedicated counter-only provisioning for production; no runtime admin CRUD in Sprint 2.** Local dev/test seed (`server/prisma/seed.ts`) upserts `Counter 1` and `Counter 2` (`OPEN`, `assignedOperatorId: null`) for each seeded queue using deterministic RFC 4122 UUIDv4s, preserving `status` on re-seed (same pattern as `ServiceQueue.lastQueueNumber`). Production / Cloud SQL provisioning uses a separate idempotent counter-only script or SQL data migration that never touches users, passwords, queues, or assignments. Admin CRUD for creating/deleting counters is out of scope for F-09 (review note R-3). |
+| D-3 | **New counter-scoped Call Next endpoint; legacy queue-level endpoint preserved as an explicit backwards-compatibility trade-off.** `BR-19` applies to counter-scoped Call Next (`POST /api/operator/counters/{counterId}/call-next`). Retaining legacy `POST /api/operator/queues/{queueId}/call-next` without counter `OPEN`/`assignedOperatorId` checks is an **explicitly accepted backwards-compatibility trade-off** solely to preserve unmodified Sprint 1 (`FLOW-001`–`FLOW-003`, `CONCURRENCY-003`), F-07 (`CANCEL-012`–`CANCEL-014`), and F-08 (`NOSHOW-006`, `NOSHOW-011`) regression suites; deprecation/removal is deferred to a future sprint. Legacy `callNextEntry` explicitly writes `"counterId" = NULL` in its `UPDATE` so it never leaves a stale `counterId` on a newly `CALLED` entry, and keeps `204 No Content` when empty (R-1, R-3, R-6). |
 | D-4 | **Empty queue on counter Call Next returns `409 NO_WAITING_ENTRIES`.** On `POST /api/operator/counters/{counterId}/call-next`, an empty waiting queue returns `409 NO_WAITING_ENTRIES` with the standard error envelope so clients can distinguish an empty queue from a `409 COUNTER_CLOSED` conflict with structured JSON feedback, while legacy `/queues/{queueId}/call-next` preserves `204 No Content` (BR-10). Flagged for reviewer alignment in R-1. |
 | D-5 | **Closing a counter does not disrupt in-flight entries.** Consistent with `AD-05` (closing a queue lets existing entries finish), closing a counter blocks only future `call-next` on that counter (`409 COUNTER_CLOSED`). Entries already `CALLED` or `SERVING` at that counter keep their `counterId` and can still be started, completed, or marked no-show (R-2). |
 | D-6 | **Queue availability is not checked on counter status toggle or counter Call Next.** Just like Start, Complete, F-07 cancel, and F-08 no-show/recover, operators may finish serving waiting/called customers of a `CLOSED` queue (`AD-05`) and manage its counters independently. |
@@ -110,17 +110,18 @@ Operator page `/operator/queues/:id` (`client/src/pages/OperatorQueueDetailPage.
   - counter name (e.g., `Counter 1`), status badge (`Open` or `Closed`, text + icon, never color alone),
   - a **Close counter** / **Open counter** toggle button (`PATCH /api/operator/counters/{counterId}/status`),
   - a per-counter **Call Next** button (`POST /api/operator/counters/{counterId}/call-next`, disabled when the counter is `CLOSED` or while a mutation on that counter is pending).
-- Active Service (`CALLED` and `SERVING`) cards display a visible counter badge (e.g., `Counter 1`) whenever `entry.counterName` is non-null.
+  - If `counter.assignedOperatorId !== null && counter.assignedOperatorId !== currentUser.id`, both the Open/Close toggle and Call Next buttons are **disabled** and the card displays the clear label `"Assigned to another operator"`.
+- **Counter badge rule (deterministic):** render the assigned counter badge (e.g., `Counter 1`) on **`CALLED` and `SERVING` entries only** whenever `entry.counterName` is non-null. Do **not** render a counter badge on `WAITING`, `COMPLETED`, `NO_SHOW`, or `CANCELLED` entries.
 - Busy texts: `"Updating counter..."` (status toggle), `"Calling next..."` (counter Call Next). Success messages announced in the live region: `"Counter 1 is now Closed."`, `"Counter 1 is now Open."`, `"Called queue number N to Counter 1."`.
-- If a queue has zero counters (for example in a non-seeded custom test queue), the Counters panel shows a neutral empty state (`"No counters configured for this queue."`) and the existing queue-level **Call Next** fallback remains usable.
+- **Legacy Call Next fallback:** whenever the signed-in operator has **zero usable (accessible) counters** in that queue—either the queue has zero counters (`"No counters configured for this queue."`) OR every counter in the queue is assigned to another operator—the existing top-level queue-level **Call Next** fallback remains visible and usable.
 
 Customer views:
 - `/customer/entries/:id` (`client/src/pages/EntryDetailPage.tsx`):
   - When `status` is `CALLED` and `counterName` is non-null: displays a prominent counter badge (`Counter 1`) and message `"Please proceed to {counterName}."`. When `counterName` is `null`, keeps the Sprint 1 message `"Please go to the service desk."`.
   - When `status` is `SERVING` and `counterName` is non-null: displays the counter badge and `"Your service is in progress at {counterName}."`. When `counterName` is `null`, keeps `"Your service is in progress."`.
-  - When `status` is `WAITING` or `CANCELLED`, no counter badge is shown.
+  - For `WAITING`, `COMPLETED`, `NO_SHOW`, and `CANCELLED`, no counter badge is rendered.
 - `/customer` → My Active Tickets (`client/src/components/customer/MyTicketsList.tsx`):
-  - When an entry is `CALLED` or `SERVING` and `counterName` is non-null, renders the counter badge (e.g., `Counter 1`) next to the status badge.
+  - Renders the counter badge (e.g., `Counter 1`) next to the status badge on **`CALLED` and `SERVING` entries only** when `counterName` is non-null (no badge on `WAITING`, `COMPLETED`, `NO_SHOW`, or `CANCELLED`).
 
 Full details: [Sprint 2 UI spec §10–§13](../sprints/sprint-2/ui-spec.md#f-09-multi-counter-support-v30).
 
@@ -154,17 +155,21 @@ Server error messages are never rendered directly to users.
 |---|---|
 | New enum | `CounterStatus`: `OPEN`, `CLOSED` |
 | New table `Counter` | `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`, `serviceQueueId UUID NOT NULL REFERENCES "ServiceQueue"("id") ON DELETE CASCADE`, `name VARCHAR(80) NOT NULL`, `status "CounterStatus" NOT NULL DEFAULT 'OPEN'`, `assignedOperatorId UUID NULL REFERENCES "User"("id") ON DELETE SET NULL`, `createdAt TIMESTAMPTZ NOT NULL DEFAULT now()`, `updatedAt TIMESTAMPTZ NOT NULL DEFAULT now()` |
-| New constraints & indexes on `Counter` | `UNIQUE ("serviceQueueId", "name")` (`Counter_serviceQueueId_name_key`); `INDEX "Counter_serviceQueueId_idx" ON "Counter" ("serviceQueueId", "name" ASC, "id" ASC)`; `INDEX "Counter_assignedOperatorId_idx" ON "Counter" ("assignedOperatorId")` |
-| Column added to `QueueEntry` | `counterId UUID NULL REFERENCES "Counter"("id") ON DELETE SET NULL`; `INDEX "QueueEntry_counterId_idx" ON "QueueEntry" ("counterId")` |
+| New constraints & indexes on `Counter` | `UNIQUE ("serviceQueueId", "name")` (`Counter_serviceQueueId_name_key`); `UNIQUE ("id", "serviceQueueId")` (`Counter_id_serviceQueueId_key`, Prisma `@@unique([id, serviceQueueId])`) to back the composite FK from `QueueEntry`; `INDEX "Counter_serviceQueueId_idx" ON "Counter" ("serviceQueueId", "name" ASC, "id" ASC)`; `INDEX "Counter_assignedOperatorId_idx" ON "Counter" ("assignedOperatorId")` |
+| Column & composite FK added to `QueueEntry` | `counterId UUID NULL`; composite foreign key `FOREIGN KEY ("counterId", "serviceQueueId") REFERENCES "Counter"("id", "serviceQueueId") ON DELETE RESTRICT` (PostgreSQL `MATCH SIMPLE`, default); `INDEX "QueueEntry_counterId_idx" ON "QueueEntry" ("counterId")`. Under `MATCH SIMPLE`, `counterId IS NULL` is permitted (preserving Sprint 1 / `WAITING` / legacy rows) while any non-null `counterId` belonging to a different `serviceQueueId` is strictly rejected by PostgreSQL (enforcing BR-20 at the DB layer per BR-12). `ON DELETE RESTRICT` is used because counter deletion is out of scope in Sprint 2 and plain `ON DELETE SET NULL` would conflict with `NOT NULL` `serviceQueueId`. |
 | Migration | `server/prisma/migrations/20261127150000_f09_multi_counter_support/migration.sql` |
 | Existing indexes & constraints | `QueueEntry_active_customer_queue_uidx`, `QueueEntry_serviceQueueId_queueNumber_key`, `QueueEntry_fifo_idx`, `QueueEntry_noShowCount_range_check` are all **unchanged** |
-| Row invariants (asserted by tests) | (1) `status IN ('WAITING', 'CANCELLED')` ⇒ `counterId IS NULL`; (2) `counterId IS NOT NULL` ⇒ referenced `Counter.serviceQueueId = QueueEntry.serviceQueueId`; (3) no two active entries for the same `(customerId, serviceQueueId)`; (4) no duplicate `(serviceQueueId, queueNumber)`; (5) all F-07 and F-08 invariants continue to hold |
-| Deterministic seed (`server/prisma/seed.ts`) | Upserts 4 counters using deterministic RFC 4122 UUIDv4s (`assignedOperatorId: null`, `status: OPEN` on create; `status` omitted from `update` so re-seeding preserves operational counter state, matching `lastQueueNumber`):<br>• General Inquiry Desk (`aaaaaaaa-...`): `Counter 1` (`cccccccc-cccc-4ccc-8ccc-ccccccccccc1`), `Counter 2` (`cccccccc-cccc-4ccc-8ccc-ccccccccccc2`)<br>• Specialized Consultation (`bbbbbbbb-...`): `Counter 1` (`dddddddd-dddd-4ddd-8ddd-ddddddddddd1`), `Counter 2` (`dddddddd-dddd-4ddd-8ddd-ddddddddddd2`) |
+| Row invariants (asserted by tests) | (1) `status IN ('WAITING', 'CANCELLED')` ⇒ `counterId IS NULL`; (2) `counterId IS NOT NULL` ⇒ referenced `Counter.serviceQueueId = QueueEntry.serviceQueueId` (also enforced by the composite FK); (3) no two active entries for the same `(customerId, serviceQueueId)`; (4) no duplicate `(serviceQueueId, queueNumber)`; (5) all F-07 and F-08 invariants continue to hold |
+| Local dev/test seed (`server/prisma/seed.ts`) | **Local development and automated tests only** (never run against production / Cloud SQL): upserts 4 counters using deterministic RFC 4122 UUIDv4s (`assignedOperatorId: null`, `status: OPEN` on create; `status` omitted from `update` so re-seeding preserves operational counter state, matching `lastQueueNumber`):<br>• General Inquiry Desk (`aaaaaaaa-...`): `Counter 1` (`cccccccc-cccc-4ccc-8ccc-ccccccccccc1`), `Counter 2` (`cccccccc-cccc-4ccc-8ccc-ccccccccccc2`)<br>• Specialized Consultation (`bbbbbbbb-...`): `Counter 1` (`dddddddd-dddd-4ddd-8ddd-ddddddddddd1`), `Counter 2` (`dddddddd-dddd-4ddd-8ddd-ddddddddddd2`) |
+| Production / Cloud SQL counter provisioning | Dedicated, idempotent **counter-only** provisioning script (or SQL data migration) that inserts missing default counters for existing queues without touching users, passwords, queues, or operator assignments. |
 
-Migration safety:
-- The migration is purely additive: it creates a new enum `CounterStatus`, a new table `Counter`, and adds a nullable `counterId` column to `QueueEntry` with an FK and index. Existing rows remain untouched (`counterId = NULL`).
-- Apply the migration to the deployed database **before** the new Cloud Run revision serves traffic, and run the idempotent seed step (or counter provisioning) if default counters are required on an existing database.
-- Rollback caveat: because `counterId` is nullable and `Counter` is a separate table, rolling back the application revision to the pre-F-09 release does **not** break existing Prisma queries on `QueueEntry` (older revisions ignore the extra column and table), unlike F-07/F-08 enum additions — though counter assignments written during F-09 will not be surfaced by the older revision.
+Migration and rollback safety:
+- The migration is additive at the schema level: it creates `CounterStatus`, `Counter` (with `UNIQUE ("id", "serviceQueueId")`), and adds nullable `QueueEntry.counterId` with the composite FK and index. Existing rows remain untouched (`counterId = NULL`).
+- Apply the migration to the deployed database **before** the new Cloud Run revision serves traffic, then run the dedicated idempotent **counter-only** provisioning script/migration (do **not** run `server/prisma/seed.ts` against Cloud SQL, as `seed.ts` upserts demo users, queues, and assignments).
+- **Rollback and roll-forward risk:** rolling back the application revision to a pre-F-09 release is **not** unconditionally invariant-safe once counter-called entries exist. While older Prisma queries ignore the new `Counter` table and nullable `counterId` column on read, a pre-F-09 revision's `recoverNoShowEntry` does not clear `counterId`, which can leave recovered `WAITING` rows with a stale non-null `counterId` (violating BR-20's `WAITING => counterId IS NULL` invariant). Therefore, after any rollback and **before** rolling forward to F-09 again, run the cleanup SQL:
+  ```sql
+  UPDATE "QueueEntry" SET "counterId" = NULL WHERE "status" = 'WAITING' AND "counterId" IS NOT NULL;
+  ```
 
 ## 10. Concurrency design
 
@@ -212,7 +217,7 @@ Every write path in the system acquires row locks strictly along an acyclic part
 
 | Race | Possible outcomes | Never happens |
 |---|---|---|
-| Counter 1 Call Next vs Counter 2 Call Next (≥ 2 `WAITING` entries A, B) | Both `200`, claiming distinct entries `{A, B}` (one counter gets A, the other gets B) | Both counters claim A; either entry left `WAITING` with `counterId` set |
+| Counter 1 Call Next vs Counter 2 Call Next (≥ 2 `WAITING` entries A, B) | Both `200`, claiming two distinct entries `{A, B}` with zero double-claims and zero lost updates (one counter gets A, the other gets B) | Both counters claim A; lost update; either entry left `WAITING` with `counterId` set |
 | Counter 1 Call Next vs Counter 2 Call Next (only 1 `WAITING` entry A) | Exactly one counter gets `200` (A becomes `CALLED` with that counter's `counterId`), the other gets `409 NO_WAITING_ENTRIES` | Both get `200`; double-claim |
 | Same counter Call Next vs Close Counter (`PATCH /status CLOSED`) | Serialized on `Counter` `FOR UPDATE`: either Call Next `200` then Close `200`, or Close `200` then Call Next `409 COUNTER_CLOSED` | Call Next succeeds after Close committed; deadlock |
 | Counter Call Next vs Customer Cancel (F-07) on one `WAITING` entry | Either Call Next `200` (entry `CALLED` with `counterId`, cancel `409`) or Cancel `200` (entry `CANCELLED` with `counterId = NULL`, Call Next `409 NO_WAITING_ENTRIES` if empty) | Both succeed on the same entry; `CANCELLED` entry with non-null `counterId` |
@@ -246,18 +251,17 @@ Parent `ServiceQueue.availability` (`OPEN` / `CLOSED`) does not change any row o
 
 - Customer queue catalog (`GET /api/queues`), customer join (`POST /api/queues/{queueId}/entries`), and queue-number allocation (FR-04–FR-06): unchanged logic; newly created `WAITING` rows have `counterId = NULL`.
 - `computeAheadCount`: unchanged; still counts only `WAITING` entries in the same queue.
-- Legacy `POST /api/operator/queues/{queueId}/call-next`: unchanged SQL and `204` empty behavior; sets `counterId = NULL`.
 - Start, Complete, and Mark No-show (FR-10, FR-11, FR-15): unchanged transition logic; entries keep their existing `counterId` and serialize `counterId` + `counterName`.
 - F-07 customer cancellation (`POST /api/me/queue-entries/{entryId}/cancel`): unchanged logic (`WAITING` rows always have `counterId = NULL`).
 - Authentication, session storage, CSRF middleware, and Docker multi-stage build pipeline: unchanged.
 
-Changed: Prisma schema & migration (`CounterStatus`, `Counter`, `QueueEntry.counterId`), `server/prisma/seed.ts` (deterministic counters), `formatQueueEntry` and entry queries (include `counter: { select: { name: true } }` to serialize `counterId` and `counterName`), `recoverNoShowEntry` (clear `counterId: null`), new pure counter policy helper (`server/src/services/counterPolicy.ts`), new service functions & routes in `operatorService.ts` / `operator.ts`, error codes `COUNTER_CLOSED` & `NO_WAITING_ENTRIES`, operator UI counter panel & entry badges, and customer UI counter prompt & badges.
+Changed: Prisma schema & migration (`CounterStatus`, `Counter` with `UNIQUE ("id", "serviceQueueId")`, `QueueEntry.counterId` with composite FK), `server/prisma/seed.ts` (dev/test deterministic counters), dedicated production counter-only provisioning script/migration, `formatQueueEntry` and entry queries (include `counter: { select: { name: true } }` to serialize `counterId` and `counterName`), legacy `callNextEntry` (`POST /api/operator/queues/{queueId}/call-next`, one-line `UPDATE` addition setting `counterId: null` so it never leaves a stale `counterId` on a newly `CALLED` entry while keeping its `204`/`200` status, FIFO ordering, and `FOR UPDATE SKIP LOCKED` behavior unchanged), `recoverNoShowEntry` (clear `counterId: null`), new pure counter policy helper (`server/src/services/counterPolicy.ts`), new service functions & routes in `operatorService.ts` / `operator.ts`, error codes `COUNTER_CLOSED` & `NO_WAITING_ENTRIES`, operator UI counter panel & entry badges, and customer UI counter prompt & badges.
 
 ## 13. Definition of Done
 
-- [ ] Contract v1 reviewed by @TeekhathatTT and the review recorded
+- [ ] Contract v1.1 reviewed by @TeekhathatTT and the review recorded
 - [ ] Red tests committed and the red run saved (`docs/sprints/sprint-2/evidence/f09-red-run.txt`)
-- [ ] Migration applied to the local and test databases; idempotent seed creates deterministic counters without breaking existing constraints (`COUNTER-013`)
+- [ ] Migration applied to the local and test databases; composite FK and idempotent dev/test seed verified without breaking existing constraints (`COUNTER-013`)
 - [ ] All `COUNTER-001` – `COUNTER-018` tests executed and passing
 - [ ] Sprint 1, F-07, and F-08 regression (server, client, E2E) executed and passing with no existing test edited (`REG-S2-003`)
 - [ ] NFR-04 measured for the new F-09 read and mutation paths (`PERF-S2-003`)
@@ -265,24 +269,25 @@ Changed: Prisma schema & migration (`CounterStatus`, `Counter`, `QueueEntry.coun
 - [ ] Green run saved (`docs/sprints/sprint-2/evidence/f09-green-run.txt`)
 - [ ] Traceability, test spec, and completion table updated with actual results and commit SHA
 - [ ] PR into `sprint2-staging` reviewed by @TeekhathatTT, CI green
-- [ ] Not part of the local DoD: production migration, counter seeding, and release deploy (issue #42 DoD, done at release)
+- [ ] Not part of the local DoD: production migration, counter-only Cloud SQL provisioning, and release deploy (issue #42 DoD, done at release)
 
 ## 14. Review notes (decisions to challenge)
 
 | # | Topic | Question for the reviewer |
 |---|---|---|
-| R-1 | Empty-queue status code on counter Call Next | Counter-scoped `POST /api/operator/counters/{counterId}/call-next` returns `409 NO_WAITING_ENTRIES` when no `WAITING` entries exist (D-4), whereas legacy `POST /api/operator/queues/{queueId}/call-next` returns `204 No Content` (BR-10). Do you prefer `409 NO_WAITING_ENTRIES` (structured JSON error distinguishing empty queue from `409 COUNTER_CLOSED`) or `204 No Content` for consistency with Sprint 1? |
+| R-1 | Empty-queue status code & legacy Call Next trade-off | Counter-scoped `POST /api/operator/counters/{counterId}/call-next` returns `409 NO_WAITING_ENTRIES` when no `WAITING` entries exist (D-4), whereas legacy `POST /api/operator/queues/{queueId}/call-next` keeps `204 No Content` (BR-10) and intentionally bypasses counter `OPEN`/`assignedOperatorId` checks solely as an accepted backwards-compatibility trade-off for unmodified Sprint 1 / F-07 / F-08 regression suites (D-3). Do you prefer `409 NO_WAITING_ENTRIES` or `204 No Content` on the new counter endpoint? |
 | R-2 | Closing a counter with active `CALLED`/`SERVING` entries | Closing a counter blocks only future `call-next` on that counter; existing `CALLED`/`SERVING` entries keep their `counterId` and can be finished normally (D-5, matching `AD-05`). Should closing a counter instead be rejected (`409`) while it still has an active `CALLED`/`SERVING` entry? |
-| R-3 | Counter provisioning vs admin CRUD | Counters are provisioned via deterministic seed data (`Counter 1`, `Counter 2` per seeded queue) with no create/delete API in Sprint 2 (D-2). Agree that CRUD belongs out of scope for F-09? |
-| R-4 | `assignedOperatorId` enforcement | When `Counter.assignedOperatorId` is `null` (default on seeded counters), any operator assigned to that queue may operate the counter; when non-null, only that specific operator may toggle or call next on it (`403 FORBIDDEN` otherwise, D-7). Should `GET .../counters` still show all counters of the queue to any assigned operator (so they see peer counter status), or filter to their own? Currently all counters of the queue are shown. |
+| R-3 | Counter provisioning vs admin CRUD & legacy endpoint deprecation | Counters are provisioned via `seed.ts` in dev/test and a dedicated counter-only provisioning script/migration in production, with no create/delete API in Sprint 2 (D-2). Deprecation/removal of the legacy queue-level Call Next endpoint (D-3) is likewise deferred to a future sprint. Agree both belong out of scope for F-09? |
+| R-4 | `assignedOperatorId` enforcement | When `Counter.assignedOperatorId` is `null` (default on seeded counters), any operator assigned to that queue may operate the counter; when non-null, only that specific operator may toggle or call next on it (`403 FORBIDDEN` otherwise, D-7). Should `GET .../counters` still show all counters of the queue to any assigned operator (so they see peer counter status), or filter to their own? Currently all counters of the queue are shown, with non-owned counters disabled and labelled `"Assigned to another operator"`. |
 | R-5 | Clearing `counterId` on F-08 recovery | `recoverNoShowEntry` clears `counterId = NULL` alongside `calledAt = NULL` (D-10), while `markNoShowEntry` preserves `counterId` for missed-turn history. Agree? |
-| R-6 | Legacy `/queues/{queueId}/call-next` compatibility | Keeping legacy queue-level Call Next working with `counterId = NULL` lets all Sprint 1, F-07, and F-08 tests pass untouched (D-3). Should the operator UI hide the legacy queue-level Call Next button whenever the queue has ≥ 1 counter, showing only per-counter Call Next buttons? Currently yes (legacy button shown only as fallback when 0 counters exist). |
+| R-6 | Legacy `/queues/{queueId}/call-next` UI fallback | Keeping legacy queue-level Call Next working (`counterId = NULL`) lets all Sprint 1, F-07, and F-08 tests pass untouched (D-3). The operator UI shows the legacy queue-level Call Next button whenever the operator has zero usable counters in the queue (0 counters, or all counters assigned to another operator). Agree? |
 | R-7 | One-active-entry-per-counter cap | F-09 does not currently prevent a single `OPEN` counter from calling a second `WAITING` entry while a previous entry it called is still `CALLED` or `SERVING` (matching Sprint 1's queue-level Call Next). Should a counter be limited to 1 active `CALLED`/`SERVING` entry at a time, or allow multiple? |
 | R-8 | Lab 7 BR-06 interaction | Like F-08 (R-8), this branch is based on `sprint2-staging`, which does not yet include Lab 7's 2-active-entry cross-queue cap (`BR-06`). F-09 does not change join or active-state definitions, so merging with Lab 7 has no conflict in counter logic. |
-| R-9 | Migration & seed on deploy | The migration is additive and backward-compatible on read, but existing deployed queues will have zero counters until the idempotent seed (or a counter-provisioning script) is run against Cloud SQL. |
+| R-9 | Migration, counter-only provisioning & rollback cleanup | Apply the migration before deploy and run a dedicated idempotent counter-only provisioning script/migration on Cloud SQL (never demo `seed.ts`). On rollback and before any subsequent roll-forward, run the `WAITING` `counterId = NULL` cleanup SQL (§9). |
 
 ## 15. Revision history
 
 | Date | Section | Previous text (kept for the record) | New text / reason |
 |---|---|---|---|
 | 2026-11-27 | All | — | Contract v1 authored for Issue #42 (`F-09 Multi-counter support`), pending review by @TeekhathatTT. |
+| 2026-11-27 | Header, §5 (`D-1`–`D-3`), §6, §9, §10.3, §12, §13, §14 (`R-1`, `R-3`, `R-4`, `R-6`, `R-9`) | Contract v1 claimed rollback was unconditionally safe, listed legacy `callNextEntry` under §12 "no change", used a single-column `ON DELETE SET NULL` FK on `counterId`, suggested running `seed.ts` on Cloud SQL, did not disable other-operator counters in UI or show fallback when 0 usable counters existed, and lacked explicit `BR-19` legacy trade-off wording. | Contract v1.1 addressing PR review feedback from @TeekhathatTT (4 Blocking + 5 Non-blocking): documents legacy Call Next as an explicit backwards-compatibility trade-off (Blocking #3); moves legacy `callNextEntry` out of §12 "no change" to explicitly set `counterId = NULL` and documents rollback/roll-forward risk + cleanup SQL in §9 (Blocking #4); adds disabled UI state `"Assigned to another operator"` + 0-usable-counter fallback (Nit #1); upgrades to composite FK `("counterId", "serviceQueueId") -> Counter("id", "serviceQueueId")` (`MATCH SIMPLE`, `ON DELETE RESTRICT`) (Nit #2); aligns parallel race wording (Nit #3); restricts `seed.ts` to dev/test and requires counter-only Cloud SQL provisioning (Nit #4); standardizes counter badge strictly to `CALLED`/`SERVING` only (Nit #5). |

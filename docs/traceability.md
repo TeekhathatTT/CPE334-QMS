@@ -85,7 +85,7 @@ F-06 is the cross-cutting verification responsibility for this entire baseline; 
 | F-06 | Integration and regression verification | 1 |
 | F-07 | Customer cancellation and queue withdrawal | 2 (specified, contract v1) |
 | F-08 | No-show handling and recovery | 2 (specified, contract v1) |
-| F-09 | Multi-counter support | 2 (specified, contract v1) |
+| F-09 | Multi-counter support | 2 (specified, contract v1.1) |
 | F-10 | Priority queue policy | 2 |
 | F-11 | Operational analytics | 3 |
 | F-12 | Advance appointment booking | 3 |
@@ -116,7 +116,8 @@ No approved requirement changes were recorded during this update.
 |---|---|---|---|
 | F-07 customer cancellation (SRS v2.0) | 2026-11-27 | adds FR-14, BR-13, BR-14, AC-17–AC-24; revises BR-05, BR-09 | proposed, review pending |
 | F-08 no-show handling and recovery (SRS v3.0) | 2026-11-27 | adds FR-15, FR-16, BR-15–BR-17, AC-25–AC-34, error code `RECOVERY_LIMIT_REACHED`; revises BR-05, BR-09 | proposed, review pending |
-| F-09 multi-counter support (SRS v4.0) | 2026-11-27 | adds FR-17–FR-19, BR-18–BR-20, AC-35–AC-44, error codes `COUNTER_CLOSED` and `NO_WAITING_ENTRIES`; updates BR-10 and BR-16 notes | proposed, review pending (@TeekhathatTT) |
+| F-09 multi-counter support (SRS v4.0) | 2026-11-27 | adds FR-17–FR-19, BR-18–BR-20, AC-35–AC-44, error codes `COUNTER_CLOSED` and `NO_WAITING_ENTRIES`; updates BR-10 and BR-16 notes | superseded by v4.1 (review fixes) |
+| F-09 multi-counter support (SRS v4.1, contract v1.1) | 2026-11-27 | refines BR-19 (legacy Call Next trade-off), BR-20 & AC-41(c) (composite FK `MATCH SIMPLE`), AC-40(a) (parallel `SKIP LOCKED` wording), AC-42 & AC-43 (disabled non-owned counters, 0-usable-counter fallback, `CALLED`/`SERVING`-only badges) | proposed, re-review pending (@TeekhathatTT) |
 
 ## Sprint 2 — F-07 Customer Cancellation Traceability
 
@@ -194,27 +195,27 @@ Contract v1 (2026-11-27, issue #41). Every result below is `planned` until the t
 
 ## Sprint 2 — F-09 Multi-counter Support Traceability
 
-Contract v1 (2026-11-27, issue #42, author @Khwanklao, review pending by @TeekhathatTT). Every result below is `planned` until the test has been executed. Test specification: [sprints/sprint-2/tests.md §8](./sprints/sprint-2/tests.md#8-f-09-multi-counter-support).
+Contract v1.1 (2026-11-27, issue #42, SRS v4.1, author @Khwanklao, re-review pending by @TeekhathatTT; revised from v1 to address PR review). Every result below is `planned` until the test has been executed. Test specification: [sprints/sprint-2/tests.md §8](./sprints/sprint-2/tests.md#8-f-09-multi-counter-support).
 
 ### Requirements to tests
 
 | Requirement | Feature | Sprint | AC | Test ID(s) | Planned test file | Result (commit) | Contract version |
 |---|---|---|---|---|---|---|---|
-| FR-17 | F-09 | 2 | AC-35, AC-36, AC-37, AC-42 | COUNTER-001–COUNTER-005, COUNTER-014, COUNTER-016, COUNTER-018 | `server/tests/f09-counter-rule.test.ts`, `server/tests/f09-multi-counter.test.ts`, `client/src/test/f09-multiCounter.test.tsx`, `e2e/tests/f09-multi-counter.spec.ts` | planned | v1 |
-| FR-18 | F-09 | 2 | AC-37–AC-42 | COUNTER-001, COUNTER-005–COUNTER-012, COUNTER-014, COUNTER-016, COUNTER-017, COUNTER-018 | same four files | planned | v1 |
-| FR-19 | F-09 | 2 | AC-38, AC-42, AC-43, AC-44 | COUNTER-006, COUNTER-014–COUNTER-018 | `server/tests/f09-multi-counter.test.ts`, `client/src/test/f09-multiCounter.test.tsx`, `e2e/tests/f09-multi-counter.spec.ts` | planned | v1 |
-| BR-18 | F-09 | 2 | AC-35, AC-36, AC-37 | COUNTER-001–COUNTER-005, COUNTER-013 | `server/tests/f09-counter-rule.test.ts`, `server/tests/f09-multi-counter.test.ts` | planned | v1 |
-| BR-19 | F-09 | 2 | AC-38, AC-39, AC-40 | COUNTER-001, COUNTER-006–COUNTER-011 | same | planned | v1 |
-| BR-20 | F-09 | 2 | AC-38, AC-41 | COUNTER-006, COUNTER-009, COUNTER-012, COUNTER-013 | `server/tests/f09-multi-counter.test.ts` | planned | v1 |
-| BR-10 (rev. 4.0 note) | F-05, F-09 | 2 | AC-39 | COUNTER-008, COUNTER-009 | `server/tests/f09-multi-counter.test.ts` | planned | v1 |
-| BR-16 (rev. 4.0 note, F-08 cross-feature) | F-08, F-09 | 2 | AC-41 | COUNTER-012, COUNTER-017 | `server/tests/f09-multi-counter.test.ts`, `e2e/tests/f09-multi-counter.spec.ts` | planned | v1 |
-| BR-14 (F-07 cross-feature) | F-07, F-09 | 2 | AC-41 | COUNTER-012 | `server/tests/f09-multi-counter.test.ts` | planned | v1 |
-| BR-07, FR-03, NFR-02, NFR-08 | F-02, F-09 | 2 | AC-35, AC-37, AC-42, AC-43 | COUNTER-002, COUNTER-004, COUNTER-005, COUNTER-014, COUNTER-015 | `server/tests/f09-multi-counter.test.ts`, `client/src/test/f09-multiCounter.test.tsx` | planned | v1 |
-| BR-12, NFR-03, NFR-05 | F-09 | 2 | AC-36, AC-40, AC-41 | COUNTER-003, COUNTER-010, COUNTER-011, COUNTER-013 | `server/tests/f09-multi-counter.test.ts` | planned | v1 |
-| NFR-06 | F-09 | 2 | AC-42, AC-43 | COUNTER-014, COUNTER-015, COUNTER-018 | `client/src/test/f09-multiCounter.test.tsx`, `e2e/tests/f09-multi-counter.spec.ts` | planned | v1 |
-| NFR-07 | F-01, F-09 | 2 | AC-44 | COUNTER-013 | `server/tests/f09-multi-counter.test.ts` | planned | v1 |
-| NFR-04 | F-09 | 2 | AC-44 (operations of AC-35, AC-36, AC-38) | PERF-S2-003 | `server/tests/nfr/perf-s2-003-multi-counter.ts` | planned | v1 |
-| FR-01–FR-16 (regression) | F-06 | 2 | AC-01–AC-34, AC-44 | REG-S2-003 | existing Sprint 1, F-07, and F-08 suites | planned | v1 |
+| FR-17 | F-09 | 2 | AC-35, AC-36, AC-37, AC-42 | COUNTER-001–COUNTER-005, COUNTER-014, COUNTER-016, COUNTER-018 | `server/tests/f09-counter-rule.test.ts`, `server/tests/f09-multi-counter.test.ts`, `client/src/test/f09-multiCounter.test.tsx`, `e2e/tests/f09-multi-counter.spec.ts` | planned | v1.1 |
+| FR-18 | F-09 | 2 | AC-37–AC-42 | COUNTER-001, COUNTER-005–COUNTER-012, COUNTER-014, COUNTER-016, COUNTER-017, COUNTER-018 | same four files | planned | v1.1 |
+| FR-19 | F-09 | 2 | AC-38, AC-42, AC-43, AC-44 | COUNTER-006, COUNTER-014–COUNTER-018 | `server/tests/f09-multi-counter.test.ts`, `client/src/test/f09-multiCounter.test.tsx`, `e2e/tests/f09-multi-counter.spec.ts` | planned | v1.1 |
+| BR-18 | F-09 | 2 | AC-35, AC-36, AC-37 | COUNTER-001–COUNTER-005, COUNTER-013 | `server/tests/f09-counter-rule.test.ts`, `server/tests/f09-multi-counter.test.ts` | planned | v1.1 |
+| BR-19 (rev. 4.1) | F-09 | 2 | AC-38, AC-39, AC-40 | COUNTER-001, COUNTER-006–COUNTER-011 | same | planned | v1.1 |
+| BR-20 (rev. 4.1) | F-09 | 2 | AC-38, AC-41 | COUNTER-006, COUNTER-009, COUNTER-012, COUNTER-013 | `server/tests/f09-multi-counter.test.ts` | planned | v1.1 |
+| BR-10 (rev. 4.0 note) | F-05, F-09 | 2 | AC-39 | COUNTER-008, COUNTER-009 | `server/tests/f09-multi-counter.test.ts` | planned | v1.1 |
+| BR-16 (rev. 4.0 note, F-08 cross-feature) | F-08, F-09 | 2 | AC-41 | COUNTER-012, COUNTER-017 | `server/tests/f09-multi-counter.test.ts`, `e2e/tests/f09-multi-counter.spec.ts` | planned | v1.1 |
+| BR-14 (F-07 cross-feature) | F-07, F-09 | 2 | AC-41 | COUNTER-012 | `server/tests/f09-multi-counter.test.ts` | planned | v1.1 |
+| BR-07, FR-03, NFR-02, NFR-08 | F-02, F-09 | 2 | AC-35, AC-37, AC-42, AC-43 | COUNTER-002, COUNTER-004, COUNTER-005, COUNTER-014, COUNTER-015 | `server/tests/f09-multi-counter.test.ts`, `client/src/test/f09-multiCounter.test.tsx` | planned | v1.1 |
+| BR-12, NFR-03, NFR-05 | F-09 | 2 | AC-36, AC-40, AC-41 | COUNTER-003, COUNTER-010, COUNTER-011, COUNTER-013 | `server/tests/f09-multi-counter.test.ts` | planned | v1.1 |
+| NFR-06 | F-09 | 2 | AC-42, AC-43 | COUNTER-014, COUNTER-015, COUNTER-018 | `client/src/test/f09-multiCounter.test.tsx`, `e2e/tests/f09-multi-counter.spec.ts` | planned | v1.1 |
+| NFR-07 | F-01, F-09 | 2 | AC-44 | COUNTER-013 | `server/tests/f09-multi-counter.test.ts` | planned | v1.1 |
+| NFR-04 | F-09 | 2 | AC-44 (operations of AC-35, AC-36, AC-38) | PERF-S2-003 | `server/tests/nfr/perf-s2-003-multi-counter.ts` | planned | v1.1 |
+| FR-01–FR-16 (regression) | F-06 | 2 | AC-01–AC-34, AC-44 | REG-S2-003 | existing Sprint 1, F-07, and F-08 suites | planned | v1.1 |
 
 ### Acceptance criteria to tests
 

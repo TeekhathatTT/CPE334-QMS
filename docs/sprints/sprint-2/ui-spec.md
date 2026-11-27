@@ -7,6 +7,7 @@
 | 2.0 | 2026-11-27 | F-08 contract v1 (issue #41): §6–§9 add the operator Mark no-show and Return to queue controls, the No-show section, the `No-show` status and the customer messages. §1–§5 (F-07) unchanged. |
 | 2.1 | 2026-11-27 | Implementation note for §8.1: in the Active Service card, Mark no-show is the third button, after Start Service and Complete Service, not directly next to Start Service. Labels, visibility, busy state, keyboard order and all acceptance criteria are unchanged. |
 | 3.0 | 2026-11-27 | F-09 contract v1 (issue #42): §10–§13 add the operator Counters panel (open/close toggle, counter-scoped Call Next, active entry counter badges) and customer assigned-counter messaging/badges. §1–§9 (F-07, F-08) unchanged. |
+| 3.1 | 2026-11-27 | F-09 contract v1.1 (PR review fixes): disables controls with `"Assigned to another operator"` for non-owned counters, shows legacy Call Next fallback whenever the operator has zero usable counters, and standardizes counter badges strictly to `CALLED` and `SERVING` entries only (removing `"may appear"` ambiguity). |
 
 This document extends the [Sprint 1 UI specification](../sprint-1/ui-spec.md). All Sprint 1 rules (accessibility, responsiveness, error states, session expiry) still apply. Requirements: [SRS](../../srs.md) FR-14, BR-13, BR-14, AC-24. API: [api-spec.md](./api-spec.md) §3.1. Design: [F-07 feature SDS](../../features/sprint-2-f07-customer-cancellation.md).
 
@@ -174,9 +175,9 @@ Requirements: [SRS](../../srs.md) v4.0 FR-17–FR-19, BR-18–BR-20, AC-42, AC-4
 
 | Screen | Component | Change |
 |---|---|---|
-| `/operator/queues/:id` | `client/src/pages/OperatorQueueDetailPage.tsx`, `client/src/components/operator/CounterPanel.tsx` (new) | New **Counters** section listing queue counters with `Open`/`Closed` badges, **Open counter** / **Close counter** toggle buttons, and per-counter **Call Next** buttons; Active Service (`CALLED`/`SERVING`) cards display the assigned counter badge (e.g. `Counter 1`); legacy top-level Call Next shown only as fallback if the queue has 0 counters |
-| `/customer/entries/:id` | `client/src/pages/EntryDetailPage.tsx` | Display prominent assigned counter badge and counter-specific prompt for `CALLED` and `SERVING` entries when `counterName` is non-null; keep Sprint 1 text as fallback when `counterName` is `null` |
-| `/customer` → My Active Tickets | `client/src/components/customer/MyTicketsList.tsx` | Render assigned counter badge next to status badge on `CALLED` and `SERVING` cards when `counterName` is non-null |
+| `/operator/queues/:id` | `client/src/pages/OperatorQueueDetailPage.tsx`, `client/src/components/operator/CounterPanel.tsx` (new) | New **Counters** section listing queue counters with `Open`/`Closed` badges, **Open counter** / **Close counter** toggle buttons, and per-counter **Call Next** buttons (both controls disabled with label `"Assigned to another operator"` when `assignedOperatorId` belongs to another user); counter badges rendered on `CALLED` and `SERVING` entries only (never on `WAITING`, `COMPLETED`, `NO_SHOW`, or `CANCELLED`); legacy top-level Call Next shown whenever the signed-in operator has zero usable counters in the queue |
+| `/customer/entries/:id` | `client/src/pages/EntryDetailPage.tsx` | Display prominent assigned counter badge and counter-specific prompt for `CALLED` and `SERVING` entries only when `counterName` is non-null; keep Sprint 1 text as fallback when `counterName` is `null`; never render counter badge for `WAITING`, `COMPLETED`, `NO_SHOW`, or `CANCELLED` |
+| `/customer` → My Active Tickets | `client/src/components/customer/MyTicketsList.tsx` | Render assigned counter badge next to status badge on `CALLED` and `SERVING` cards only when `counterName` is non-null (never on `WAITING`, `COMPLETED`, `NO_SHOW`, or `CANCELLED`) |
 
 ## 11. Counter status labels and customer messages
 
@@ -198,19 +199,23 @@ Status is always communicated with both visible text and an icon, never color al
 | `SERVING` | non-null (e.g. `"Counter 1"`) | `"Your service is in progress at Counter 1."` | Yes (`Counter 1`) |
 | `SERVING` | `null` (legacy Call Next) | `"Your service is in progress."` (unchanged Sprint 1) | No |
 | `WAITING`, `CANCELLED` | `null` | unchanged | No |
-| `COMPLETED`, `NO_SHOW` | non-null or `null` | unchanged (counter name may appear as subtle metadata if set; no active callout) | No active callout |
+| `COMPLETED`, `NO_SHOW` | non-null or `null` | unchanged | No |
+
+Deterministic badge rule (both customer and operator views): render the counter badge on **`CALLED` and `SERVING` entries only** when `counterName` is non-null; do **not** render a counter badge on `WAITING`, `COMPLETED`, `NO_SHOW`, or `CANCELLED` entries.
 
 ## 12. Operator counter controls
 
 ### 12.1 Counters section layout
 
 - Heading: `"Counters (N)"` (positioned above Active Service on `/operator/queues/:id`).
-- Empty state (when `counters.length === 0`): `"No counters configured for this queue."` (legacy top-level **Call Next** button remains rendered in this case).
+- Empty state (when `counters.length === 0`): `"No counters configured for this queue."`.
+- **Legacy Call Next fallback rule:** render the existing top-level queue-level **Call Next** button whenever the signed-in operator has **zero usable (accessible) counters** in the queue—that is, `counters.length === 0` OR every counter in `counters` has `assignedOperatorId !== null && assignedOperatorId !== currentUser.id`.
 - Each counter card displays:
   1. Counter name (e.g., `Counter 1`) and `Open` / `Closed` status badge.
-  2. Status toggle button: `"Close counter"` (`aria-label="Close Counter 1"`) when `OPEN`; `"Open counter"` (`aria-label="Open Counter 1"`) when `CLOSED`.
-  3. Primary action button: `"Call Next"` (`aria-label="Call next customer to Counter 1"`), **disabled** when `counter.status === 'CLOSED'` or while a request for that counter is in flight.
-- Active Service (`CALLED`/`SERVING`) entry cards show a counter badge (`Counter 1`) next to the status badge whenever `entry.counterName` is non-null.
+  2. Ownership notice (only when `counter.assignedOperatorId !== null && counter.assignedOperatorId !== currentUser.id`): visible label `"Assigned to another operator"`.
+  3. Status toggle button: `"Close counter"` (`aria-label="Close Counter 1"`) when `OPEN`; `"Open counter"` (`aria-label="Open Counter 1"`) when `CLOSED`. Disabled while a request for that counter is in flight OR when the counter is assigned to another operator.
+  4. Primary action button: `"Call Next"` (`aria-label="Call next customer to Counter 1"`), **disabled** when `counter.status === 'CLOSED'`, while a request for that counter is in flight, OR when the counter is assigned to another operator.
+- **Entry counter badges:** render the counter badge (e.g., `Counter 1`) next to the status badge on **`CALLED` and `SERVING` entries only** whenever `entry.counterName` is non-null. Never render a counter badge on `WAITING`, `COMPLETED`, `NO_SHOW`, or `CANCELLED` entries.
 
 ### 12.2 States
 
