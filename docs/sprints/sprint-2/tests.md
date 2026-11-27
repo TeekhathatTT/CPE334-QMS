@@ -312,7 +312,7 @@ Plus all F-07 (§4) and F-08 (§7.3) row invariants (no two active entries per `
 
 ### 8.5 Execution results (F-09)
 
-All runs executed locally on `feature/sprint2/42-multi-counter-impl` (2026-11-27) against PostgreSQL 16.15 (Docker, `qms_test_db`), Node v24.14.0, and Chromium. Raw performance output: [evidence/perf-s2-003.txt](./evidence/perf-s2-003.txt). F-09 E2E screenshots: `docs/sprints/sprint-2/evidence/f09-01-*.png` through `f09-04-*.png`.
+All runs executed locally on `feature/sprint2/42-multi-counter-impl` (2026-11-27) against PostgreSQL 16.15 (Docker, `qms_test_db`), Node v24.14.0, and Chromium. Raw performance output: [evidence/perf-s2-003.txt](./evidence/perf-s2-003.txt). Raw red/green output, re-executed at the red commit `3a63260` and the merged commit `bae2d3d`, and the screenshot captions: [evidence/f09-red-run.txt](./evidence/f09-red-run.txt), [evidence/f09-green-run.txt](./evidence/f09-green-run.txt), [evidence/f09-evidence-notes.md](./evidence/f09-evidence-notes.md). F-09 E2E screenshots: `docs/sprints/sprint-2/evidence/f09-01-*.png` through `f09-04-*.png`.
 
 | Run | Command | Passed | Failed | Skipped |
 |---|---|---|---|---|
