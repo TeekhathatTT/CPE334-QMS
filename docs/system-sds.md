@@ -51,7 +51,9 @@ Authorization and ownership checks are server-side. UI control visibility is not
 | `POST /api/operator/queue-entries/{entryId}/complete` | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May complete an entry in an assigned queue | Unassigned access returns `403 FORBIDDEN`; missing resource returns `404 RESOURCE_NOT_FOUND`; invalid transition returns `409 INVALID_STATE_TRANSITION`. |
 | Customer queue position calculation | Not available | Not specified by the Sprint 1 API | Not specified by the Sprint 1 API | Sprint 1 exposes entry status and FIFO-ordered operator entries; a customer-facing position endpoint is not defined. |
 | Customer cancellation or withdrawal | Not available | Planned for Sprint 2 (F-07) | — | Not part of Sprint 1. *Rev. 2026-11-27:* specified as `POST /api/me/queue-entries/{entryId}/cancel`, see §13. |
-| No-show handling | Not available | — | Planned for Sprint 2 (F-08) | Not part of Sprint 1. |
+| No-show handling | Not available | — | Planned for Sprint 2 (F-08) | Not part of Sprint 1. *Rev. 2026-11-27:* specified as the two rows below, see §14. |
+| `POST /api/operator/queue-entries/{entryId}/no-show` (Sprint 2, F-08) | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May mark a `CALLED` entry in an assigned queue no-show | Unassigned access returns `403 FORBIDDEN`; a missing entry `404`; any other status `409 INVALID_STATE_TRANSITION`. Queue availability is not checked. |
+| `POST /api/operator/queue-entries/{entryId}/recover` (Sprint 2, F-08) | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May return a `NO_SHOW` entry in an assigned queue to the queue once | Unassigned `403`; missing `404`; not `NO_SHOW` `409 INVALID_STATE_TRANSITION`; already returned once `409 RECOVERY_LIMIT_REACHED`; customer has another active entry in the queue `409 DUPLICATE_ACTIVE_ENTRY`. |
 
 ### 2.1 Authorization rules
 
@@ -116,6 +118,9 @@ The composite primary key is `(operatorId, serviceQueueId)`. Only OPERATOR users
 | `serviceStartedAt` | `timestamptz` | Nullable |
 | `completedAt` | `timestamptz` | Nullable |
 | `cancelledAt` (Sprint 2, F-07) | `timestamptz` | Nullable; set only together with `status = CANCELLED` |
+| `noShowAt` (Sprint 2, F-08) | `timestamptz` | Nullable; time of the latest no-show |
+| `recoveredAt` (Sprint 2, F-08) | `timestamptz` | Nullable; time the entry was returned to the queue |
+| `noShowCount` (Sprint 2, F-08) | `INTEGER` | Required, default 0, `CHECK ("noShowCount" >= 0 AND "noShowCount" <= 2)` |
 
 The lifecycle and active-state definitions match the SRS: active states are `WAITING`, `CALLED`, and `SERVING`; `COMPLETED` is terminal. Completed entries remain for historical review.
 
@@ -361,6 +366,8 @@ These record choices the specification left open for the operator workflow and e
 | 4 | Refreshing, conflict recovery & error mapping | Every operator mutation (`call-next`, `start`, `complete`) immediately re-fetches `GET /api/operator/queues/:queueId/entries` upon completion. If a concurrent operator action causes `409 INVALID_STATE_TRANSITION`, the UI shows a user-safe conflict banner and automatically refreshes the entry list so stale buttons are updated immediately. Action-level `403` errors distinguish CSRF verification failures (`"We couldn't verify this request. Please refresh the page or sign in again."`) from RBAC permission errors (`"You do not have permission to perform this action."`), and action-level `404` errors distinguish queue-level `call-next` (`"We couldn't find that service queue."`) from entry-level `start`/`complete` (`"We couldn't find that queue entry."`). Both `/operator` and `/operator/queues/:id` also poll every 10 seconds while visible (`usePolling`). |
 
 
+*Rev. 2026-11-27 (F-08):* the `status` enum gains `NO_SHOW`. `NO_SHOW` is not active; it can return to `WAITING` once (`noShowCount` 1), and is final at `noShowCount` 2. The active states and the partial unique index are unchanged. See §14.
+
 ## 13. Sprint 2 design changes (F-07 Customer cancellation, rev. 2026-11-27)
 
 Contract v1, pending review. The full design is in [features/sprint-2-f07-customer-cancellation.md](./features/sprint-2-f07-customer-cancellation.md); this section records only what F-07 changes in this system design.
@@ -373,3 +380,17 @@ Contract v1, pending review. The full design is in [features/sprint-2-f07-custom
 | 4 | Concurrency | One transaction: read and check owner and status, then a conditional `UPDATE ... WHERE status = 'WAITING'`, with `cancelledAt = clock_timestamp()`. Zero rows updated → `409 CONCURRENT_MODIFICATION`. Call Next is unchanged and never claims a cancelled or cancel-locked row (`FOR UPDATE SKIP LOCKED`). |
 | 5 | Unchanged | Queue catalog, queue-number allocation and join, authentication, session and CSRF middleware, operator Start and Complete, seed data, Docker image. |
 | 6 | Deployment | The migration is additive and must be applied to the deployed database before the new revision serves traffic. Rolling back below this release after `CANCELLED` rows exist requires handling those rows first. |
+
+
+## 14. Sprint 2 design changes (F-08 No-show handling and recovery, rev. 2026-11-27)
+
+Contract v1, pending review. The full design is in [features/sprint-2-f08-no-show-recovery.md](./features/sprint-2-f08-no-show-recovery.md); this section records only what F-08 changes in this system design.
+
+| # | Area | Change |
+|---|---|---|
+| 1 | Status model | `QueueStatus` gains `NO_SHOW`. New transitions `CALLED -> NO_SHOW` and `NO_SHOW -> WAITING` (once), both by an operator assigned to the entry's queue. Active states stay `WAITING`, `CALLED`, `SERVING`. |
+| 2 | Data model | `QueueEntry.noShowAt timestamptz NULL`, `recoveredAt timestamptz NULL`, `noShowCount integer NOT NULL DEFAULT 0` with `CHECK` 0–2 (`QueueEntry_noShowCount_range_check`). Migration `20261127120000_f08_queue_entry_no_show`. The partial unique index and the other constraints are unchanged. |
+| 3 | API list | New `POST /api/operator/queue-entries/{entryId}/no-show` and `/recover` (OPERATOR, session + CSRF, no body, `200` with the updated entry). The three fields are added to every `QueueEntry` payload. New error code `RECOVERY_LIMIT_REACHED` (409). Details: [sprints/sprint-2/api-spec.md](./sprints/sprint-2/api-spec.md) §7–§11. |
+| 4 | Concurrency | No-show: lock the entry `FOR UPDATE`, check assignment and `CALLED`, update (same as Start, §4.2). Recover: lock the queue row (the lock join uses, §4.1), then the entry, then check assignment, state, limit and other active entries, then update. Lock order is queue row before entry row. |
+| 5 | Unchanged | Join and queue-number allocation, Call Next, Start, Complete, `aheadCount`, the operator list filter, F-07 cancel, authentication, session, CSRF and RBAC middleware, seed data, Docker image. |
+| 6 | Deployment | The migration is additive and must be applied to the deployed database before the new revision serves traffic. Rolling back below this release after `NO_SHOW` rows exist requires handling those rows first. |

@@ -5,6 +5,7 @@
 | 1.0 | 2026-11-27 | F-07 contract v1: planned tests CANCEL-001 – CANCEL-020 and REG-S2-001. Nothing has been run yet. |
 | 1.1 | 2026-11-27 | Red and green runs executed; status column and §6 updated with actual results. Test definitions unchanged. |
 | 1.2 | 2026-11-27 | Adds PERF-S2-001 (NFR-04 for the cancel mutation and the operations F-07 changed) after PR #56 review. §5 first bullet revised (old text kept in §5). CANCEL-001 – CANCEL-020 unchanged. |
+| 2.0 | 2026-11-27 | F-08 contract v1 (issue #41): adds §7 with NOSHOW-001 – NOSHOW-020, REG-S2-002 and PERF-S2-002. Nothing in §7 has been run yet. §1–§6 (F-07) unchanged. |
 
 This document is the plan for verifying F-07. It is not evidence that anything passed. A test counts as passed only after it has been executed and its raw output saved under `docs/sprints/sprint-2/evidence/`. Requirements: [SRS](../../srs.md) v2.0 §10 (AC-17–AC-24). API: [api-spec.md](./api-spec.md). UI: [ui-spec.md](./ui-spec.md). Design: [F-07 feature SDS](../../features/sprint-2-f07-customer-cancellation.md).
 
@@ -121,3 +122,75 @@ Not run: Firefox and WebKit E2E. (v1.1 also listed "PERF-001 for the cancel muta
 | `POST /api/operator/queues/:id/call-next` (CANCELLED ahead) | mutation | 100 | 13.8 | 17.9 | 28.0 | ≤ 1,000 | PASS |
 
 Limits: one sequential run on one developer machine against a local database, like PERF-001. It says nothing about Cloud Run or Cloud SQL latency, or about concurrent load.
+
+---
+
+## 7. F-08 No-show handling and recovery
+
+Added in v2.0 (contract v1, issue #41). §1 conventions apply. In addition, "unchanged" for F-08 tests also covers `noShowAt`, `recoveredAt` and `noShowCount`. Requirements: [SRS](../../srs.md) v3.0 §10.1 (AC-25–AC-34). API: [api-spec.md](./api-spec.md) §9. UI: [ui-spec.md](./ui-spec.md) §6–§9. Design: [F-08 feature SDS](../../features/sprint-2-f08-no-show-recovery.md).
+
+Helper used below: "A is called" means operator1 sends Call Next on General Inquiry Desk and A is the oldest `WAITING` entry. "customer3" is a third CUSTOMER user created by the test with the seed hash and joined through the API (as in CANCEL-012).
+
+### 7.1 Test matrix
+
+| ID | Name | Level | Setup | Input | Expected outcome | AC | Planned file | Status |
+|---|---|---|---|---|---|---|---|---|
+| NOSHOW-001 | No-show and recovery rules | Unit | none | `canMarkNoShow(status)` for all six statuses; `recoveryDecision({status, noShowCount})` for every status with counts 0, 1, 2 | `canMarkNoShow` true only for `CALLED`; `recoveryDecision` is `ok` only for `NO_SHOW` with count 1, `limit` for `NO_SHOW` with count 2, `invalid_state` otherwise | AC-26, AC-29 | `server/tests/f08-no-show-rule.test.ts` | planned |
+| NOSHOW-002 | Mark a CALLED entry no-show | API+DB | customer1 joins (A), A is called | operator1 `POST .../A/no-show` | `200`; `status` `NO_SHOW`, `noShowAt` RFC 3339 UTC ≥ `calledAt`, `noShowCount` 1, `recoveredAt` `null`, `queueNumber`, `joinedAt`, `calledAt` unchanged; DB row the same; customer1 `GET /api/me/queue-entries/A` shows `NO_SHOW`, `aheadCount` 0. Repeated with the queue set to `CLOSED` after the call: also `200` | AC-25 | `server/tests/f08-no-show-recovery.test.ts` | planned |
+| NOSHOW-003 | Mark no-show rejected in other states | API+DB | customer1 entries driven to `WAITING`, `SERVING`, `COMPLETED`, `CANCELLED` and `NO_SHOW` | operator1 marks each no-show | each `409 INVALID_STATE_TRANSITION`; each row unchanged | AC-26 | `server/tests/f08-no-show-recovery.test.ts` | planned |
+| NOSHOW-004 | Access control on no-show | API+DB | customer1 entry A `CALLED` | operator2 (unassigned) with CSRF; customer1 (owner) with CSRF; customer2; no cookie; operator1 without CSRF and with a wrong token; operator1 on `not-a-uuid` and on an unknown UUIDv4 | `403`, `403`, `403`, `401`, `403`, `403`, `400 INVALID_ARGUMENT`, `404 RESOURCE_NOT_FOUND`; A unchanged after each | AC-27 | `server/tests/f08-no-show-recovery.test.ts` | planned |
+| NOSHOW-005 | Access control on recover | API+DB | customer1 entry A `NO_SHOW` (count 1) | the same eight callers as NOSHOW-004 on `POST .../recover` | the same eight results; A unchanged after each | AC-27 | `server/tests/f08-no-show-recovery.test.ts` | planned |
+| NOSHOW-006 | Return to queue at the original FIFO position | API+DB (cross-feature F-05) | A (customer1), B (customer2), C (customer3) join in that order; A called and marked no-show; B called; read C's `aheadCount` (0) | operator1 recovers A; read C's `aheadCount`; Call Next | recover `200`: A `WAITING`, `calledAt` `null`, `recoveredAt` UTC set, `noShowAt` kept, `noShowCount` 1, `joinedAt` and number unchanged; C's `aheadCount` is 1; Call Next returns A (not C). Repeated with the queue `CLOSED` before the recover: `200` | AC-28 | `server/tests/f08-no-show-recovery.test.ts` | planned |
+| NOSHOW-007 | Recovery limit and wrong states | API+DB | A recovered once, called, marked no-show again (`noShowCount` 2); other entries in `WAITING`, `CALLED`, `SERVING`, `COMPLETED`, `CANCELLED` | recover A; recover each of the others | A: `409 RECOVERY_LIMIT_REACHED`, unchanged (`noShowAt` is the second no-show time); others: `409 INVALID_STATE_TRANSITION`, unchanged | AC-29 | `server/tests/f08-no-show-recovery.test.ts` | planned |
+| NOSHOW-008 | Database keeps `noShowCount` in range | API+DB | customer1 entry | raw `UPDATE ... SET "noShowCount" = 3` and `= -1`; read `pg_constraint` | both fail with a check-constraint violation (SQLSTATE `23514`); constraint `QueueEntry_noShowCount_range_check` exists; the active-entry index definition is unchanged | AC-29 | `server/tests/f08-no-show-recovery.test.ts` | planned |
+| NOSHOW-009 | Rejoin while NO_SHOW blocks a later return | API+DB | A (customer1, number N) `NO_SHOW` | customer1 joins the same queue; operator1 recovers A | join `201`, new `WAITING` entry with number > N; recover `409 DUPLICATE_ACTIVE_ENTRY`; A unchanged | AC-30 | `server/tests/f08-no-show-recovery.test.ts` | planned |
+| NOSHOW-010 | F-07 cancel and NO_SHOW | API+DB (cross-feature F-07) | A (customer1) `NO_SHOW` | customer1 cancels A; operator1 recovers A; customer1 cancels A | first cancel `409 INVALID_STATE_TRANSITION`, A unchanged; recover `200`; second cancel `200`, A `CANCELLED` with `calledAt` `NULL` and `noShowAt` kept | AC-30 | `server/tests/f08-no-show-recovery.test.ts` | planned |
+| NOSHOW-011 | Call Next, operator list and aheadCount with NO_SHOW | API+DB (cross-feature F-05) | A (customer1), B (customer2) join; A called and marked no-show; customer3 joins (C) | read C's `aheadCount`; operator list; Call Next twice | C's `aheadCount` is 1 (only B); operator list contains A as `NO_SHOW` with `noShowAt`, `noShowCount`, `recoveredAt` in `joinedAt ASC` order; Call Next returns B, then C, then `204`; A unchanged | AC-31 | `server/tests/f08-no-show-recovery.test.ts` | planned |
+| NOSHOW-012 | Race: no-show vs Start on one CALLED entry | API+DB concurrency | per round: reset, customer1 joins, called; 10 rounds | `no-show` and `start` in parallel | each round: exactly one `200` and one `409 INVALID_STATE_TRANSITION`; row is `NO_SHOW` with `serviceStartedAt` `NULL`, or `SERVING` with `noShowAt` `NULL` and `noShowCount` 0 | AC-32 | `server/tests/f08-no-show-recovery.test.ts` | planned |
+| NOSHOW-013 | Race: two returns of one NO_SHOW entry | API+DB concurrency | per round: A `NO_SHOW` count 1; 10 rounds | two parallel `recover` | each round: one `200`, one `409 INVALID_STATE_TRANSITION`; one `recoveredAt` value | AC-32 | `server/tests/f08-no-show-recovery.test.ts` | planned |
+| NOSHOW-014 | Race: return vs rejoin by the same customer | API+DB concurrency | per round: A (customer1) `NO_SHOW` count 1; 10 rounds | operator1 `recover` A and customer1 `join` the same queue in parallel | each round: never two active entries for customer1 in the queue; either recover `200` + join `409 DUPLICATE_ACTIVE_ENTRY`, or join `201` + recover `409 DUPLICATE_ACTIVE_ENTRY` | AC-32 | `server/tests/f08-no-show-recovery.test.ts` | planned |
+| NOSHOW-015 | Operator page controls (component) | Client | mocked API with entries in every status, `NO_SHOW` with counts 1 and 2 | render `OperatorQueueDetailPage`; click Mark no-show and Return to queue; mocked `200`, `409 RECOVERY_LIMIT_REACHED`, `409 DUPLICATE_ACTIVE_ENTRY`, other `409`, `404`, `403`, `500`; double click while busy | Mark no-show only on `CALLED`; No-show section and count; Return only for count 1, "Already returned once..." for count 2; busy texts; one request per double click; messages from ui-spec §8.3; list reloaded on `409`/`404` | AC-33 | `client/src/test/f08-noShow.test.tsx` | planned |
+| NOSHOW-016 | Customer page for NO_SHOW (component) | Client | mocked API returning `NO_SHOW` count 1, count 2, and a returned `WAITING` entry | render `EntryDetailPage` | badge "No-show", "Missed:" time, the two messages of ui-spec §7, no Leave queue button for `NO_SHOW`; polling continues for count 1 and stops for count 2; returned entry shows "Waiting", "Returned to queue:" and Leave queue | AC-34 | `client/src/test/f08-noShow.test.tsx` | planned |
+| NOSHOW-017 | E2E: operator marks no-show, returns, marks again | E2E | reset DB; customer1 and customer2 join through the API | operator1 in the UI: Call Next → Mark no-show (customer1's entry) → it is in the No-show section → Return to queue → it is #1 in the Waiting Queue → Call Next calls it → Mark no-show → "Already returned once" and no Return button | every step visible without reload; DB row matches after each step (`noShowCount` 1 then 2) | AC-33, AC-28, AC-29, AC-25 | `e2e/tests/f08-no-show.spec.ts` | planned |
+| NOSHOW-018 | E2E: customer sees No-show, then Waiting after return | E2E | customer1 joined, called and marked no-show through the API | customer1 opens the entry detail page; operator1 returns it through the API; Refresh | page shows "No-show", "Missed:" and the first message, no Leave queue button; after Refresh "Waiting", "Returned to queue:" and the Leave queue button | AC-34 | `e2e/tests/f08-no-show.spec.ts` | planned |
+| NOSHOW-019 | E2E: keyboard only and responsive | E2E | entries in Waiting, Active (`CALLED`) and No-show sections | keyboard only: Tab to Mark no-show, Enter; Tab to Return to queue, Enter; then 360 × 800 and 1280 × 800 | both actions succeed with the keyboard alone; no page-level horizontal overflow at either width | AC-33 | `e2e/tests/f08-no-show.spec.ts` | planned |
+| NOSHOW-020 | Start and Complete reject NO_SHOW | API+DB (cross-feature F-05) | A `NO_SHOW` | operator1 `start` and `complete` A | both `409 INVALID_STATE_TRANSITION`; A unchanged | AC-26 | `server/tests/f08-no-show-recovery.test.ts` | planned |
+| REG-S2-002 | Sprint 1 and F-07 regression unchanged | All | none | `npm run test`, `npm run test:client`, `npm run test:e2e`, server and client typecheck | all Sprint 1 and F-07 tests pass with no existing test file edited | AC-01–AC-24 | existing `server/tests/*.test.ts`, `client/src/test/*.test.tsx`, `e2e/tests/*.spec.ts` | planned |
+| PERF-S2-002 | NFR-04 for F-08 | Performance (standalone script) | 1,000 `WAITING` entries in the OPEN queue; PERF-001 method | 1. Call Next + mark no-show for 105 entries (only no-show timed); 2. operator list with 105 `NO_SHOW` rows; 3. recover the 105 entries; 4. own entry detail with `NO_SHOW` rows in the queue | p95 ≤ 1,000 ms for the mutations, ≤ 500 ms for reads; functional checks: every response has the expected status | NFR-04 (operations of AC-25, AC-28, AC-31) | `server/tests/nfr/perf-s2-002-no-show.ts` (`npm run test:perf:f08 --workspace=server`) | planned |
+
+### 7.2 Acceptance criteria coverage
+
+| AC | Tests |
+|---|---|
+| AC-25 | NOSHOW-002, NOSHOW-017 |
+| AC-26 | NOSHOW-001, NOSHOW-003, NOSHOW-020 |
+| AC-27 | NOSHOW-004, NOSHOW-005 |
+| AC-28 | NOSHOW-006, NOSHOW-017 |
+| AC-29 | NOSHOW-001, NOSHOW-007, NOSHOW-008, NOSHOW-017 |
+| AC-30 | NOSHOW-009, NOSHOW-010 |
+| AC-31 | NOSHOW-011 |
+| AC-32 | NOSHOW-012, NOSHOW-013, NOSHOW-014 |
+| AC-33 | NOSHOW-015, NOSHOW-017, NOSHOW-019 |
+| AC-34 | NOSHOW-016, NOSHOW-018 |
+
+### 7.3 Row invariants asserted after every F-08 API+DB scenario
+
+```sql
+SELECT id FROM "QueueEntry" WHERE NOT (
+  ("status" <> 'NO_SHOW' OR ("noShowAt" IS NOT NULL AND "calledAt" IS NOT NULL AND "noShowCount" >= 1
+                             AND "serviceStartedAt" IS NULL AND "completedAt" IS NULL AND "cancelledAt" IS NULL))
+  AND (("noShowCount" = 0) = ("noShowAt" IS NULL))
+  AND ("recoveredAt" IS NULL OR "noShowCount" >= 1)
+  AND ("noShowCount" < 2 OR "recoveredAt" IS NOT NULL)
+  AND ("status" <> 'WAITING' OR "calledAt" IS NULL)
+);
+-- expected: zero rows
+```
+
+Plus the F-07 checks of §4 (no two active rows for one customer and queue; no duplicate queue number).
+
+### 7.4 Not planned in F-08
+
+- Firefox and WebKit E2E (optional, `npm run test:e2e:all-browsers`).
+- Concurrent-load tests beyond the races in NOSHOW-012 – NOSHOW-014.
+- Production migration and release deploy.
