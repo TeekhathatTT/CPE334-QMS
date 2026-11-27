@@ -75,7 +75,7 @@ test.describe('F-08 no-show handling and recovery', () => {
       await missedA.getByRole('button', { name: `Return queue number ${a.queueNumber} to the queue` }).click();
       await expect(page.getByText(`Returned queue number ${a.queueNumber} to the queue.`).first()).toBeVisible();
       const waitingA = page.getByTestId(`waiting-entry-${a.queueNumber}`);
-      await expect(waitingA.getByText('#1')).toBeVisible();
+      await expect(waitingA.getByText('#1', { exact: true })).toBeVisible();
       await expect(waitingA.getByText('Returned to queue:')).toBeVisible();
       stored = await rowOf(a.id);
       expect(stored?.status).toBe('WAITING');
