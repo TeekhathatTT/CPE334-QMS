@@ -22,6 +22,12 @@ export interface SerializedQueueEntry {
   completedAt: string | null;
   /** F-07: set only when `status` is `CANCELLED`; `null` otherwise (Sprint 2 api-spec §1.1). */
   cancelledAt: string | null;
+  /** F-08: time of the latest no-show, or `null` (Sprint 2 api-spec §7.1). */
+  noShowAt: string | null;
+  /** F-08: time the entry was returned to the queue, or `null`. */
+  recoveredAt: string | null;
+  /** F-08: number of no-shows, 0-2. */
+  noShowCount: number;
   aheadCount?: number;
 }
 
@@ -51,6 +57,9 @@ export function formatQueueEntry(
     serviceStartedAt: Date | null;
     completedAt: Date | null;
     cancelledAt: Date | null;
+    noShowAt: Date | null;
+    recoveredAt: Date | null;
+    noShowCount: number;
   },
   aheadCount?: number
 ): SerializedQueueEntry {
@@ -65,6 +74,9 @@ export function formatQueueEntry(
     serviceStartedAt: entry.serviceStartedAt ? entry.serviceStartedAt.toISOString() : null,
     completedAt: entry.completedAt ? entry.completedAt.toISOString() : null,
     cancelledAt: entry.cancelledAt ? entry.cancelledAt.toISOString() : null,
+    noShowAt: entry.noShowAt ? entry.noShowAt.toISOString() : null,
+    recoveredAt: entry.recoveredAt ? entry.recoveredAt.toISOString() : null,
+    noShowCount: entry.noShowCount,
     ...(typeof aheadCount === 'number' ? { aheadCount } : {}),
   };
 }

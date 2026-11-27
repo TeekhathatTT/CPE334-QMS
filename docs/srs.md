@@ -7,6 +7,7 @@
 | 1.0 | 2026-11-08 | Team | Sprint 1 baseline (FR-01–FR-13, BR-01–BR-12, NFR-01–NFR-08, AC-01–AC-16) |
 | 2.0 | 2026-11-27 | @TeekhathatTT (review: @Khwanklao, pending) | Sprint 2 F-07 contract v1: adds FR-14, BR-13, BR-14, AC-17–AC-24, §1.1 and §10; revises BR-05, BR-09, the CUSTOMER permission row and the transition table. The old text is kept in §11 Revision history. |
 | 2.0.1 | 2026-11-27 | @TeekhathatTT (review: @Khwanklao, pending) | Verification note only, no requirement changed: NFR-04 is measured for the F-07 cancel mutation and the operations F-07 changed (PERF-S2-001). See §11. |
+| 3.0 | 2026-11-27 | @TeekhathatTT (review: @Khwanklao, pending) | Sprint 2 F-08 contract v1 (issue #41): adds FR-15, FR-16, BR-15, BR-16, BR-17, AC-25–AC-34, §1.2, §10.1 and the error code `RECOVERY_LIMIT_REACHED`; revises BR-05, BR-09, the OPERATOR permission row, the transition table and the §1 / §1.1 scope notes. The old text is kept in §11 Revision history. |
 
 ## 1. Purpose and Scope
 
@@ -29,6 +30,8 @@ Excluded from Sprint 1:
 
 *Rev. 2.0 note:* the "Excluded from Sprint 1" list above is still true for Sprint 1. Sprint 2 adds customer cancellation through F-07 (§1.1). No-show handling stays excluded until F-08 is specified.
 
+*Rev. 3.0 note:* F-08 is now specified; see §1.2.
+
 ### 1.1 Sprint 2 additions (rev. 2.0)
 
 F-07 (Customer cancellation and queue withdrawal, Issue #40) adds to Sprint 2:
@@ -36,11 +39,27 @@ F-07 (Customer cancellation and queue withdrawal, Issue #40) adds to Sprint 2:
 - a cancelled entry is not active, so the customer may join the same queue again and receives a new queue number
 
 Still excluded after rev. 2.0:
-- leaving a `CALLED` or `SERVING` entry, and no-show handling (F-08)
+- leaving a `CALLED` or `SERVING` entry, and no-show handling (F-08) (*rev. 3.0:* no-show handling is added by F-08, §1.2; a customer still cannot leave a `CALLED` or `SERVING` entry themselves)
 - operator-initiated cancellation, and reinstating a cancelled entry
 - multiple counters, priority queues, analytics and appointment booking (F-09–F-12)
 
 Feature design: [features/sprint-2-f07-customer-cancellation.md](./features/sprint-2-f07-customer-cancellation.md).
+
+### 1.2 Sprint 2 additions (rev. 3.0)
+
+F-08 (No-show handling and recovery, Issue #41) adds to Sprint 2:
+- an assigned operator may mark a `CALLED` entry as `NO_SHOW` when the customer does not come to the counter; the server records `noShowAt` and counts the no-show in `noShowCount`
+- an assigned operator may return (recover) a `NO_SHOW` entry to the queue **once**; it becomes `WAITING` again at its **original FIFO position** (its `joinedAt` and queue number do not change) and `recoveredAt` is recorded
+- a second no-show of the same entry is final: it cannot be returned again
+- a `NO_SHOW` entry is not active, so the customer may also join the same queue again with a new number
+
+Still excluded after rev. 3.0:
+- an automatic no-show timer or grace period (the operator decides)
+- customers marking themselves as no-show or returning themselves to the queue
+- a configurable recovery limit, a per-event audit log, and no-show analytics (F-11)
+- multiple counters, priority queues and appointment booking (F-09, F-10, F-12)
+
+Feature design: [features/sprint-2-f08-no-show-recovery.md](./features/sprint-2-f08-no-show-recovery.md).
 
 ## 2. Concrete Stakeholder Problem
 
@@ -56,7 +75,7 @@ For management, inconsistent queue handling reduces customer confidence and weak
 |---|---|---|
 | Anonymous | login only | no access to protected endpoints |
 | CUSTOMER | login/logout, list OPEN queues, join an OPEN queue, read own entry, cancel own `WAITING` entry (rev. 2.0) | no operator actions, no access to other customers' private entries |
-| OPERATOR | login/logout, view assigned queues, view queue entries, call next, start, complete | must be assigned to the target queue |
+| OPERATOR | login/logout, view assigned queues, view queue entries, call next, start, complete, mark a `CALLED` entry no-show, return a `NO_SHOW` entry to the queue (rev. 3.0) | must be assigned to the target queue |
 | Provisioning seed | create users, queues, and operator assignments | no runtime interactive access |
 
 Access control is enforced on every request: role, ownership, and queue assignment must be checked before API actions are executed. A customer looking up another customer's entry must receive the same `404 RESOURCE_NOT_FOUND` response as a nonexistent entry. An authenticated operator without an assignment to the target queue must receive `403 FORBIDDEN`.
@@ -79,6 +98,8 @@ Access control is enforced on every request: role, ownership, and queue assignme
 | FR-12 | Reject malformed data, duplicate active joins, closed queues, invalid state transitions, and stale concurrent mutations through the API error contract. | All | M | AC-07, AC-13, AC-16 |
 | FR-13 | Record server-generated UTC lifecycle timestamps and preserve completed entries for historical review. | System | M | AC-08, AC-15 |
 | FR-14 | Let a customer cancel (withdraw) their own `WAITING` queue entry. The entry becomes `CANCELLED`, `cancelledAt` is recorded, and the row is kept and stays visible in the customer's own entry reads. Requests from other customers, other roles, or for entries in any other status are rejected through the API error contract. (Sprint 2, F-07, rev. 2.0) | CUSTOMER | M | AC-17–AC-24 |
+| FR-15 | Let an operator assigned to the entry's queue mark a `CALLED` entry as `NO_SHOW` when the customer did not come to the counter. `noShowAt` is recorded and `noShowCount` is increased by one; the row is kept. Requests from unassigned operators, other roles, or for entries in any other status are rejected through the API error contract. (Sprint 2, F-08, rev. 3.0) | OPERATOR | M | AC-25, AC-26, AC-27, AC-31, AC-32, AC-33 |
+| FR-16 | Let an operator assigned to the entry's queue return a `NO_SHOW` entry to the queue once. The entry becomes `WAITING` at its original FIFO position, `calledAt` is cleared, `recoveredAt` is recorded, and the queue number is kept. The request is rejected when the entry was already returned once, when it is not `NO_SHOW`, or when the customer already has another active entry in that queue. (Sprint 2, F-08, rev. 3.0) | OPERATOR | M | AC-27, AC-28, AC-29, AC-30, AC-32, AC-33 |
 
 ## 5. Business Rules and Decisions
 
@@ -88,15 +109,18 @@ Access control is enforced on every request: role, ownership, and queue assignme
 | BR-02 | Queue numbers are positive integers scoped to a single service queue | Avoids collisions across different queues; numbers are unique within one queue during the queue lifecycle |
 | BR-03 | Number generation is protected at the database layer using a transactional row lock | Prevents duplicate numbers under concurrent join requests; application pre-checks are insufficient alone |
 | BR-04 | Queue numbers do not automatically reset in Sprint 1 | Keeps the queue-number contract deterministic and avoids service-day ambiguity |
-| BR-05 | One active entry per customer per queue; active = `WAITING`, `CALLED`, `SERVING` | **Rev. 2.0:** `COMPLETED` and `CANCELLED` entries are not active, so the customer may join that queue again and receives a new, larger queue number (BR-02, BR-04). No-show behavior is not in scope. The database partial unique index is unchanged. (Sprint 1 text in §11.) |
+| BR-05 | One active entry per customer per queue; active = `WAITING`, `CALLED`, `SERVING` | **Rev. 3.0:** `COMPLETED`, `CANCELLED` and `NO_SHOW` entries are not active, so the customer may join that queue again and receives a new, larger queue number (BR-02, BR-04). Returning a `NO_SHOW` entry to the queue makes it active again, so it is rejected while the customer has another active entry in that queue (BR-16). The database partial unique index is unchanged. (Sprint 1 and rev. 2.0 text in §11.) |
 | BR-06 | A customer may join multiple queues at the same time, but only one active entry per customer per queue | Queues are independent and distinct service flows |
 | BR-07 | One queue entry belongs to one customer and one queue; customer reads are self-scoped and operators scope through assigned queues | Prevents cross-customer and cross-queue leakage |
 | BR-08 | Queue availability is `OPEN` or `CLOSED`; only `OPEN` queues appear in the customer join catalog | Makes availability testable and consistent with the queuing workflow |
-| BR-09 | Valid lifecycle is `WAITING -> CALLED -> SERVING -> COMPLETED`, plus `WAITING -> CANCELLED` by the owning customer (rev. 2.0) | No other alternate transitions or repeats are allowed. `COMPLETED` and `CANCELLED` are terminal. (Sprint 1 text in §11.) |
+| BR-09 | Valid lifecycle is `WAITING -> CALLED -> SERVING -> COMPLETED`, plus `WAITING -> CANCELLED` by the owning customer (rev. 2.0), plus `CALLED -> NO_SHOW` and `NO_SHOW -> WAITING` (once per entry) by an assigned operator (rev. 3.0) | No other alternate transitions or repeats are allowed. `COMPLETED` and `CANCELLED` are terminal. `NO_SHOW` is terminal once `noShowCount` is 2, or once the entry can no longer be returned. (Sprint 1 and rev. 2.0 text in §11.) |
 | BR-10 | `Call Next` on an empty queue returns `204 No Content` and performs no state change | Defines the empty-queue case without raising a workflow error |
 | BR-11 | Lifecycle timestamps are server-generated UTC values written atomically with the status change | Ensures consistent history and testability |
 | BR-12 | Transactions and database constraints enforce uniqueness and state invariants | Reduces race conditions and guarantees consistent results |
 | BR-13 | Only the customer who owns an entry may cancel it, and only while it is `WAITING`. The queue's availability (`OPEN` or `CLOSED`) does not matter. Cancelling a `CALLED`, `SERVING`, `COMPLETED` or already `CANCELLED` entry is rejected with `409 INVALID_STATE_TRANSITION`; a repeated cancel is not an idempotent success. A non-owner receives `404 RESOURCE_NOT_FOUND`; a non-customer role receives `403 FORBIDDEN`. (rev. 2.0, F-07) | A customer must always be able to leave the line. A called customer who leaves is a no-show (F-08), and service in progress is the operator's to end. Privacy follows BR-07 / AD-07. |
+| BR-15 | Only an operator assigned to the entry's queue may mark it `NO_SHOW`, and only while it is `CALLED`. There is no grace period: the operator may mark it at any time after the call. The queue's availability does not matter. Marking a `WAITING`, `SERVING`, `COMPLETED`, `CANCELLED` or already `NO_SHOW` entry is rejected with `409 INVALID_STATE_TRANSITION`. An unassigned operator receives `403 FORBIDDEN`; a customer (including the entry's owner) receives `403 FORBIDDEN`; an unknown entry returns `404 RESOURCE_NOT_FOUND`. (rev. 3.0, F-08) | The operator is the one who sees whether the customer came. A timer would need a clock policy this system does not have. Customers cannot mark themselves (issue #41). |
+| BR-16 | Only an operator assigned to the entry's queue may return a `NO_SHOW` entry to the queue, and only while `noShowCount` is 1. The entry becomes `WAITING` with its original `joinedAt` and queue number, so it is next in FIFO order among the entries that joined after it; `calledAt` is set to `NULL` and `recoveredAt` is recorded. If the entry is called and marked `NO_SHOW` again (`noShowCount` 2), a return is rejected with `409 RECOVERY_LIMIT_REACHED`. A return of a non-`NO_SHOW` entry is rejected with `409 INVALID_STATE_TRANSITION`. If the customer already has another active entry in the same queue, the return is rejected with `409 DUPLICATE_ACTIVE_ENTRY`. The queue's availability does not matter. (rev. 3.0, F-08) | A late customer gets one more chance at the place they already had, without a new number, and a repeat no-show does not block the line forever. BR-05 must still hold, so a customer who rejoined keeps the new entry. |
+| BR-17 | `NO_SHOW` is not active. A `NO_SHOW` row is never deleted, is never eligible for Call Next, keeps its queue number, is **shown** in the operator entry list (so it can be returned), stays visible in the customer's own reads, and is not counted in any `aheadCount`. Each status change and its server-generated UTC timestamp (`noShowAt`, `recoveredAt`) and `noShowCount` are committed atomically. `noShowCount` is between 0 and 2, enforced by a database `CHECK` constraint. `noShowAt` holds the time of the latest no-show. (rev. 3.0, F-08) | Keeps history (FR-13), the FIFO rule (BR-01) and BR-11; makes the recovery limit hold in the database, not only in code. |
 | BR-14 | `CANCELLED` is a terminal status. The status change and the server-generated UTC `cancelledAt` are committed atomically in one conditional update. A cancelled row is never deleted, is never eligible for Call Next, keeps its queue number (never reused), is excluded from the operator entry list, and is not counted in any `aheadCount`. (rev. 2.0, F-07) | Keeps history (FR-13) and the FIFO rule (BR-01) intact, and makes cancel and Call Next mutually exclusive on the same entry (BR-12, NFR-03). |
 
 ### Transition table
@@ -108,6 +132,8 @@ Access control is enforced on every request: role, ownership, and queue assignme
 | CALLED → SERVING | Assigned operator starts service | `serviceStartedAt` | Reject with `409 INVALID_STATE_TRANSITION` |
 | SERVING → COMPLETED | Assigned operator completes service | `completedAt` | Reject with `409 INVALID_STATE_TRANSITION` |
 | WAITING → CANCELLED (rev. 2.0) | Owning customer cancels | `cancelledAt` | Any other source status: `409 INVALID_STATE_TRANSITION`; status changed during the request: `409 CONCURRENT_MODIFICATION` |
+| CALLED → NO_SHOW (rev. 3.0) | Assigned operator marks no-show | `noShowAt`; `noShowCount` + 1 | Any other source status: `409 INVALID_STATE_TRANSITION` |
+| NO_SHOW → WAITING (rev. 3.0) | Assigned operator returns the entry to the queue (only when `noShowCount` = 1) | `recoveredAt`; `calledAt` set to `NULL`; `joinedAt` unchanged | Not `NO_SHOW`: `409 INVALID_STATE_TRANSITION`; `noShowCount` = 2: `409 RECOVERY_LIMIT_REACHED`; customer has another active entry in the queue: `409 DUPLICATE_ACTIVE_ENTRY` |
 
 ## 6. Non-Functional Requirements
 
@@ -135,6 +161,9 @@ Access control is enforced on every request: role, ownership, and queue assignme
 | Empty queue on Call Next | 204 | No body |
 | Customer cancels an entry that is not `WAITING` (rev. 2.0) | 409 | `INVALID_STATE_TRANSITION` |
 | Entry changed by another request during a cancel (rev. 2.0) | 409 | `CONCURRENT_MODIFICATION` |
+| Operator marks no-show on an entry that is not `CALLED`, or returns an entry that is not `NO_SHOW` (rev. 3.0) | 409 | `INVALID_STATE_TRANSITION` |
+| Operator returns an entry that was already returned once (rev. 3.0) | 409 | `RECOVERY_LIMIT_REACHED` |
+| Operator returns an entry while the customer has another active entry in that queue (rev. 3.0) | 409 | `DUPLICATE_ACTIVE_ENTRY` |
 
 The `RESOURCE_NOT_FOUND` code is deliberately used for customer cross-owner lookup to avoid revealing whether that resource exists. A 404 is never used for unauthenticated requests. A 403 is never used to mask the privacy violation in the customer case.
 
@@ -166,6 +195,7 @@ The primary documentation set is:
 - [sprints/sprint-1/tests.md](./sprints/sprint-1/tests.md)
 - [features/sprint-2-f07-customer-cancellation.md](./features/sprint-2-f07-customer-cancellation.md) (rev. 2.0)
 - [sprints/sprint-2/api-spec.md](./sprints/sprint-2/api-spec.md), [sprints/sprint-2/ui-spec.md](./sprints/sprint-2/ui-spec.md), [sprints/sprint-2/tests.md](./sprints/sprint-2/tests.md) (rev. 2.0)
+- [features/sprint-2-f08-no-show-recovery.md](./features/sprint-2-f08-no-show-recovery.md) (rev. 3.0)
 
 *Rev. 2.0 note:* the paragraph above describes the Sprint 1 documentation branch and is kept as written. From rev. 2.0 this SRS is also the contract for Sprint 2 feature F-07.
 
@@ -184,6 +214,23 @@ Sprint 1 acceptance criteria AC-01–AC-16 are referenced from §4 and mapped to
 | AC-23 | BR-14, BR-12, NFR-03, NFR-05 | **Given** one `WAITING` entry, **when** a cancel and a Call Next for it are sent in parallel (repeated at least 10 times), **then** in every round exactly one transition is applied to that entry. Either the cancel returns `200` and the entry is `CANCELLED` with `calledAt` `NULL`, or the Call Next returns `200` for it, the entry is `CALLED` with `cancelledAt` `NULL`, and the cancel returns `409` (`INVALID_STATE_TRANSITION` or `CONCURRENT_MODIFICATION`). Two parallel cancels of one entry give exactly one `200` and one `409`. |
 | AC-24 | FR-14, NFR-06, NFR-08 | **Given** the customer views their own entry at `/customer/entries/:id`: a "Leave queue" button is shown only while the entry is `WAITING`; selecting it asks for confirmation before any request is sent; while the request runs, the control is disabled and shows "Leaving queue..."; on success the page shows the status "Cancelled" and a "Cancelled:" time without a reload, and shows the same after a reload; on `409`, `404` or `403` a message appears next to the control; the flow works with the keyboard alone; and the page has no horizontal overflow at 360 px and 1280 px. |
 
+### 10.1 Acceptance criteria (Sprint 2, F-08, rev. 3.0)
+
+The F-08 criteria continue the numbering. "Unchanged" means the row's `status`, `calledAt`, `serviceStartedAt`, `completedAt`, `cancelledAt`, `noShowAt`, `recoveredAt` and `noShowCount` are the same before and after the request. Test mapping: [sprints/sprint-2/tests.md §7](./sprints/sprint-2/tests.md#7-f-08-no-show-handling-and-recovery).
+
+| AC | Requirement / rule | Acceptance criterion |
+|---|---|---|
+| AC-25 | FR-15, BR-15, BR-17, FR-13 | **Given** an operator assigned to queue Q and a `CALLED` entry in Q, **when** they send `POST /api/operator/queue-entries/{entryId}/no-show` with a valid CSRF token, **then** the response is `200` with `status` `NO_SHOW`, a non-null RFC 3339 UTC `noShowAt` not earlier than `calledAt`, `noShowCount` `1`, `recoveredAt` `null` and the unchanged `queueNumber`, `joinedAt` and `calledAt`; the database row holds the same values; the customer's `GET /api/me/queue-entries/{entryId}` returns `NO_SHOW` with `aheadCount` `0`. The same holds when Q is `CLOSED`. |
+| AC-26 | BR-15, BR-09 | **Given** an entry in Q that is `WAITING`, `SERVING`, `COMPLETED`, `CANCELLED` or already `NO_SHOW`, **when** the assigned operator marks it no-show, **then** the response is `409 INVALID_STATE_TRANSITION` and the row is unchanged. |
+| AC-27 | BR-15, BR-16, BR-07, FR-03, NFR-02, NFR-08 | For both `POST .../no-show` (on a `CALLED` entry) and `POST .../recover` (on a `NO_SHOW` entry): an operator not assigned to the entry's queue gets `403 FORBIDDEN`; a customer, including the entry's owner, gets `403 FORBIDDEN`; no session gets `401 UNAUTHORIZED`; a missing or wrong CSRF header gets `403 FORBIDDEN`; a malformed `entryId` gets `400 INVALID_ARGUMENT`; an unknown valid UUID gets `404 RESOURCE_NOT_FOUND`. In every case the row is unchanged. |
+| AC-28 | FR-16, BR-16, BR-01, BR-17 | **Given** queue Q with entries A, B, C (joined in that order), A called and marked `NO_SHOW`, then B called, **when** the assigned operator sends `POST /api/operator/queue-entries/{A}/recover`, **then** the response is `200` with A `WAITING`, `calledAt` `null`, a non-null UTC `recoveredAt`, `noShowCount` `1`, `noShowAt` kept, and the original `joinedAt` and queue number; C's `aheadCount` goes up by one; and the next Call Next calls A before C. The same holds when Q is `CLOSED`. |
+| AC-29 | BR-16, BR-17, BR-12 | **Given** entry A was returned once, then called and marked `NO_SHOW` again (`noShowCount` 2), **when** the assigned operator tries to return it, **then** the response is `409 RECOVERY_LIMIT_REACHED` and the row is unchanged. Returning an entry that is `WAITING`, `CALLED`, `SERVING`, `COMPLETED` or `CANCELLED` gives `409 INVALID_STATE_TRANSITION`. The database rejects a `noShowCount` outside 0–2. |
+| AC-30 | BR-05 (rev. 3.0), BR-16, BR-13 | **Given** the customer's entry A in Q is `NO_SHOW`, **when** the customer joins Q, **then** the response is `201` with a new `WAITING` entry with a larger number; **when** the operator then tries to return A, **then** the response is `409 DUPLICATE_ACTIVE_ENTRY` and A is unchanged. The customer cannot cancel a `NO_SHOW` entry (`409 INVALID_STATE_TRANSITION`), but can cancel A after it has been returned to `WAITING` (`200`, F-07). |
+| AC-31 | BR-17, BR-01, BR-10, FR-08, FR-09 | **Given** Q's only other entries are `NO_SHOW`, **when** the operator calls next, **then** the response is `204` and no `NO_SHOW` entry changes. `GET /api/operator/queues/{queueId}/entries` includes `NO_SHOW` entries in FIFO order with `noShowAt`, `noShowCount` and `recoveredAt`; a `NO_SHOW` entry is not counted in any other entry's `aheadCount`. |
+| AC-32 | BR-12, BR-15, BR-16, NFR-03, NFR-05 | Repeated at least 10 times each: (a) a no-show and a Start Service for the same `CALLED` entry in parallel give exactly one `200` and one `409 INVALID_STATE_TRANSITION`, and the row is either `NO_SHOW` with `serviceStartedAt` `NULL` or `SERVING` with `noShowAt` `NULL`; (b) two parallel returns of the same `NO_SHOW` entry give exactly one `200` and one `409`; (c) a return of the customer's `NO_SHOW` entry and a join by the same customer to the same queue in parallel never leave two active entries for that customer and queue: either the return is `200` and the join `409 DUPLICATE_ACTIVE_ENTRY`, or the join is `201` and the return `409 DUPLICATE_ACTIVE_ENTRY`. |
+| AC-33 | FR-15, FR-16, NFR-06, NFR-08 | **Given** the assigned operator views `/operator/queues/:id`: a "Mark no-show" button is shown only for `CALLED` entries; after it succeeds the entry appears in a "No-show" section with the status "No-show" and a "Missed:" time, without a reload; a "Return to queue" button is shown there only while `noShowCount` is 1, and after it succeeds the entry is back in the waiting list at its FIFO position; an entry with `noShowCount` 2 shows "Already returned once" and no button; while a request runs the button is disabled and shows a busy text; on `409` a message is shown and the list is refreshed; the flow works with the keyboard alone; and the page has no horizontal overflow at 360 px and 1280 px. |
+| AC-34 | FR-07, BR-17, NFR-08 | **Given** the customer views their own entry at `/customer/entries/:id` and it is `NO_SHOW`: the page shows the status "No-show", a "Missed:" time and, while it can still be returned, the message "You missed your turn. If you are still here, please go to the counter. Staff can return you to the queue once."; when it can no longer be returned, the message "You missed your turn again, so this entry is closed. You can join the queue again." and polling stops. After a return the page shows "Waiting", a "Returned to queue:" time and the Leave queue button. |
+
 ## 11. Revision history
 
 | Version | Date | Section | Previous text (kept for the record) | New text / reason |
@@ -196,3 +243,9 @@ Sprint 1 acceptance criteria AC-01–AC-16 are referenced from §4 and mapped to
 | 2.0 | 2026-11-27 | §5 transition table, §7 | — | Adds the `WAITING → CANCELLED` row and the two cancel error rows. |
 | 2.0 | 2026-11-27 | §1, §1.1, §9, §10 | §1 and §9 text unchanged | Adds the Sprint 2 scope note, §1.1, the Sprint 2 document links and the F-07 acceptance criteria. No NFR is added: NFR-02, NFR-03, NFR-05, NFR-06 and NFR-08 apply to the new behavior as written. NFR-04 also applies but is not re-measured in F-07. |
 | 2.0.1 | 2026-11-27 | §11 (row above), NFR-04 | "NFR-04 also applies but is not re-measured in F-07." | NFR-04 applies to the cancel mutation as written (it is a mutation on the seeded 1,000-entry dataset) and is now measured by PERF-S2-001 (`server/tests/nfr/perf-s2-001-cancel.ts`) with the same method and targets as PERF-001. The NFR-04 text and targets are unchanged. Reason: review of PR #56. |
+| 3.0 | 2026-11-27 | §3 OPERATOR row | "login/logout, view assigned queues, view queue entries, call next, start, complete" | Adds "mark a `CALLED` entry no-show, return a `NO_SHOW` entry to the queue" (F-08). |
+| 3.0 | 2026-11-27 | §5 BR-05 decision | Rev. 2.0 text: "`COMPLETED` and `CANCELLED` entries are not active, so the customer may join that queue again and receives a new, larger queue number (BR-02, BR-04). No-show behavior is not in scope. The database partial unique index is unchanged." | `NO_SHOW` is also not active; returning a `NO_SHOW` entry is rejected while another active entry exists. Reason: F-08. |
+| 3.0 | 2026-11-27 | §5 BR-09 | Rev. 2.0 rule: "Valid lifecycle is `WAITING -> CALLED -> SERVING -> COMPLETED`, plus `WAITING -> CANCELLED` by the owning customer"; decision: "No other alternate transitions or repeats are allowed. `COMPLETED` and `CANCELLED` are terminal." | Adds `CALLED -> NO_SHOW` and `NO_SHOW -> WAITING` (once) by an assigned operator; `NO_SHOW` with `noShowCount` 2 is final. Reason: F-08. |
+| 3.0 | 2026-11-27 | §4, §5 | — | Adds FR-15, FR-16, BR-15, BR-16, BR-17. |
+| 3.0 | 2026-11-27 | §5 transition table, §7 | — | Adds the `CALLED → NO_SHOW` and `NO_SHOW → WAITING` rows and three error rows, including the new code `RECOVERY_LIMIT_REACHED`. |
+| 3.0 | 2026-11-27 | §1, §1.1, §1.2, §9, §10.1 | §1 rev. 2.0 note and the §1.1 "Still excluded" item kept as written, with a rev. 3.0 note added | Adds §1.2, the F-08 document link and AC-25–AC-34. No NFR is added. NFR-02, NFR-03, NFR-04, NFR-05, NFR-06 and NFR-08 apply to the new behavior as written; NFR-04 is measured for the two new mutations by PERF-S2-002. |

@@ -84,7 +84,7 @@ F-06 is the cross-cutting verification responsibility for this entire baseline; 
 | F-05 | Operator lifecycle management | 1 |
 | F-06 | Integration and regression verification | 1 |
 | F-07 | Customer cancellation and queue withdrawal | 2 (specified, contract v1) |
-| F-08 | No-show handling and recovery | 2 |
+| F-08 | No-show handling and recovery | 2 (specified, contract v1) |
 | F-09 | Multi-counter support | 2 |
 | F-10 | Priority queue policy | 2 |
 | F-11 | Operational analytics | 3 |
@@ -104,7 +104,7 @@ Every baseline functional requirement (FR-01–FR-13), business rule (BR-01–BR
 
 These features are intentionally deferred from Sprint 1. Their future-specific requirements have not yet been defined in the current SRS; this is planned future scope, not an uncovered Sprint 1 baseline.
 
-*Rev. 2026-11-27:* F-07 now has requirements (FR-14, BR-13, BR-14, AC-17–AC-24 in SRS v2.0); see the Sprint 2 section below. F-08–F-13 are still unspecified.
+*Rev. 2026-11-27:* F-07 now has requirements (FR-14, BR-13, BR-14, AC-17–AC-24 in SRS v2.0); see the Sprint 2 section below. F-08–F-13 are still unspecified. *Rev. 2026-11-27 (F-08):* F-08 now has requirements (FR-15, FR-16, BR-15–BR-17, AC-25–AC-34 in SRS v3.0); see the F-08 section below. F-09–F-13 are still unspecified.
 
 ### Approved Changes
 
@@ -115,6 +115,7 @@ No approved requirement changes were recorded during this update.
 | Change | Date | Affected IDs | Status |
 |---|---|---|---|
 | F-07 customer cancellation (SRS v2.0) | 2026-11-27 | adds FR-14, BR-13, BR-14, AC-17–AC-24; revises BR-05, BR-09 | proposed, review pending |
+| F-08 no-show handling and recovery (SRS v3.0) | 2026-11-27 | adds FR-15, FR-16, BR-15–BR-17, AC-25–AC-34, error code `RECOVERY_LIMIT_REACHED`; revises BR-05, BR-09 | proposed, review pending |
 
 ## Sprint 2 — F-07 Customer Cancellation Traceability
 
@@ -149,3 +150,43 @@ No approved requirement changes were recorded during this update.
 | AC-22 | CANCEL-012, CANCEL-013 | passed (61e9daf) |
 | AC-23 | CANCEL-014, CANCEL-020 | passed (61e9daf) |
 | AC-24 | CANCEL-016, CANCEL-017, CANCEL-018, CANCEL-019 | passed (61e9daf) |
+
+
+## Sprint 2 — F-08 No-show Handling and Recovery Traceability
+
+Contract v1 (2026-11-27, issue #41). Every result below is `planned` until the test has been executed. *Rev. 2026-11-27 (results):* every test below was executed; Result = outcome of the green run at commit `37fd6c0` (see [sprints/sprint-2/tests.md §7.5](./sprints/sprint-2/tests.md#75-execution-results-f-08) and `docs/sprints/sprint-2/evidence/f08-green-run.txt`). Release status: pending release. Test specification: [sprints/sprint-2/tests.md §7](./sprints/sprint-2/tests.md#7-f-08-no-show-handling-and-recovery).
+
+### Requirements to tests
+
+| Requirement | Feature | Sprint | AC | Test ID(s) | Test file | Result (commit) | Contract version |
+|---|---|---|---|---|---|---|---|
+| FR-15 | F-08 | 2 | AC-25, AC-26, AC-27, AC-31, AC-32, AC-33 | NOSHOW-001–NOSHOW-004, NOSHOW-011, NOSHOW-012, NOSHOW-015, NOSHOW-017, NOSHOW-019, NOSHOW-020 | `server/tests/f08-no-show-rule.test.ts`, `server/tests/f08-no-show-recovery.test.ts`, `client/src/test/f08-noShow.test.tsx`, `e2e/tests/f08-no-show.spec.ts` | passed (37fd6c0) | v1 |
+| FR-16 | F-08 | 2 | AC-27–AC-30, AC-32, AC-33 | NOSHOW-001, NOSHOW-005–NOSHOW-010, NOSHOW-013, NOSHOW-014, NOSHOW-015, NOSHOW-017, NOSHOW-019 | same four files | passed (37fd6c0) | v1 |
+| BR-15 | F-08 | 2 | AC-25, AC-26, AC-27 | NOSHOW-001–NOSHOW-004, NOSHOW-020 | `server/tests/f08-no-show-rule.test.ts`, `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-16 | F-08 | 2 | AC-27–AC-30 | NOSHOW-001, NOSHOW-005–NOSHOW-009 | same | passed (37fd6c0) | v1 |
+| BR-17 | F-08 | 2 | AC-25, AC-28, AC-29, AC-31 | NOSHOW-002, NOSHOW-006, NOSHOW-007, NOSHOW-008, NOSHOW-011 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-05 (rev. 3.0) | F-04, F-08 | 2 | AC-30, AC-32 | NOSHOW-009, NOSHOW-014 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-09 (rev. 3.0) | F-05, F-08 | 2 | AC-26, AC-29 | NOSHOW-001, NOSHOW-003, NOSHOW-007, NOSHOW-020 | `server/tests/f08-no-show-rule.test.ts`, `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-01, BR-10 (F-05 cross-feature) | F-05, F-08 | 2 | AC-28, AC-31 | NOSHOW-006, NOSHOW-011 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-13 (F-07 cross-feature) | F-07, F-08 | 2 | AC-30 | NOSHOW-010 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-07, FR-03, NFR-02, NFR-08 | F-02, F-08 | 2 | AC-27 | NOSHOW-004, NOSHOW-005 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-12, NFR-03, NFR-05 | F-08 | 2 | AC-32 | NOSHOW-012, NOSHOW-013, NOSHOW-014 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| FR-07, FR-13 | F-04, F-08 | 2 | AC-25, AC-34 | NOSHOW-002, NOSHOW-016, NOSHOW-018 | `server/tests/f08-no-show-recovery.test.ts`, `client/src/test/f08-noShow.test.tsx`, `e2e/tests/f08-no-show.spec.ts` | passed (37fd6c0) | v1 |
+| NFR-06 | F-08 | 2 | AC-33 | NOSHOW-015, NOSHOW-019 | `client/src/test/f08-noShow.test.tsx`, `e2e/tests/f08-no-show.spec.ts` | passed (37fd6c0) | v1 |
+| NFR-04 | F-08 | 2 | operations of AC-25, AC-28, AC-31 | PERF-S2-002 | `server/tests/nfr/perf-s2-002-no-show.ts` | passed (37fd6c0) | v1 |
+| FR-01–FR-14 (regression) | F-06 | 2 | AC-01–AC-24 | REG-S2-002 | existing suites | passed (37fd6c0) | v1 |
+
+### Acceptance criteria to tests
+
+| Acceptance Criteria | Test ID(s) | Result |
+|---|---|---|
+| AC-25 | NOSHOW-002, NOSHOW-017 | passed (37fd6c0) |
+| AC-26 | NOSHOW-001, NOSHOW-003, NOSHOW-020 | passed (37fd6c0) |
+| AC-27 | NOSHOW-004, NOSHOW-005 | passed (37fd6c0) |
+| AC-28 | NOSHOW-006, NOSHOW-017 | passed (37fd6c0) |
+| AC-29 | NOSHOW-001, NOSHOW-007, NOSHOW-008, NOSHOW-017 | passed (37fd6c0) |
+| AC-30 | NOSHOW-009, NOSHOW-010 | passed (37fd6c0) |
+| AC-31 | NOSHOW-011 | passed (37fd6c0) |
+| AC-32 | NOSHOW-012, NOSHOW-013, NOSHOW-014 | passed (37fd6c0) |
+| AC-33 | NOSHOW-015, NOSHOW-017, NOSHOW-019 | passed (37fd6c0) |
+| AC-34 | NOSHOW-016, NOSHOW-018 | passed (37fd6c0) |

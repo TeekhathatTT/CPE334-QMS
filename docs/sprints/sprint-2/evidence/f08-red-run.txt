@@ -1,0 +1,116 @@
+F-08 TDD red run: 2026-11-27T08:04:29Z
+Implementation under test: contract commit 7e42e1f (no F-08 code; noShowPolicy.ts is a stub that throws). Tests added in the red commit.
+Database: local PostgreSQL 16 (Docker qms-postgres), isolated qms_test_db, no F-08 migration applied.
+
+=== Server: npx vitest run tests/f08-no-show-rule.test.ts tests/f08-no-show-recovery.test.ts --reporter=verbose ===
+ × tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-002 (AC-25): the assigned operator marks a CALLED entry NO_SHOW; UTC noShowAt, count 1, persisted 824ms
+ × tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-002 (AC-25): marking no-show also works when the queue is CLOSED 581ms
+ × tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-003 (AC-26): marking no-show is rejected for WAITING, SERVING, COMPLETED, CANCELLED and NO_SHOW 2330ms
+ × tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-020 (AC-26): Start and Complete reject a NO_SHOW entry 1329ms
+ × tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-004 (AC-27): no-show is restricted to the assigned operator; every other caller is rejected 1366ms
+ × tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-005 (AC-27): recover is restricted to the assigned operator; every other caller is rejected 1394ms
+ × tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-006 (AC-28): a returned entry is WAITING at its original FIFO position and is called before later joiners 1581ms
+ × tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-006 (AC-28): a return also works when the queue is CLOSED 1331ms
+ × tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-007 (AC-29): a second no-show is final (RECOVERY_LIMIT_REACHED); other states are invalid for a return 1304ms
+ × tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-008 (AC-29): the database keeps noShowCount between 0 and 2; the active-entry index is unchanged 1301ms
+ × tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-009 (AC-30): a customer may rejoin while NO_SHOW; the old entry can then no longer be returned 1311ms
+ × tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-010 (AC-30): a NO_SHOW entry cannot be cancelled; after a return it can (F-07) 1424ms
+ × tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-011 (AC-31): Call Next skips NO_SHOW, the operator list shows it, and aheadCount ignores it 1729ms
+ × tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-012 (AC-32): no-show vs Start on the same CALLED entry, 10 rounds: exactly one wins 1426ms
+ × tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-013 (AC-32): two parallel returns of one NO_SHOW entry, 10 rounds: exactly one 200 1397ms
+ × tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-014 (AC-32): a return and a rejoin by the same customer in parallel, 10 rounds: never two active entries 1344ms
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: only a CALLED entry can be marked no-show (BR-15) > CALLED can be marked no-show
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: only a CALLED entry can be marked no-show (BR-15) > WAITING cannot be marked no-show
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: only a CALLED entry can be marked no-show (BR-15) > SERVING cannot be marked no-show
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: only a CALLED entry can be marked no-show (BR-15) > COMPLETED cannot be marked no-show
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: only a CALLED entry can be marked no-show (BR-15) > CANCELLED cannot be marked no-show
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: only a CALLED entry can be marked no-show (BR-15) > NO_SHOW cannot be marked no-show
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: only a CALLED entry can be marked no-show (BR-15) > SOMETHING_ELSE cannot be marked no-show
+ ✓ tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > the limit is two no-shows, i.e. one return
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > NO_SHOW with noShowCount 1 may be returned
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > NO_SHOW with noShowCount 2 has reached the limit
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > WAITING with noShowCount 0 is an invalid state for a return
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > WAITING with noShowCount 1 is an invalid state for a return
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > WAITING with noShowCount 2 is an invalid state for a return
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > CALLED with noShowCount 0 is an invalid state for a return
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > CALLED with noShowCount 1 is an invalid state for a return
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > CALLED with noShowCount 2 is an invalid state for a return
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > SERVING with noShowCount 0 is an invalid state for a return
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > SERVING with noShowCount 1 is an invalid state for a return
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > SERVING with noShowCount 2 is an invalid state for a return
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > COMPLETED with noShowCount 0 is an invalid state for a return
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > COMPLETED with noShowCount 1 is an invalid state for a return
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > COMPLETED with noShowCount 2 is an invalid state for a return
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > CANCELLED with noShowCount 0 is an invalid state for a return
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > CANCELLED with noShowCount 1 is an invalid state for a return
+ × tests/f08-no-show-rule.test.ts > F-08 NOSHOW-001: a NO_SHOW entry can be returned once (BR-16) > CANCELLED with noShowCount 2 is an invalid state for a return
+⎯⎯⎯⎯⎯⎯ Failed Tests 40 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  2 failed (2)
+      Tests  40 failed | 1 passed (41)
+
+Distinct failure causes (count, message):
+     24 → Not implemented
+     18 → 
+     11 → no-show: expected 404 to be 200 // Object.is equality
+      2 Serialized Error: { code: 'P2010', clientVersion: '5.22.0', meta: { code: '42703', message: 'column "noShowAt" does not exist' }, batchRequestIdx: undefined }
+      1 Serialized Error: { code: 'P2010', clientVersion: '5.22.0', meta: { code: '22P02', message: 'ERROR: invalid input value for enum "QueueStatus": "NO_SHOW"' }, batchRequestIdx: undefined }
+      1 → round 0: expected [ 200, 404 ] to deeply equal [ 200, 409 ]
+      1 → expected 404 to be 200 // Object.is equality
+      1 → expected '\nInvalid `prisma.$executeRaw()` invo…' to match /23514|check constraint/i
+
+=== Client: npx vitest run src/test/f08-noShow.test.tsx ===
+   × F-08 NOSHOW-015: operator no-show controls > shows Mark no-show only for CALLED entries, and a No-show section with Return only while noShowCount is 1 309ms
+   × F-08 NOSHOW-015: operator no-show controls > shows an empty No-show section when there are no missed entries 1020ms
+   × F-08 NOSHOW-015: operator no-show controls > Mark no-show sends one POST with CSRF, shows the busy text, then moves the entry to the No-show section 1032ms
+   × F-08 NOSHOW-015: operator no-show controls > Return to queue shows the busy text, then the entry is back in the Waiting Queue at its FIFO position 1015ms
+   × F-08 NOSHOW-015: operator no-show controls > Return to queue on 409 RECOVERY_LIMIT_REACHED shows the right alert and reloads the list when it should 1016ms
+   × F-08 NOSHOW-015: operator no-show controls > Return to queue on 409 DUPLICATE_ACTIVE_ENTRY shows the right alert and reloads the list when it should 1013ms
+   × F-08 NOSHOW-015: operator no-show controls > Return to queue on 409 INVALID_STATE_TRANSITION shows the right alert and reloads the list when it should 1020ms
+   × F-08 NOSHOW-015: operator no-show controls > Return to queue on 404 shows the right alert and reloads the list when it should 1015ms
+   × F-08 NOSHOW-015: operator no-show controls > Return to queue on 403 CSRF shows the right alert and reloads the list when it should 1011ms
+   × F-08 NOSHOW-015: operator no-show controls > Return to queue on 500 shows the right alert and reloads the list when it should 1022ms
+   × F-08 NOSHOW-015: operator no-show controls > Mark no-show on 409 shows the conflict alert and reloads the list 1025ms
+   × F-08 NOSHOW-016: customer view of a NO_SHOW entry > a NO_SHOW entry that can still be returned: badge, Missed time, message, no Leave queue, polling continues 1020ms
+   × F-08 NOSHOW-016: customer view of a NO_SHOW entry > a final NO_SHOW entry: closed message, terminal footer, polling stops 1020ms
+   × F-08 NOSHOW-016: customer view of a NO_SHOW entry > a returned entry shows Waiting, the Returned to queue time and the Leave queue button 46ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 14 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/test/f08-noShow.test.tsx > F-08 NOSHOW-015: operator no-show controls > shows Mark no-show only for CALLED entries, and a No-show section with Return only while noShowCount is 1
+ FAIL  src/test/f08-noShow.test.tsx > F-08 NOSHOW-015: operator no-show controls > shows an empty No-show section when there are no missed entries
+ FAIL  src/test/f08-noShow.test.tsx > F-08 NOSHOW-015: operator no-show controls > Mark no-show sends one POST with CSRF, shows the busy text, then moves the entry to the No-show section
+ FAIL  src/test/f08-noShow.test.tsx > F-08 NOSHOW-015: operator no-show controls > Return to queue shows the busy text, then the entry is back in the Waiting Queue at its FIFO position
+ FAIL  src/test/f08-noShow.test.tsx > F-08 NOSHOW-015: operator no-show controls > Return to queue on 409 RECOVERY_LIMIT_REACHED shows the right alert and reloads the list when it should
+ FAIL  src/test/f08-noShow.test.tsx > F-08 NOSHOW-015: operator no-show controls > Return to queue on 409 DUPLICATE_ACTIVE_ENTRY shows the right alert and reloads the list when it should
+ FAIL  src/test/f08-noShow.test.tsx > F-08 NOSHOW-015: operator no-show controls > Return to queue on 409 INVALID_STATE_TRANSITION shows the right alert and reloads the list when it should
+ FAIL  src/test/f08-noShow.test.tsx > F-08 NOSHOW-015: operator no-show controls > Return to queue on 404 shows the right alert and reloads the list when it should
+ FAIL  src/test/f08-noShow.test.tsx > F-08 NOSHOW-015: operator no-show controls > Return to queue on 403 CSRF shows the right alert and reloads the list when it should
+ FAIL  src/test/f08-noShow.test.tsx > F-08 NOSHOW-015: operator no-show controls > Return to queue on 500 shows the right alert and reloads the list when it should
+ FAIL  src/test/f08-noShow.test.tsx > F-08 NOSHOW-015: operator no-show controls > Mark no-show on 409 shows the conflict alert and reloads the list
+ FAIL  src/test/f08-noShow.test.tsx > F-08 NOSHOW-016: customer view of a NO_SHOW entry > a NO_SHOW entry that can still be returned: badge, Missed time, message, no Leave queue, polling continues
+ FAIL  src/test/f08-noShow.test.tsx > F-08 NOSHOW-016: customer view of a NO_SHOW entry > a final NO_SHOW entry: closed message, terminal footer, polling stops
+ FAIL  src/test/f08-noShow.test.tsx > F-08 NOSHOW-016: customer view of a NO_SHOW entry > a returned entry shows Waiting, the Returned to queue time and the Leave queue button
+ Test Files  1 failed (1)
+      Tests  14 failed (14)
+
+Distinct failure causes:
+      7 → Unable to find role="button" and name "Return queue number 4 to the queue"
+      2 → Unable to find role="button" and name "Mark queue number 1 as no-show"
+      2 → Unable to find an element with the text: No-show, which matches selector '[data-status]'. This could be because the text is broken up by multiple elements. 
+      1 → Unable to find role="heading" and name "No-show (0)"
+      1 → Unable to find an element with the text: Returned to queue:. This could be because the text is broken up by multiple elements. In this case, you can provide
+      1 → Unable to find an accessible element with the role "button" and name "Mark queue number 1 as no-show"
+
+=== E2E Chromium: npx playwright test --config e2e/playwright.config.ts --project=chromium e2e/tests/f08-no-show.spec.ts ===
+  ✘  1 [chromium] › e2e\tests\f08-no-show.spec.ts:44:7 › F-08 no-show handling and recovery › NOSHOW-017: operator marks no-show, returns the entry to its place, then a second no-show is final (1.0m)
+  ✘  2 [chromium] › e2e\tests\f08-no-show.spec.ts:111:7 › F-08 no-show handling and recovery › NOSHOW-018: the customer sees No-show, then Waiting after the operator returns the entry (1.4s)
+  ✘  3 [chromium] › e2e\tests\f08-no-show.spec.ts:141:7 › F-08 no-show handling and recovery › NOSHOW-019: both actions with the keyboard only; no horizontal overflow at 360 px and 1280 px (12.2s)
+    Error: locator.click: Test timeout of 60000ms exceeded.
+    Error: expect(received).toBe(expected) // Object.is equality
+    Error: expect(locator).toBeEnabled() failed
+    Error: element(s) not found
+  3 failed
+
+Notes:
+- Server: the only passing test checks the exported constant MAX_NO_SHOWS in the stub. Every other test fails because the behavior is missing: the stub throws, the routes do not exist (catch-all 404), the columns do not exist (PostgreSQL 42703) and the enum value does not exist (22P02).
+- Client: every test fails because the controls, the No-show section and the NO_SHOW display do not exist.
+- E2E: NOSHOW-017 waits for the missing Mark no-show button (60 s timeout); NOSHOW-018 gets 404 from the missing no-show route; NOSHOW-019 does not find the missing button.
+- An earlier E2E red attempt also failed in NOSHOW-019 on a test selector bug (a message matched both the live region and the banner); the selector was fixed before this recorded run.

@@ -12,6 +12,7 @@ import {
 import { EntryTimestamps } from '../components/customer/EntryTimestamps';
 import { LEAVE_STATUS_CHANGED_TEXT, LeaveQueueControl } from '../components/customer/LeaveQueueControl';
 import { STATUS_LABELS, StatusBadge } from '../components/customer/StatusBadge';
+import { isFinalNoShow } from '../api/noShow';
 import {
   ErrorNote,
   LiveAnnouncer,
@@ -41,17 +42,23 @@ export function entryMessage(entry: QueueEntry): string {
       return 'Service completed.';
     case 'CANCELLED':
       return 'You left this queue.';
+    case 'NO_SHOW':
+      // F-08 (Sprint 2 ui-spec §7)
+      return isFinalNoShow(entry)
+        ? 'You missed your turn again, so this entry is closed. You can join the queue again.'
+        : 'You missed your turn. If you are still here, please go to the counter. Staff can return you to the queue once.';
   }
 }
 
-/** Terminal statuses: the entry no longer changes, so polling stops (Issue #5 D-2, F-07). */
+/** Terminal statuses: the entry no longer changes, so polling stops (Issue #5 D-2, F-07, F-08). */
 function isTerminal(entry: QueueEntry): boolean {
-  return entry.status === 'COMPLETED' || entry.status === 'CANCELLED';
+  return entry.status === 'COMPLETED' || entry.status === 'CANCELLED' || isFinalNoShow(entry);
 }
 
 function footerText(entry: QueueEntry): string {
   if (entry.status === 'COMPLETED') return 'This entry is complete and no longer updates.';
   if (entry.status === 'CANCELLED') return 'You left this queue. This entry no longer updates.';
+  if (isFinalNoShow(entry)) return 'This entry no longer updates.';
   return `Status updates automatically every ${REFRESH_INTERVAL_MS / 1000} seconds.`;
 }
 
@@ -124,7 +131,7 @@ export function EntryDetailPage() {
     void loadQueueNames();
   }, [loadEntry, loadQueueNames]);
 
-  // Decision 2: poll every 10 s while visible, and stop once the entry is COMPLETED or CANCELLED.
+  // Decision 2: poll every 10 s while visible, and stop once the entry is COMPLETED, CANCELLED or a final NO_SHOW.
   usePolling(loadEntry, detail.state === 'ready' && !isTerminal(detail.entry));
 
   // F-07: the cancel mutation succeeded; show the server's CANCELLED entry without a reload.

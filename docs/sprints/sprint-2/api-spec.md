@@ -3,6 +3,7 @@
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-11-27 | F-07 contract v1: customer cancellation endpoint, `CANCELLED` status, `cancelledAt` field, operator entry-list filter |
+| 2.0 | 2026-11-27 | F-08 contract v1 (issue #41): §7–§11 add the no-show and recover endpoints, the `NO_SHOW` status, the `noShowAt`, `recoveredAt` and `noShowCount` fields and the error code `RECOVERY_LIMIT_REACHED`. §1–§6 (F-07) are unchanged; where F-08 extends them, §7–§11 say so. |
 
 This document extends the [Sprint 1 API specification](../sprint-1/api-spec.md). Everything in that document still applies unless a section below says otherwise. Base path, envelopes, timestamps, CSRF and UUID rules are unchanged (Sprint 1 §1, §2, §4, §5). Requirements: [SRS](../../srs.md) v2.0, FR-14, BR-13, BR-14. Design: [F-07 feature SDS](../../features/sprint-2-f07-customer-cancellation.md).
 
@@ -129,3 +130,158 @@ curl -i -X POST "http://localhost:3000/api/me/queue-entries/<entryId>/cancel" \
 ## 6. Traceability
 
 FR-14, FR-07, FR-08, FR-09, FR-12, FR-13; BR-01, BR-05 (rev.), BR-07, BR-09 (rev.), BR-10, BR-11, BR-12, BR-13, BR-14; AC-17–AC-24. Tests: [tests.md](./tests.md).
+
+---
+
+# F-08 No-show handling and recovery (v2.0)
+
+Requirements: [SRS](../../srs.md) v3.0, FR-15, FR-16, BR-15, BR-16, BR-17, AC-25–AC-34. Design: [F-08 feature SDS](../../features/sprint-2-f08-no-show-recovery.md).
+
+## 7. Changes to standard objects (F-08)
+
+### 7.1 `QueueEntry` (extends §1.1)
+
+```json
+{
+  "id": "f4d56583-5d7d-4fef-bb21-5e6a5a7a9a68",
+  "serviceQueueId": "0bfe6fd8-7f32-44b1-987e-23ef3f2a7d17",
+  "customerId": "550e8400-e29b-41d4-a716-446655440000",
+  "queueNumber": 7,
+  "status": "NO_SHOW",
+  "joinedAt": "2026-11-27T09:00:00.000Z",
+  "calledAt": "2026-11-27T09:10:00.000Z",
+  "serviceStartedAt": null,
+  "completedAt": null,
+  "cancelledAt": null,
+  "noShowAt": "2026-11-27T09:13:30.120Z",
+  "recoveredAt": null,
+  "noShowCount": 1
+}
+```
+
+Rules added or changed:
+- `status` is one of `WAITING`, `CALLED`, `SERVING`, `COMPLETED`, `CANCELLED`, `NO_SHOW`.
+- `noShowAt`, `recoveredAt` and `noShowCount` are present on **every** `QueueEntry` payload. `noShowAt` is the time of the latest no-show, `recoveredAt` the time of the return, both RFC 3339 UTC or `null`. `noShowCount` is an integer 0, 1 or 2.
+- `aheadCount` is `0` when `status` is `NO_SHOW`. `NO_SHOW` entries are never counted in another entry's `aheadCount`.
+- After a return the entry is `WAITING` with `calledAt` `null`, `noShowAt` and `recoveredAt` set and `noShowCount` 1. Its `joinedAt` and `queueNumber` are the original ones.
+- The fields are additive. Clients that ignore unknown fields are unaffected.
+
+## 8. Changes to existing endpoints (F-08)
+
+| Endpoint | Change |
+|---|---|
+| `GET /api/me/queue-entries`, `GET /api/me/queue-entries/{entryId}` | May return `NO_SHOW` entries (`aheadCount` `0` on the detail). No code change besides the new fields. |
+| `POST /api/queues/{queueId}/entries` | No code change. A `NO_SHOW` entry is not active, so the customer may join the same queue again (BR-05 rev. 3.0). |
+| `POST /api/me/queue-entries/{entryId}/cancel` (§3.1) | No code change. A `NO_SHOW` entry returns `409 INVALID_STATE_TRANSITION`. A returned (`WAITING`) entry can be cancelled. |
+| `GET /api/operator/queues/{queueId}/entries` | No code change. `NO_SHOW` entries **are included**, in the same `joinedAt ASC, id ASC` order (only `CANCELLED` is excluded, §2). |
+| `POST /api/operator/queues/{queueId}/call-next` | No code change. Only `WAITING` is eligible; `NO_SHOW` entries are never called. A returned entry is eligible again at its original position. |
+| `POST /api/operator/queue-entries/{entryId}/start`, `/complete` | No change. A `NO_SHOW` entry returns `409 INVALID_STATE_TRANSITION`. |
+
+## 9. New endpoints (F-08)
+
+### 9.1 `POST /api/operator/queue-entries/{entryId}/no-show`
+
+Purpose: an operator assigned to the entry's queue records that the called customer did not come (FR-15).
+
+Request headers: `Cookie: <session-cookie>`, `X-CSRF-Token: <token-from-session>`. Request body: none (ignored if sent).
+
+Validation and processing order (same as Start, Sprint 1 §8.4):
+1. `entryId` must be a valid UUIDv4 (`400 INVALID_ARGUMENT`).
+2. A valid session is required (`401 UNAUTHORIZED`).
+3. `X-CSRF-Token` must match the session (`403 FORBIDDEN`).
+4. The role must be `OPERATOR` (`403 FORBIDDEN`).
+5. In one transaction: lock the entry (`FOR UPDATE`); it must exist (`404 RESOURCE_NOT_FOUND`); the caller must be assigned to its queue (`403 FORBIDDEN`); its status must be `CALLED` (`409 INVALID_STATE_TRANSITION`).
+6. Update `status = NO_SHOW`, `noShowAt = clock_timestamp()`, `noShowCount = noShowCount + 1`. `calledAt` is kept.
+7. The response is sent only after commit.
+
+Queue availability is not checked.
+
+Success: `200 OK`, `{ "data": { "entry": <QueueEntry> } }` with `status` `NO_SHOW` (example in §7.1).
+
+| HTTP | Code | Condition | Database change |
+|---|---|---|---|
+| 400 | `INVALID_ARGUMENT` | `entryId` is not a UUIDv4 | none |
+| 401 | `UNAUTHORIZED` | missing, invalid or expired session | none |
+| 403 | `FORBIDDEN` | CSRF missing or wrong; role is not `OPERATOR`; operator not assigned to the entry's queue | none |
+| 404 | `RESOURCE_NOT_FOUND` | no entry with that id | none |
+| 409 | `INVALID_STATE_TRANSITION` | status is `WAITING`, `SERVING`, `COMPLETED`, `CANCELLED` or `NO_SHOW` | none |
+| 500 | `INTERNAL_ERROR` | unexpected failure; rolled back | none |
+
+### 9.2 `POST /api/operator/queue-entries/{entryId}/recover`
+
+Purpose: an operator assigned to the entry's queue returns a `NO_SHOW` entry to the queue at its original position, once (FR-16).
+
+Request headers and body: as §9.1.
+
+Validation and processing order:
+1. – 4. as §9.1.
+5. In one transaction: read the entry (`404 RESOURCE_NOT_FOUND` if missing); lock its queue row (`FOR UPDATE`, the same lock join takes); lock the entry (`FOR UPDATE`).
+6. The caller must be assigned to the entry's queue (`403 FORBIDDEN`).
+7. Status must be `NO_SHOW` (`409 INVALID_STATE_TRANSITION`).
+8. `noShowCount` must be 1 (`409 RECOVERY_LIMIT_REACHED` when it is 2).
+9. The customer must have no other `WAITING`, `CALLED` or `SERVING` entry in the same queue (`409 DUPLICATE_ACTIVE_ENTRY`).
+10. Update `status = WAITING`, `calledAt = NULL`, `recoveredAt = clock_timestamp()`. `joinedAt`, `queueNumber`, `noShowAt` and `noShowCount` are kept.
+11. The response is sent only after commit.
+
+Queue availability is not checked.
+
+Success: `200 OK`
+
+```json
+{
+  "data": {
+    "entry": {
+      "id": "f4d56583-5d7d-4fef-bb21-5e6a5a7a9a68",
+      "serviceQueueId": "0bfe6fd8-7f32-44b1-987e-23ef3f2a7d17",
+      "customerId": "550e8400-e29b-41d4-a716-446655440000",
+      "queueNumber": 7,
+      "status": "WAITING",
+      "joinedAt": "2026-11-27T09:00:00.000Z",
+      "calledAt": null,
+      "serviceStartedAt": null,
+      "completedAt": null,
+      "cancelledAt": null,
+      "noShowAt": "2026-11-27T09:13:30.120Z",
+      "recoveredAt": "2026-11-27T09:20:02.004Z",
+      "noShowCount": 1
+    }
+  }
+}
+```
+
+| HTTP | Code | Condition | Database change |
+|---|---|---|---|
+| 400 | `INVALID_ARGUMENT` | `entryId` is not a UUIDv4 | none |
+| 401 | `UNAUTHORIZED` | missing, invalid or expired session | none |
+| 403 | `FORBIDDEN` | CSRF missing or wrong; role is not `OPERATOR`; operator not assigned | none |
+| 404 | `RESOURCE_NOT_FOUND` | no entry with that id | none |
+| 409 | `INVALID_STATE_TRANSITION` | status is not `NO_SHOW` | none |
+| 409 | `RECOVERY_LIMIT_REACHED` | `noShowCount` is 2 (the entry was already returned once) | none |
+| 409 | `DUPLICATE_ACTIVE_ENTRY` | the customer already has another active entry in that queue | none |
+| 500 | `INTERNAL_ERROR` | unexpected failure; rolled back | none |
+
+Example (curl, local development, synthetic account):
+
+```bash
+curl -i -X POST "http://localhost:3000/api/operator/queue-entries/<entryId>/no-show" \
+  -b cookies.txt -H "X-CSRF-Token: <csrf-from-cookie>"
+curl -i -X POST "http://localhost:3000/api/operator/queue-entries/<entryId>/recover" \
+  -b cookies.txt -H "X-CSRF-Token: <csrf-from-cookie>"
+```
+
+## 10. Permission matrix additions (F-08)
+
+| Action / endpoint | Anonymous | CUSTOMER | OPERATOR not assigned | OPERATOR assigned |
+|---|---|---|---|---|
+| `POST /api/operator/queue-entries/{entryId}/no-show` | `401` | `403` (owner included) | `403` | `CALLED` → `200`; other status `409` |
+| `POST /api/operator/queue-entries/{entryId}/recover` | `401` | `403` (owner included) | `403` | `NO_SHOW` count 1 → `200`; count 2 `409 RECOVERY_LIMIT_REACHED`; other active entry `409 DUPLICATE_ACTIVE_ENTRY`; other status `409 INVALID_STATE_TRANSITION` |
+
+## 11. Lifecycle and integrity rules (extends §5)
+
+- Allowed transitions: those in §5, plus `CALLED -> NO_SHOW` and `NO_SHOW -> WAITING` (only when `noShowCount` = 1).
+- `NO_SHOW` is not active. `NO_SHOW` with `noShowCount` 2 is final.
+- Active states are still `WAITING`, `CALLED`, `SERVING`; the partial unique index is unchanged.
+- `noShowCount` is kept in 0–2 by the database constraint `QueueEntry_noShowCount_range_check`.
+- Status, timestamps and `noShowCount` are committed atomically. Queue numbers are never reused.
+
+Traceability: FR-15, FR-16, FR-03, FR-07, FR-08, FR-09, FR-12, FR-13; BR-01, BR-05 (rev. 3.0), BR-07, BR-09 (rev. 3.0), BR-10, BR-11, BR-12, BR-15, BR-16, BR-17; AC-25–AC-34. Tests: [tests.md §7](./tests.md#7-f-08-no-show-handling-and-recovery).
