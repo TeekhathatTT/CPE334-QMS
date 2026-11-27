@@ -8,6 +8,7 @@ export function EntryTimestamps({ entry, className = '' }: { entry: QueueEntry; 
     ['Called', entry.calledAt],
     ['Service started', entry.serviceStartedAt],
     ['Completed', entry.completedAt],
+    ['Cancelled', entry.cancelledAt ?? null],
   ];
   return (
     <dl className={`space-y-1 text-sm text-slate-700 ${className}`}>

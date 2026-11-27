@@ -27,6 +27,7 @@ enum QueueStatus {
   CALLED
   SERVING
   COMPLETED
+  CANCELLED
 }
 
 model User {
@@ -74,6 +75,7 @@ model QueueEntry {
   calledAt         DateTime?     @db.Timestamptz
   serviceStartedAt DateTime?     @db.Timestamptz
   completedAt      DateTime?     @db.Timestamptz
+  cancelledAt      DateTime?     @db.Timestamptz
   customer         User          @relation(fields: [customerId], references: [id], onDelete: Restrict)
   serviceQueue     ServiceQueue  @relation(fields: [serviceQueueId], references: [id], onDelete: Restrict)
 

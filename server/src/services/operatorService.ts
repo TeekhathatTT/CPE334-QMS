@@ -37,10 +37,11 @@ export async function listAssignedQueues(operatorId: string): Promise<QueueSumma
 /**
  * Lists all queue entries for an assigned queue in deterministic FIFO order:
  * `joinedAt ASC, id ASC` (api-spec §8.2, QUEUE-007).
+ * F-07 (BR-14, feature SDS D-7): `CANCELLED` entries are excluded; they stay in the database.
  */
 export async function listOperatorQueueEntries(queueId: string): Promise<SerializedQueueEntry[]> {
   const entries = await prisma.queueEntry.findMany({
-    where: { serviceQueueId: queueId },
+    where: { serviceQueueId: queueId, status: { not: QueueStatus.CANCELLED } },
     orderBy: [
       { joinedAt: 'asc' },
       { id: 'asc' },

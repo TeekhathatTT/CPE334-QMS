@@ -1,6 +1,7 @@
 import { Prisma, QueueAvailability } from '@prisma/client';
 import { prisma } from '../db';
 import { AppError } from '../errors/AppError';
+import { isCustomerCancellable } from './cancellationPolicy';
 
 export interface QueueSummary {
   id: string;
@@ -19,6 +20,8 @@ export interface SerializedQueueEntry {
   calledAt: string | null;
   serviceStartedAt: string | null;
   completedAt: string | null;
+  /** F-07: set only when `status` is `CANCELLED`; `null` otherwise (Sprint 2 api-spec §1.1). */
+  cancelledAt: string | null;
   aheadCount?: number;
 }
 
@@ -47,6 +50,7 @@ export function formatQueueEntry(
     calledAt: Date | null;
     serviceStartedAt: Date | null;
     completedAt: Date | null;
+    cancelledAt: Date | null;
   },
   aheadCount?: number
 ): SerializedQueueEntry {
@@ -60,6 +64,7 @@ export function formatQueueEntry(
     calledAt: entry.calledAt ? entry.calledAt.toISOString() : null,
     serviceStartedAt: entry.serviceStartedAt ? entry.serviceStartedAt.toISOString() : null,
     completedAt: entry.completedAt ? entry.completedAt.toISOString() : null,
+    cancelledAt: entry.cancelledAt ? entry.cancelledAt.toISOString() : null,
     ...(typeof aheadCount === 'number' ? { aheadCount } : {}),
   };
 }
@@ -224,5 +229,61 @@ export async function getCustomerEntry(customerId: string, entryId: string): Pro
 
   const aheadCount = await computeAheadCount(entry);
   return formatQueueEntry(entry, aheadCount);
+}
+
+/**
+ * F-07: the owning customer cancels their own `WAITING` entry (FR-14, BR-13, BR-14;
+ * Sprint 2 api-spec §3.1; feature SDS §10).
+ *
+ * One transaction:
+ * 1. read the entry; missing or another customer's entry -> 404 RESOURCE_NOT_FOUND (privacy, BR-07)
+ * 2. not `WAITING` -> 409 INVALID_STATE_TRANSITION (a repeated cancel included)
+ * 3. conditional UPDATE ... WHERE status = 'WAITING' with `cancelledAt = clock_timestamp()`;
+ *    no row updated means another request (e.g. Call Next) changed it first -> 409 CONCURRENT_MODIFICATION
+ *
+ * Under READ COMMITTED the UPDATE waits for a row lock held by an in-flight Call Next and re-checks
+ * the predicate on the committed row, so cancel and Call Next can never both succeed on one entry.
+ * Queue availability is deliberately not checked: a CLOSED queue's entries can be cancelled.
+ * Success is returned only after the transaction commits (NFR-05).
+ */
+export async function cancelEntry(customerId: string, entryId: string): Promise<SerializedQueueEntry> {
+  const cancelled = await prisma.$transaction(
+    async (tx) => {
+      const entry = await tx.queueEntry.findUnique({
+        where: { id: entryId },
+        select: { customerId: true, status: true },
+      });
+
+      if (!entry || entry.customerId !== customerId) {
+        throw new AppError(404, 'RESOURCE_NOT_FOUND', 'Queue entry not found.');
+      }
+
+      if (!isCustomerCancellable(entry.status)) {
+        throw new AppError(409, 'INVALID_STATE_TRANSITION', 'Only a WAITING queue entry may be cancelled.');
+      }
+
+      const updated = await tx.$queryRaw<Array<{ id: string }>>`
+        UPDATE "QueueEntry"
+        SET "status" = 'CANCELLED'::"QueueStatus", "cancelledAt" = clock_timestamp()
+        WHERE "id" = ${entryId}::uuid
+          AND "customerId" = ${customerId}::uuid
+          AND "status" = 'WAITING'::"QueueStatus"
+        RETURNING "id"
+      `;
+
+      if (updated.length === 0) {
+        throw new AppError(409, 'CONCURRENT_MODIFICATION', 'The queue entry was changed by another request.');
+      }
+
+      return tx.queueEntry.findUniqueOrThrow({ where: { id: entryId } });
+    },
+    {
+      maxWait: 15000,
+      timeout: 15000,
+    }
+  );
+
+  // A CANCELLED entry has no position in the line (api-spec §3.3 / Sprint 2 api-spec §1.1).
+  return formatQueueEntry(cancelled, 0);
 }
 

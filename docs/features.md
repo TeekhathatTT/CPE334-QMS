@@ -15,11 +15,11 @@ This inventory defines the Sprint 1 baseline and planned follow-on features. Rel
 
 ## Planned Follow-on Features
 
-Future behavior does not have separate requirement IDs in the current SRS. Where an existing baseline requirement is listed, it is an enabling requirement and does not define the future behavior.
+Future behavior does not have separate requirement IDs in the current SRS. Where an existing baseline requirement is listed, it is an enabling requirement and does not define the future behavior. *Rev. 2026-11-27:* F-07 is now specified in SRS v2.0 and has its own requirement IDs (see its row).
 
 | Feature ID | Title | Description | Actor | Sprint | Related Requirements | Dependencies |
 |---|---|---|---|---|---|---|
-| F-07 | Customer cancellation and queue withdrawal | Support customer cancellation and queue withdrawal workflows. | CUSTOMER | 2 | Not yet specified; cancellation behavior is excluded from the current SRS. | Depends on F-04 |
+| F-07 | Customer cancellation and queue withdrawal | A customer cancels their own `WAITING` entry; it becomes the terminal status `CANCELLED` with `cancelledAt`, is kept for history, is never called, and frees the customer to rejoin with a new number. Issue #40. Design: [features/sprint-2-f07-customer-cancellation.md](./features/sprint-2-f07-customer-cancellation.md). **Status: Implemented and verified locally (2026-11-27, commit `61e9daf`; see [sprints/sprint-2/completion.md](./sprints/sprint-2/completion.md)); pending review and release.** | CUSTOMER | 2 | FR-14 (new); BR-13, BR-14 (new); BR-05, BR-09 (revised in SRS v2.0); FR-07, FR-08, FR-09, FR-12, FR-13, BR-01, BR-07, BR-10–BR-12 (affected, unchanged); NFR-02, NFR-03, NFR-05, NFR-06, NFR-08; AC-17–AC-24 | Depends on F-04 |
 | F-08 | No-show handling and recovery | Handle missed service turns and define recovery or re-entry behavior. | OPERATOR | 2 | Not yet specified; no-show behavior is excluded from the current SRS. | Depends on F-05 |
 | F-09 | Multi-counter support | Expand service handling to multiple counters or lanes and route queue work accordingly. | OPERATOR, system | 2 | Not yet specified; multi-counter behavior is excluded from the current SRS. | Depends on F-03, F-05 |
 | F-10 | Priority queue policy | Add operator-managed priority ordering beyond the Sprint 1 FIFO policy. | OPERATOR, system | 2 | Not yet specified; priority behavior is excluded from the current SRS. | Depends on F-03, F-05 |
@@ -28,3 +28,10 @@ Future behavior does not have separate requirement IDs in the current SRS. Where
 | F-13 | Product hardening and launch readiness | Complete broader operational quality, verification, and launch-readiness work after planned capabilities are delivered. | System / delivery team | 3 | NFR-01–NFR-08 are the Sprint 1 quality baseline; additional launch criteria are not yet specified. | Depends on F-01–F-12 |
 
 These future features are intentionally excluded from the Sprint 1 engineering contract. The Sprint 2 and Sprint 3 plans are in [sprints/plan.md](./sprints/plan.md).
+
+## Revision history
+
+| Date | Change |
+|---|---|
+| 2026-11-27 | F-07 row: description, related requirements and status updated for contract v1. Previous related-requirements text: "Not yet specified; cancellation behavior is excluded from the current SRS." Previous description: "Support customer cancellation and queue withdrawal workflows." |
+| 2026-11-27 | F-07 status: "Specified (contract v1, 2026-11-27); not implemented." changed to "Implemented and verified locally"; pending review and release. |
