@@ -274,7 +274,7 @@ describe('F-09: multi-counter support', () => {
       ['customer1', () => listCounters(customer1, OPEN_QUEUE_ID), 403, 'FORBIDDEN'],
       ['unassigned operator2', () => listCounters(operator2, OPEN_QUEUE_ID), 403, 'FORBIDDEN'],
       ['malformed queueId', () => listCounters(operator1, 'not-a-uuid'), 400, 'INVALID_ARGUMENT'],
-      ['unknown valid UUIDv4 queueId', () => listCounters(operator1, UNKNOWN_V4), 403, 'FORBIDDEN'],
+      ['unknown valid UUIDv4 queueId', () => listCounters(operator1, UNKNOWN_V4), 404, 'RESOURCE_NOT_FOUND'],
     ];
     for (const [name, send, status, code] of cases) {
       const res = await send();

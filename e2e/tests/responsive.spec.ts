@@ -108,7 +108,7 @@ for (const width of [360, 1280] as const) {
     await expect(page.getByTestId('waiting-count')).toHaveText('1');
     await expect(page.getByTestId('completed-count')).toHaveText('1');
     await check('/operator/queues/:id');
-    await expectActionUsable(page, page.getByRole('button', { name: 'Call Next' }), 'Call Next');
+    await expectActionUsable(page, page.getByRole('button', { name: 'Call next customer to Counter 1' }), 'Call Next (Counter 1)');
     await expectActionUsable(page, page.getByRole('button', { name: /^Start Service for queue number/ }), 'Start Service');
     await expectActionUsable(page, page.getByRole('button', { name: /^Complete Service for queue number/ }), 'Complete Service');
     await expectActionUsable(page, page.getByRole('link', { name: 'Back to assigned queues' }), 'Back to assigned queues');

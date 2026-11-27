@@ -256,7 +256,7 @@ describe('F-09 COUNTER-014: operator Counters panel, ownership states, fallback,
     expect(JSON.parse(String(req.body))).toEqual({ status: 'CLOSED' });
 
     await act(async () => release());
-    expect(await screen.findByText('Counter 1 is now Closed.')).toBeInTheDocument();
+    expect(await screen.findByRole('status')).toHaveTextContent('Counter 1 is now Closed.');
     expect(await screen.findByRole('button', { name: 'Open Counter 1' })).toBeEnabled();
   });
 
@@ -287,7 +287,7 @@ describe('F-09 COUNTER-014: operator Counters panel, ownership states, fallback,
     expect(callsTo(fetchMock, 'POST', counterCallNextPath(C1_ID))).toHaveLength(1);
 
     await act(async () => release());
-    expect(await screen.findByText('Called queue number 7 to Counter 1.')).toBeInTheDocument();
+    expect(await screen.findByRole('status')).toHaveTextContent('Called queue number 7 to Counter 1.');
     expect(within(await screen.findByTestId('active-entry-7')).getByText('Counter 1')).toBeInTheDocument();
   });
 

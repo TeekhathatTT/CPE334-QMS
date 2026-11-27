@@ -2,13 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, CSRF_COOKIE, readCookie } from '../api/client';
 import {
+  callNextAtCounter,
   callNextQueueEntry,
   completeQueueEntry,
   listAssignedQueues,
   listOperatorQueueEntries,
+  listQueueCounters,
   markNoShowQueueEntry,
   recoverQueueEntry,
   startQueueEntry,
+  updateCounterStatus,
+  type Counter,
 } from '../api/operator';
 import {
   UNKNOWN_QUEUE_NAME,
@@ -16,6 +20,7 @@ import {
   type QueueEntry,
   type QueueSummary,
 } from '../api/queues';
+import { useAuth } from '../auth/AuthContext';
 import { EntryTimestamps } from '../components/customer/EntryTimestamps';
 import { STATUS_LABELS, StatusBadge } from '../components/customer/StatusBadge';
 import {
@@ -29,6 +34,7 @@ import {
   linkClass,
   primaryButtonClass,
 } from '../components/customer/ui';
+import { CounterPanel, isCounterOwnedByOther } from '../components/operator/CounterPanel';
 import { Spinner } from '../components/Spinner';
 import { canReturnToQueue } from '../api/noShow';
 import { usePolling } from '../hooks/usePolling';
@@ -48,6 +54,11 @@ export const OPERATOR_ACTION_ERROR_TEXT = {
   RECOVERY_LIMIT: 'This entry was already returned to the queue once and cannot be returned again.',
   /** F-08: the customer rejoined while the entry was NO_SHOW. */
   REJOINED: 'This customer has already joined the queue again, so this entry cannot be returned.',
+  /** F-09 (Sprint 2 ui-spec §12.3). */
+  COUNTER_CLOSED: 'This counter is closed. Open the counter before calling the next customer.',
+  NO_WAITING_ENTRIES: 'There are no waiting customers in this queue right now.',
+  COUNTER_INVALID: 'Invalid counter request. Please refresh and try again.',
+  COUNTER_NOT_FOUND: "We couldn't find that counter.",
 } as const;
 
 /** F-08 (Sprint 2 ui-spec §8.4). */
@@ -56,6 +67,7 @@ export const OPERATOR_NO_SHOW_LIMIT_TEXT = 'Already returned once. This entry ca
 interface ActionFailure {
   text: string;
   refetchEntries: boolean;
+  refetchCounters?: boolean;
 }
 
 function isCsrfForbidden(err: ApiError): boolean {
@@ -65,9 +77,15 @@ function isCsrfForbidden(err: ApiError): boolean {
   return false;
 }
 
-function describeActionFailure(err: unknown, target: 'queue' | 'entry'): ActionFailure {
+function describeActionFailure(err: unknown, target: 'queue' | 'entry' | 'counter'): ActionFailure {
   if (err instanceof ApiError) {
     if (err.status === 409) {
+      if (err.code === 'COUNTER_CLOSED') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.COUNTER_CLOSED, refetchEntries: true, refetchCounters: true };
+      }
+      if (err.code === 'NO_WAITING_ENTRIES') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.NO_WAITING_ENTRIES, refetchEntries: true };
+      }
       if (err.code === 'RECOVERY_LIMIT_REACHED') {
         return { text: OPERATOR_ACTION_ERROR_TEXT.RECOVERY_LIMIT, refetchEntries: true };
       }
@@ -76,7 +94,13 @@ function describeActionFailure(err: unknown, target: 'queue' | 'entry'): ActionF
       }
       return { text: OPERATOR_ACTION_ERROR_TEXT.CONFLICT, refetchEntries: true };
     }
+    if (err.status === 400 && target === 'counter') {
+      return { text: OPERATOR_ACTION_ERROR_TEXT.COUNTER_INVALID, refetchEntries: false };
+    }
     if (err.status === 404) {
+      if (target === 'counter') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.COUNTER_NOT_FOUND, refetchEntries: false, refetchCounters: true };
+      }
       if (target === 'queue') {
         return { text: OPERATOR_ACTION_ERROR_TEXT.QUEUE_NOT_FOUND, refetchEntries: false };
       }
@@ -107,11 +131,16 @@ interface FeedbackBanner {
 /** `/operator/queues/:id` — manage queue lifecycle actions: call next, start, complete (ui-spec §3, §5.2). */
 export function OperatorQueueDetailPage() {
   const { id = '' } = useParams();
+  const { user } = useAuth();
   const [view, setView] = useState<ViewState>({ state: 'loading' });
   const [queues, setQueues] = useState<QueueSummary[] | undefined>(undefined);
+  const [counters, setCounters] = useState<Counter[]>([]);
+  const [countersLoaded, setCountersLoaded] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [callingNext, setCallingNext] = useState(false);
+  const [togglingCounterIds, setTogglingCounterIds] = useState<ReadonlySet<string>>(new Set());
+  const [callingCounterIds, setCallingCounterIds] = useState<ReadonlySet<string>>(new Set());
   const [startingIds, setStartingIds] = useState<ReadonlySet<string>>(new Set());
   const [completingIds, setCompletingIds] = useState<ReadonlySet<string>>(new Set());
   const [noShowingIds, setNoShowingIds] = useState<ReadonlySet<string>>(new Set());
@@ -121,6 +150,7 @@ export function OperatorQueueDetailPage() {
 
   const callingNextRef = useRef(false);
   const entryActionInFlightRef = useRef(new Set<string>());
+  const counterActionInFlightRef = useRef(new Set<string>());
   const entriesRef = useRef<QueueEntry[] | null>(null);
   const activeQueueIdRef = useRef(id);
   activeQueueIdRef.current = id;
@@ -141,6 +171,19 @@ export function OperatorQueueDetailPage() {
       // Queue metadata falls back gracefully; 401 is handled globally.
     }
   }, []);
+
+  const loadCounters = useCallback(async () => {
+    const requestedQueueId = id;
+    try {
+      const data = await listQueueCounters(requestedQueueId);
+      if (!mounted.current || activeQueueIdRef.current !== requestedQueueId) return;
+      setCounters(data);
+      setCountersLoaded(true);
+    } catch {
+      // Counter list degrades gracefully when unavailable (e.g., legacy tests without /counters mock);
+      // 401 is handled globally by apiRequest.
+    }
+  }, [id]);
 
   const loadEntries = useCallback(async () => {
     const requestedQueueId = id;
@@ -188,19 +231,27 @@ export function OperatorQueueDetailPage() {
   useEffect(() => {
     entriesRef.current = null;
     setView({ state: 'loading' });
+    setCounters([]);
+    setCountersLoaded(false);
     setRefreshFailed(false);
     setFeedback(null);
     setAnnouncement('');
     void loadEntries();
     void loadAssignedQueueMeta();
-  }, [loadEntries, loadAssignedQueueMeta]);
+    void loadCounters();
+  }, [loadEntries, loadAssignedQueueMeta, loadCounters]);
 
-  usePolling(loadEntries, view.state === 'ready');
+  const pollQueue = useCallback(
+    () => Promise.all([loadEntries(), loadCounters()]),
+    [loadEntries, loadCounters]
+  );
+
+  usePolling(pollQueue, view.state === 'ready');
 
   const handleRefresh = async () => {
     if (refreshing) return;
     setRefreshing(true);
-    await Promise.all([loadEntries(), loadAssignedQueueMeta()]);
+    await Promise.all([loadEntries(), loadAssignedQueueMeta(), loadCounters()]);
     if (mounted.current) {
       setRefreshing(false);
     }
@@ -209,6 +260,7 @@ export function OperatorQueueDetailPage() {
   const handleRetry = () => {
     setView({ state: 'loading' });
     void loadEntries();
+    void loadCounters();
   };
 
   const handleCallNext = async () => {
@@ -366,6 +418,66 @@ export function OperatorQueueDetailPage() {
     void runNoShowAction(entry, recoverQueueEntry, setRecoveringIds, (u) => `Returned queue number ${u.queueNumber} to the queue.`);
   };
 
+  const handleToggleCounterStatus = async (counter: Counter) => {
+    if (isCounterOwnedByOther(counter, user?.id ?? null)) return;
+    if (counterActionInFlightRef.current.has(counter.id)) return;
+    counterActionInFlightRef.current.add(counter.id);
+    toggleIn(setTogglingCounterIds, counter.id, true);
+    setFeedback(null);
+
+    const nextStatus = counter.status === 'OPEN' ? 'CLOSED' : 'OPEN';
+    try {
+      const updated = await updateCounterStatus(counter.id, nextStatus);
+      if (!mounted.current) return;
+      const statusLabel = updated.status === 'OPEN' ? 'Open' : 'Closed';
+      const msg = `${updated.name} is now ${statusLabel}.`;
+      setFeedback({ kind: 'success', text: msg });
+      setAnnouncement(msg);
+      await loadCounters();
+    } catch (err) {
+      if (!mounted.current || isSessionExpiredError(err)) return;
+      const { text, refetchEntries, refetchCounters } = describeActionFailure(err, 'counter');
+      setFeedback({ kind: 'error', text });
+      setAnnouncement(text);
+      if (refetchCounters) void loadCounters();
+      if (refetchEntries) void loadEntries();
+    } finally {
+      counterActionInFlightRef.current.delete(counter.id);
+      if (mounted.current) toggleIn(setTogglingCounterIds, counter.id, false);
+    }
+  };
+
+  const handleCounterCallNext = async (counter: Counter) => {
+    if (counter.status !== 'OPEN' || isCounterOwnedByOther(counter, user?.id ?? null)) return;
+    if (counterActionInFlightRef.current.has(counter.id)) return;
+    counterActionInFlightRef.current.add(counter.id);
+    toggleIn(setCallingCounterIds, counter.id, true);
+    setFeedback(null);
+
+    try {
+      const calledEntry = await callNextAtCounter(counter.id);
+      if (!mounted.current) return;
+      const counterLabel = calledEntry.counterName ?? counter.name;
+      const msg = `Called queue number ${calledEntry.queueNumber} to ${counterLabel}.`;
+      setFeedback({ kind: 'success', text: msg });
+      setAnnouncement(msg);
+      await Promise.all([loadEntries(), loadCounters()]);
+    } catch (err) {
+      if (!mounted.current || isSessionExpiredError(err)) return;
+      const { text, refetchEntries, refetchCounters } = describeActionFailure(err, 'counter');
+      setFeedback({ kind: 'error', text });
+      setAnnouncement(text);
+      if (refetchCounters) void loadCounters();
+      if (refetchEntries) void loadEntries();
+    } finally {
+      counterActionInFlightRef.current.delete(counter.id);
+      if (mounted.current) toggleIn(setCallingCounterIds, counter.id, false);
+    }
+  };
+
+  const currentUserId = user?.id ?? null;
+  const hasUsableCounter = counters.some((c) => !isCounterOwnedByOther(c, currentUserId));
+
   const queueMeta = queues?.find((q) => q.id === id);
   const queueTitle = queueMeta?.name ?? UNKNOWN_QUEUE_NAME;
 
@@ -448,21 +560,23 @@ export function OperatorQueueDetailPage() {
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <button
-                type="button"
-                onClick={handleCallNext}
-                disabled={callingNext}
-                className={primaryButtonClass}
-              >
-                {callingNext ? (
-                  <>
-                    <Spinner />
-                    Calling next...
-                  </>
-                ) : (
-                  'Call Next'
-                )}
-              </button>
+              {!hasUsableCounter && (
+                <button
+                  type="button"
+                  onClick={handleCallNext}
+                  disabled={callingNext}
+                  className={primaryButtonClass}
+                >
+                  {callingNext ? (
+                    <>
+                      <Spinner />
+                      Calling next...
+                    </>
+                  ) : (
+                    'Call Next'
+                  )}
+                </button>
+              )}
               <RefreshButton pending={refreshing} onClick={handleRefresh} />
             </div>
           </section>
@@ -490,6 +604,17 @@ export function OperatorQueueDetailPage() {
               </span>
               {feedback.text}
             </div>
+          )}
+
+          {countersLoaded && (
+            <CounterPanel
+              counters={counters}
+              currentUserId={currentUserId}
+              togglingIds={togglingCounterIds}
+              callingIds={callingCounterIds}
+              onToggleStatus={(counter) => void handleToggleCounterStatus(counter)}
+              onCallNext={(counter) => void handleCounterCallNext(counter)}
+            />
           )}
 
           {/* Section 1: Active Entries (CALLED / SERVING) */}
@@ -529,6 +654,14 @@ export function OperatorQueueDetailPage() {
                           <div className="min-w-0 space-y-1.5">
                             <div className="flex flex-wrap items-center gap-2">
                               <StatusBadge status={entry.status} />
+                              {(entry.status === 'CALLED' || entry.status === 'SERVING') && entry.counterName && (
+                                <span
+                                  data-testid={`active-entry-counter-${entry.queueNumber}`}
+                                  className="inline-flex items-center rounded-full border border-indigo-300 bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-indigo-900"
+                                >
+                                  {entry.counterName}
+                                </span>
+                              )}
                             </div>
                             <p className="break-all text-xs text-slate-600">
                               <span className="font-medium text-slate-700">Customer ID: </span>

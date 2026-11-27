@@ -28,6 +28,10 @@ export interface SerializedQueueEntry {
   recoveredAt: string | null;
   /** F-08: number of no-shows, 0-2. */
   noShowCount: number;
+  /** F-09: assigned counter id, or `null` for WAITING/CANCELLED/legacy calls (Sprint 2 api-spec §12.2). */
+  counterId: string | null;
+  /** F-09: assigned counter display name, or `null`. */
+  counterName: string | null;
   aheadCount?: number;
 }
 
@@ -60,6 +64,8 @@ export function formatQueueEntry(
     noShowAt: Date | null;
     recoveredAt: Date | null;
     noShowCount: number;
+    counterId?: string | null;
+    counter?: { name: string } | null;
   },
   aheadCount?: number
 ): SerializedQueueEntry {
@@ -77,6 +83,8 @@ export function formatQueueEntry(
     noShowAt: entry.noShowAt ? entry.noShowAt.toISOString() : null,
     recoveredAt: entry.recoveredAt ? entry.recoveredAt.toISOString() : null,
     noShowCount: entry.noShowCount,
+    counterId: entry.counterId ?? null,
+    counterName: entry.counter?.name ?? null,
     ...(typeof aheadCount === 'number' ? { aheadCount } : {}),
   };
 }
@@ -200,6 +208,7 @@ export async function joinQueue(customerId: string, queueId: string): Promise<Se
 export async function listCustomerEntries(customerId: string): Promise<SerializedQueueEntry[]> {
   const entries = await prisma.queueEntry.findMany({
     where: { customerId },
+    include: { counter: { select: { name: true } } },
     orderBy: [
       { joinedAt: 'desc' },
       { id: 'desc' },
@@ -232,6 +241,7 @@ export async function computeAheadCount(
 export async function getCustomerEntry(customerId: string, entryId: string): Promise<SerializedQueueEntry> {
   const entry = await prisma.queueEntry.findUnique({
     where: { id: entryId },
+    include: { counter: { select: { name: true } } },
   });
 
   if (!entry || entry.customerId !== customerId) {

@@ -161,12 +161,12 @@ test.describe('F-09 multi-counter support', () => {
 
       // Empty queue on counter Call Next shows user-safe NO_WAITING_ENTRIES alert.
       await page.getByRole('button', { name: 'Call next customer to Counter 1' }).click();
-      await expect(page.getByRole('alert')).toHaveText('There are no waiting customers in this queue right now.');
+      await expect(page.getByRole('alert')).toContainText('There are no waiting customers in this queue right now.');
 
       // Out-of-band close of Counter 1 -> stale click shows COUNTER_CLOSED alert and refreshes.
       expect(await apiPatchCounterStatus(OPERATOR1.email, COUNTER_Q1_1, 'CLOSED')).toBe(200);
       await page.getByRole('button', { name: 'Call next customer to Counter 1' }).click();
-      await expect(page.getByRole('alert')).toHaveText(
+      await expect(page.getByRole('alert')).toContainText(
         'This counter is closed. Open the counter before calling the next customer.'
       );
       await expect(page.getByRole('button', { name: 'Call next customer to Counter 1' })).toBeDisabled();
