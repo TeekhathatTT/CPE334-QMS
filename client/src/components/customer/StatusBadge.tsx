@@ -6,6 +6,7 @@ export const STATUS_LABELS: Record<QueueEntryStatus, string> = {
   CALLED: 'Called',
   SERVING: 'In service',
   COMPLETED: 'Completed',
+  CANCELLED: 'Cancelled',
 };
 
 const STATUS_STYLES: Record<QueueEntryStatus, string> = {
@@ -13,6 +14,7 @@ const STATUS_STYLES: Record<QueueEntryStatus, string> = {
   CALLED: 'border-blue-300 bg-blue-50 text-blue-900',
   SERVING: 'border-violet-300 bg-violet-50 text-violet-900',
   COMPLETED: 'border-slate-300 bg-slate-100 text-slate-800',
+  CANCELLED: 'border-rose-300 bg-rose-50 text-rose-900',
 };
 
 function StatusIcon({ status }: { status: QueueEntryStatus }) {
@@ -52,6 +54,13 @@ function StatusIcon({ status }: { status: QueueEntryStatus }) {
       return (
         <svg {...common} data-icon="completed">
           <path d="m4.5 10.5 3.5 3.5 7.5-8" />
+        </svg>
+      );
+    case 'CANCELLED': // crossed circle (F-07)
+      return (
+        <svg {...common} data-icon="cancelled">
+          <circle cx="10" cy="10" r="7.5" />
+          <path d="m5 15 10-10" />
         </svg>
       );
   }
