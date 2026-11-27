@@ -35,9 +35,9 @@ export function entryMessage(entry: QueueEntry): string {
       return `Currently waiting. ${ahead} ${ahead === 1 ? 'person' : 'people'} ahead of you.`;
     }
     case 'CALLED':
-      return 'Please go to the service desk.';
+      return entry.counterName ? `Please proceed to ${entry.counterName}.` : 'Please go to the service desk.';
     case 'SERVING':
-      return 'Your service is in progress.';
+      return entry.counterName ? `Your service is in progress at ${entry.counterName}.` : 'Your service is in progress.';
     case 'COMPLETED':
       return 'Service completed.';
     case 'CANCELLED':
@@ -210,6 +210,14 @@ export function EntryDetailPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-slate-700">Status:</span>
                 <StatusBadge status={detail.entry.status} />
+                {(detail.entry.status === 'CALLED' || detail.entry.status === 'SERVING') && detail.entry.counterName && (
+                  <span
+                    data-testid="entry-counter-badge"
+                    className="inline-flex items-center rounded-full border border-indigo-300 bg-indigo-50 px-2.5 py-0.5 text-sm font-semibold text-indigo-900"
+                  >
+                    {detail.entry.counterName}
+                  </span>
+                )}
               </div>
               <p className="text-lg font-medium text-slate-900" data-testid="entry-message">
                 {entryMessage(detail.entry)}

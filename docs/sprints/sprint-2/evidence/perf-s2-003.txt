@@ -1,0 +1,18 @@
+PERF-S2-003 / NFR-04 run (F-09): 2026-11-27T12:05:22.983Z
+Command: npm run test:perf:f09 --workspace=server   (tsx tests/nfr/perf-s2-003-multi-counter.ts)
+Host: Windows_NT 10.0.26300, Intel(R) Core(TM) Ultra 7 155H x22, 16 GiB RAM, Node v24.14.0
+Database: PostgreSQL 16.15 on x86_64-pc-linux-musl, test database "qms_test_db" on localhost:5432
+Method: same as PERF-001. Real Express app on a local ephemeral port, sequential HTTP requests (Node fetch,
+        real cookies + CSRF), 5 untimed warm-ups (6 for Step 2 even toggle count) then 100 timed requests per operation.
+Dataset: 1000 queue entries before timing (1000 WAITING in the OPEN queue, 2 OPEN counters).
+         Step 2 ran 106 alternating toggles ending OPEN (verified before Step 3); Step 3 claimed 105 distinct entries.
+Targets: read p95 <= 500 ms, mutation p95 <= 1000 ms.
+
+Operation                                                  kind         n   p50 ms   p95 ms   max ms target  result
+GET /api/operator/queues/:id/counters                      read       100     10.2     12.9     22.6    500  PASS
+PATCH /api/operator/counters/:id/status                    mutation   100     16.2     25.3     31.4   1000  PASS
+POST /api/operator/counters/:id/call-next                  mutation   100     19.1     94.6    267.2   1000  PASS
+GET /api/operator/queues/:id/entries (with counter join)   read       100     69.2    103.9    218.4    500  PASS
+GET /api/me/queue-entries/:id (called with counterName)    read       100      8.9     24.5     62.3    500  PASS
+
+Overall: PASSED

@@ -34,6 +34,9 @@ export interface QueueEntry {
   recoveredAt?: string | null;
   /** F-08: number of no-shows, 0-2. */
   noShowCount?: number;
+  /** F-09 (Sprint 2 api-spec §12.2): assigned counter id/name, or null. Optional so older fixtures stay valid. */
+  counterId?: string | null;
+  counterName?: string | null;
   aheadCount?: number;
 }
 

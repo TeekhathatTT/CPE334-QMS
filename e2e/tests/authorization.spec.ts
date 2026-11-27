@@ -105,9 +105,9 @@ test.describe('Authorization in the browser', () => {
     await expect(page.getByText(SESSION_EXPIRED_TEXT)).toHaveCount(0); // a normal logout shows no banner
     await loginViaUi(page, OPERATOR1.email);
     await page.goto(`/operator/queues/${OPEN_QUEUE_ID}`);
-    await expect(page.getByRole('button', { name: 'Call Next' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Call next customer to Counter 1' })).toBeVisible();
     await deleteAllSessions();
-    await page.getByRole('button', { name: 'Call Next' }).click();
+    await page.getByRole('button', { name: 'Call next customer to Counter 1' }).click();
     await expect(page).toHaveURL(/\/login$/);
     await expect(page.getByText(SESSION_EXPIRED_TEXT)).toBeVisible();
   });

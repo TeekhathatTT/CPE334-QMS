@@ -52,7 +52,7 @@ test.describe('F-08 no-show handling and recovery', () => {
       await page.goto(`/operator/queues/${OPEN_QUEUE_ID}`);
       await expect(page.getByRole('heading', { name: 'General Inquiry Desk' })).toBeVisible();
 
-      await page.getByRole('button', { name: 'Call Next' }).click();
+      await page.getByRole('button', { name: 'Call next customer to Counter 1' }).click();
       const activeA = page.getByTestId(`active-entry-${a.queueNumber}`);
       await expect(activeA.locator('[data-status="CALLED"]')).toHaveText('Called');
       await f08Shot(page, 'f08-01-called-with-no-show-button');
@@ -69,7 +69,7 @@ test.describe('F-08 no-show handling and recovery', () => {
       await f08Shot(page, 'f08-02-no-show-section');
 
       // B is served meanwhile; then A comes back.
-      await page.getByRole('button', { name: 'Call Next' }).click();
+      await page.getByRole('button', { name: 'Call next customer to Counter 1' }).click();
       await expect(page.getByTestId(`active-entry-${b.queueNumber}`).locator('[data-status="CALLED"]')).toHaveText('Called');
 
       await missedA.getByRole('button', { name: `Return queue number ${a.queueNumber} to the queue` }).click();
@@ -84,8 +84,8 @@ test.describe('F-08 no-show handling and recovery', () => {
       await f08Shot(page, 'f08-03-returned-to-queue');
 
       // A is next again, and misses a second time.
-      await page.getByRole('button', { name: 'Call Next' }).click();
-      await expect(page.getByText(`Called queue number ${a.queueNumber}.`).first()).toBeVisible();
+      await page.getByRole('button', { name: 'Call next customer to Counter 1' }).click();
+      await expect(page.getByText(`Called queue number ${a.queueNumber} to Counter 1.`).first()).toBeVisible();
       await page.getByTestId(`active-entry-${a.queueNumber}`).getByRole('button', { name: `Mark queue number ${a.queueNumber} as no-show` }).click();
       const finalA = page.getByTestId(`no-show-entry-${a.queueNumber}`);
       await expect(finalA.getByText('Already returned once. This entry cannot be returned again.')).toBeVisible();
@@ -146,8 +146,8 @@ test.describe('F-08 no-show handling and recovery', () => {
       await c2.join(OPEN_QUEUE_ID);
       await loginViaUi(page, OPERATOR1.email);
       await page.goto(`/operator/queues/${OPEN_QUEUE_ID}`);
-      await page.getByRole('button', { name: 'Call Next' }).click();
-      await expect(page.getByText(`Called queue number ${a.queueNumber}.`).first()).toBeVisible();
+      await page.getByRole('button', { name: 'Call next customer to Counter 1' }).click();
+      await expect(page.getByText(`Called queue number ${a.queueNumber} to Counter 1.`).first()).toBeVisible();
 
       async function tabTo(name: string): Promise<void> {
         const target = page.getByRole('button', { name });

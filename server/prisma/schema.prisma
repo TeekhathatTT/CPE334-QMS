@@ -31,17 +31,23 @@ enum QueueStatus {
   NO_SHOW
 }
 
+enum CounterStatus {
+  OPEN
+  CLOSED
+}
+
 model User {
-  id            String               @id @default(uuid()) @db.Uuid
-  email         String               @unique @db.VarChar(254)
-  passwordHash  String               @db.VarChar(255)
-  role          Role
-  accountStatus AccountStatus
-  createdAt     DateTime             @default(now()) @db.Timestamptz
-  updatedAt     DateTime             @updatedAt @db.Timestamptz
-  assignments   OperatorAssignment[]
-  queueEntries  QueueEntry[]
-  sessions      Session[]
+  id               String               @id @default(uuid()) @db.Uuid
+  email            String               @unique @db.VarChar(254)
+  passwordHash     String               @db.VarChar(255)
+  role             Role
+  accountStatus    AccountStatus
+  createdAt        DateTime             @default(now()) @db.Timestamptz
+  updatedAt        DateTime             @updatedAt @db.Timestamptz
+  assignments      OperatorAssignment[]
+  assignedCounters Counter[]            @relation("CounterAssignedOperator")
+  queueEntries     QueueEntry[]
+  sessions         Session[]
 }
 
 model ServiceQueue {
@@ -53,7 +59,26 @@ model ServiceQueue {
   createdAt       DateTime             @default(now()) @db.Timestamptz
   updatedAt       DateTime             @updatedAt @db.Timestamptz
   assignments     OperatorAssignment[]
+  counters        Counter[]
   queueEntries    QueueEntry[]
+}
+
+model Counter {
+  id                 String        @id @default(uuid()) @db.Uuid
+  serviceQueueId     String        @db.Uuid
+  name               String        @db.VarChar(80)
+  status             CounterStatus @default(OPEN)
+  assignedOperatorId String?       @db.Uuid
+  createdAt          DateTime      @default(now()) @db.Timestamptz
+  updatedAt          DateTime      @updatedAt @db.Timestamptz
+  serviceQueue       ServiceQueue  @relation(fields: [serviceQueueId], references: [id], onDelete: Cascade)
+  assignedOperator   User?         @relation("CounterAssignedOperator", fields: [assignedOperatorId], references: [id], onDelete: SetNull)
+  queueEntries       QueueEntry[]
+
+  @@unique([serviceQueueId, name], map: "Counter_serviceQueueId_name_key")
+  @@unique([id, serviceQueueId], map: "Counter_id_serviceQueueId_key")
+  @@index([serviceQueueId, name(sort: Asc), id(sort: Asc)], map: "Counter_serviceQueueId_idx")
+  @@index([assignedOperatorId], map: "Counter_assignedOperatorId_idx")
 }
 
 model OperatorAssignment {
@@ -80,12 +105,15 @@ model QueueEntry {
   noShowAt         DateTime?     @db.Timestamptz
   recoveredAt      DateTime?     @db.Timestamptz
   noShowCount      Int           @default(0)
+  counterId        String?       @db.Uuid
   customer         User          @relation(fields: [customerId], references: [id], onDelete: Restrict)
   serviceQueue     ServiceQueue  @relation(fields: [serviceQueueId], references: [id], onDelete: Restrict)
+  counter          Counter?      @relation(fields: [counterId, serviceQueueId], references: [id, serviceQueueId], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([serviceQueueId, queueNumber], map: "QueueEntry_serviceQueueId_queueNumber_key")
   @@index([serviceQueueId, joinedAt(sort: Asc), id(sort: Asc)], map: "QueueEntry_fifo_idx")
   @@index([customerId, joinedAt(sort: Desc)], map: "QueueEntry_customer_joinedAt_idx")
+  @@index([counterId], map: "QueueEntry_counterId_idx")
 }
 
 // Server-side login session (Issue #3, AD-01). Only an HMAC of the session token is stored.

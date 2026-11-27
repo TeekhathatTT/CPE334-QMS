@@ -78,3 +78,42 @@ export async function recoverQueueEntry(entryId: string): Promise<QueueEntry> {
   );
   return required(data?.entry);
 }
+
+/** F-09 (Sprint 2 api-spec §12.1): Counter status & resource. */
+export type CounterStatus = 'OPEN' | 'CLOSED';
+
+export interface Counter {
+  id: string;
+  serviceQueueId: string;
+  name: string;
+  status: CounterStatus;
+  assignedOperatorId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** F-09: `GET /api/operator/queues/{queueId}/counters` (Sprint 2 api-spec §14.1). */
+export async function listQueueCounters(queueId: string): Promise<Counter[]> {
+  const data = await apiRequest<{ counters: Counter[] }>(
+    `/api/operator/queues/${encodeURIComponent(queueId)}/counters`
+  );
+  return required(data?.counters);
+}
+
+/** F-09: `PATCH /api/operator/counters/{counterId}/status` (Sprint 2 api-spec §14.2). */
+export async function updateCounterStatus(counterId: string, status: CounterStatus): Promise<Counter> {
+  const data = await apiRequest<{ counter: Counter }>(
+    `/api/operator/counters/${encodeURIComponent(counterId)}/status`,
+    { method: 'PATCH', body: { status } }
+  );
+  return required(data?.counter);
+}
+
+/** F-09: `POST /api/operator/counters/{counterId}/call-next` (Sprint 2 api-spec §14.3). */
+export async function callNextAtCounter(counterId: string): Promise<QueueEntry> {
+  const data = await apiRequest<{ entry: QueueEntry }>(
+    `/api/operator/counters/${encodeURIComponent(counterId)}/call-next`,
+    { method: 'POST' }
+  );
+  return required(data?.entry);
+}

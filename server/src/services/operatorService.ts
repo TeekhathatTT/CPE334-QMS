@@ -1,6 +1,7 @@
-import { Prisma, QueueStatus } from '@prisma/client';
+import { CounterStatus, Prisma, QueueStatus } from '@prisma/client';
 import { prisma } from '../db';
 import { AppError } from '../errors/AppError';
+import { canCallNextOnCounter, canOperatorUseCounter } from './counterPolicy';
 import { canMarkNoShow, recoveryDecision } from './noShowPolicy';
 import {
   formatQueueEntry,
@@ -8,6 +9,38 @@ import {
   type QueueSummary,
   type SerializedQueueEntry,
 } from './queueService';
+
+export interface SerializedCounter {
+  id: string;
+  serviceQueueId: string;
+  name: string;
+  status: CounterStatus;
+  assignedOperatorId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function formatCounter(counter: {
+  id: string;
+  serviceQueueId: string;
+  name: string;
+  status: CounterStatus;
+  assignedOperatorId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): SerializedCounter {
+  return {
+    id: counter.id,
+    serviceQueueId: counter.serviceQueueId,
+    name: counter.name,
+    status: counter.status,
+    assignedOperatorId: counter.assignedOperatorId ?? null,
+    createdAt: counter.createdAt.toISOString(),
+    updatedAt: counter.updatedAt.toISOString(),
+  };
+}
+
+const INCLUDE_COUNTER_NAME = { counter: { select: { name: true } } } as const;
 
 /**
  * Lists all service queues assigned to the given operator (api-spec §8.1).
@@ -43,6 +76,7 @@ export async function listAssignedQueues(operatorId: string): Promise<QueueSumma
 export async function listOperatorQueueEntries(queueId: string): Promise<SerializedQueueEntry[]> {
   const entries = await prisma.queueEntry.findMany({
     where: { serviceQueueId: queueId, status: { not: QueueStatus.CANCELLED } },
+    include: INCLUDE_COUNTER_NAME,
     orderBy: [
       { joinedAt: 'asc' },
       { id: 'asc' },
@@ -85,7 +119,11 @@ export async function callNextEntry(queueId: string): Promise<SerializedQueueEnt
         data: {
           status: QueueStatus.CALLED,
           calledAt,
+          // F-09 (Blocking #4): legacy queue-level Call Next explicitly clears counterId
+          // so it never leaves a stale counter assignment on a newly CALLED entry.
+          counterId: null,
         },
+        include: INCLUDE_COUNTER_NAME,
       });
 
       return formatQueueEntry(updated);
@@ -156,6 +194,7 @@ export async function startServiceEntry(
           status: QueueStatus.SERVING,
           serviceStartedAt,
         },
+        include: INCLUDE_COUNTER_NAME,
       });
 
       return formatQueueEntry(updated);
@@ -226,6 +265,7 @@ export async function completeServiceEntry(
           status: QueueStatus.COMPLETED,
           completedAt,
         },
+        include: INCLUDE_COUNTER_NAME,
       });
 
       return formatQueueEntry(updated);
@@ -272,6 +312,7 @@ export async function markNoShowEntry(operatorId: string, entryId: string): Prom
           noShowAt: entry.now instanceof Date ? entry.now : new Date(entry.now),
           noShowCount: { increment: 1 },
         },
+        include: INCLUDE_COUNTER_NAME,
       });
       return formatQueueEntry(updated);
     },
@@ -342,8 +383,11 @@ export async function recoverNoShowEntry(operatorId: string, entryId: string): P
           data: {
             status: QueueStatus.WAITING,
             calledAt: null,
+            // F-09 (BR-16 rev. 4.0, BR-20): clear counterId alongside calledAt on recovery.
+            counterId: null,
             recoveredAt: entry.now instanceof Date ? entry.now : new Date(entry.now),
           },
+          include: INCLUDE_COUNTER_NAME,
         });
         return formatQueueEntry(updated);
       },
@@ -366,4 +410,146 @@ async function assertAssigned(tx: Prisma.TransactionClient, operatorId: string, 
   if (!assignment) {
     throw new AppError(403, 'FORBIDDEN', 'You are not assigned to this queue.');
   }
+}
+
+/**
+ * F-09: lists all counters belonging to an assigned queue in deterministic `name ASC, id ASC` order
+ * (Sprint 2 api-spec §14.1, FR-17, BR-18).
+ */
+export async function listQueueCounters(queueId: string): Promise<SerializedCounter[]> {
+  const counters = await prisma.counter.findMany({
+    where: { serviceQueueId: queueId },
+    orderBy: [{ name: 'asc' }, { id: 'asc' }],
+  });
+
+  return counters.map((counter) => formatCounter(counter));
+}
+
+/**
+ * F-09: toggles a counter's status between OPEN and CLOSED inside a row-locked transaction
+ * (Sprint 2 api-spec §14.2, FR-17, BR-18). Idempotent when setting the current status.
+ */
+export async function updateCounterStatus(
+  counterId: string,
+  operatorId: string,
+  status: CounterStatus
+): Promise<SerializedCounter> {
+  return await prisma.$transaction(
+    async (tx) => {
+      const rows = await tx.$queryRaw<
+        Array<{ id: string; serviceQueueId: string; status: string; assignedOperatorId: string | null }>
+      >`
+        SELECT "id", "serviceQueueId", "status"::text AS status, "assignedOperatorId"
+        FROM "Counter"
+        WHERE "id" = ${counterId}::uuid
+        FOR UPDATE
+      `;
+
+      if (!rows || rows.length === 0) {
+        throw new AppError(404, 'RESOURCE_NOT_FOUND', 'Counter not found.');
+      }
+
+      const counter = rows[0];
+      const assignment = await tx.operatorAssignment.findUnique({
+        where: {
+          operatorId_serviceQueueId: {
+            operatorId,
+            serviceQueueId: counter.serviceQueueId,
+          },
+        },
+        select: { operatorId: true },
+      });
+
+      if (!canOperatorUseCounter(Boolean(assignment), counter.assignedOperatorId, operatorId)) {
+        throw new AppError(403, 'FORBIDDEN', 'You are not authorized to manage this counter.');
+      }
+
+      const updated = await tx.counter.update({
+        where: { id: counterId },
+        data: { status },
+      });
+
+      return formatCounter(updated);
+    },
+    { maxWait: 15000, timeout: 15000 }
+  );
+}
+
+/**
+ * F-09: atomically calls the oldest unlocked WAITING entry in the counter's queue and assigns it
+ * to that OPEN counter (Sprint 2 api-spec §14.3, FR-18, BR-19).
+ *
+ * Lock order (deadlock-free, Feature SDS §10.2):
+ * 1. Counter row (`FOR UPDATE`) -> 404 if missing, 403 if unauthorized, 409 COUNTER_CLOSED if CLOSED.
+ * 2. Oldest unlocked WAITING QueueEntry (`FOR UPDATE SKIP LOCKED`) -> 409 NO_WAITING_ENTRIES if none.
+ */
+export async function callNextAtCounter(
+  counterId: string,
+  operatorId: string
+): Promise<SerializedQueueEntry> {
+  return await prisma.$transaction(
+    async (tx) => {
+      const counterRows = await tx.$queryRaw<
+        Array<{ id: string; serviceQueueId: string; name: string; status: string; assignedOperatorId: string | null }>
+      >`
+        SELECT "id", "serviceQueueId", "name", "status"::text AS status, "assignedOperatorId"
+        FROM "Counter"
+        WHERE "id" = ${counterId}::uuid
+        FOR UPDATE
+      `;
+
+      if (!counterRows || counterRows.length === 0) {
+        throw new AppError(404, 'RESOURCE_NOT_FOUND', 'Counter not found.');
+      }
+
+      const counter = counterRows[0];
+      const assignment = await tx.operatorAssignment.findUnique({
+        where: {
+          operatorId_serviceQueueId: {
+            operatorId,
+            serviceQueueId: counter.serviceQueueId,
+          },
+        },
+        select: { operatorId: true },
+      });
+
+      if (!canOperatorUseCounter(Boolean(assignment), counter.assignedOperatorId, operatorId)) {
+        throw new AppError(403, 'FORBIDDEN', 'You are not authorized to operate this counter.');
+      }
+
+      if (!canCallNextOnCounter(counter.status)) {
+        throw new AppError(409, 'COUNTER_CLOSED', 'This counter is currently closed.');
+      }
+
+      const candidates = await tx.$queryRaw<Array<{ id: string; now: Date }>>`
+        SELECT "id", clock_timestamp() AS "now"
+        FROM "QueueEntry"
+        WHERE "serviceQueueId" = ${counter.serviceQueueId}::uuid
+          AND "status" = 'WAITING'::"QueueStatus"
+        ORDER BY "joinedAt" ASC, "id" ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+      `;
+
+      if (!candidates || candidates.length === 0) {
+        throw new AppError(409, 'NO_WAITING_ENTRIES', 'There are no waiting entries in this queue.');
+      }
+
+      const candidate = candidates[0];
+      const calledAt = candidate.now instanceof Date ? candidate.now : new Date(candidate.now);
+
+      const updated = await tx.queueEntry.update({
+        where: { id: candidate.id },
+        data: {
+          status: QueueStatus.CALLED,
+          calledAt,
+          counterId: counter.id,
+        },
+        include: INCLUDE_COUNTER_NAME,
+      });
+
+      return formatQueueEntry(updated);
+    },
+    { maxWait: 15000, timeout: 15000 }
+  );
 }
