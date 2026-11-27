@@ -48,6 +48,8 @@ export const OPERATOR_ACTION_ERROR_TEXT = {
   RECOVERY_LIMIT: 'This entry was already returned to the queue once and cannot be returned again.',
   /** F-08: the customer rejoined while the entry was NO_SHOW. */
   REJOINED: 'This customer has already joined the queue again, so this entry cannot be returned.',
+  /** F-08 v1.1 (ui-spec §8.3 rev. 3.3): the return would exceed the BR-06 active-entry cap. */
+  MAX_ACTIVE: 'This customer already has 2 active queue entries, so this entry cannot be returned right now.',
 } as const;
 
 /** F-08 (Sprint 2 ui-spec §8.4). */
@@ -73,6 +75,9 @@ function describeActionFailure(err: unknown, target: 'queue' | 'entry'): ActionF
       }
       if (err.code === 'DUPLICATE_ACTIVE_ENTRY') {
         return { text: OPERATOR_ACTION_ERROR_TEXT.REJOINED, refetchEntries: true };
+      }
+      if (err.code === 'MAX_ACTIVE_ENTRIES_REACHED') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.MAX_ACTIVE, refetchEntries: true };
       }
       return { text: OPERATOR_ACTION_ERROR_TEXT.CONFLICT, refetchEntries: true };
     }
