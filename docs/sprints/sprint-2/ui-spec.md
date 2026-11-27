@@ -5,6 +5,7 @@
 | 1.0 | 2026-11-27 | F-07 contract v1: "Leave queue" control on the customer entry detail page, `Cancelled` status |
 | 1.1 | 2026-11-27 | Implementation note for §3.2 "Idle": the Leave queue button sits on its own row **below** the footer row (status text and Refresh), not in the same row as Refresh, so that the confirmation panel can open in place at full width. Behavior, text, order of focus and all acceptance criteria are unchanged. |
 | 2.0 | 2026-11-27 | F-08 contract v1 (issue #41): §6–§9 add the operator Mark no-show and Return to queue controls, the No-show section, the `No-show` status and the customer messages. §1–§5 (F-07) unchanged. |
+| 2.1 | 2026-11-27 | Implementation note for §8.1: in the Active Service card, Mark no-show is the third button, after Start Service and Complete Service, not directly next to Start Service. Labels, visibility, busy state, keyboard order and all acceptance criteria are unchanged. |
 
 This document extends the [Sprint 1 UI specification](../sprint-1/ui-spec.md). All Sprint 1 rules (accessibility, responsiveness, error states, session expiry) still apply. Requirements: [SRS](../../srs.md) FR-14, BR-13, BR-14, AC-24. API: [api-spec.md](./api-spec.md) §3.1. Design: [F-07 feature SDS](../../features/sprint-2-f07-customer-cancellation.md).
 

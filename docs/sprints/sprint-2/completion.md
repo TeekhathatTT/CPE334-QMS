@@ -22,3 +22,24 @@ Contract `f98c296` · red `477febb` · first fully green `61e9daf` · green evid
 Not verified: Firefox/WebKit E2E for F-07; the Cloud SQL migration and Cloud Run deployment; latency on Cloud Run / Cloud SQL and under concurrent load.
 
 *Rev. 2026-11-27:* the NFR-04 row was added after PR #56 review. The previous "Not verified" line also listed "PERF-001 for the cancel mutation".
+
+## F-08 No-show handling and recovery (issue #41)
+
+Contract `7e42e1f` · red `f6a4183` · first fully green `37fd6c0` · green evidence `b65c0d2` · raw output: [evidence/f08-red-run.txt](./evidence/f08-red-run.txt), [evidence/f08-green-run.txt](./evidence/f08-green-run.txt), [evidence/perf-s2-002.txt](./evidence/perf-s2-002.txt)
+
+| AC | Implementation | Executed verification | Result | Accepted release |
+|---|---|---|---|---|
+| AC-25 Assigned operator marks a CALLED entry NO_SHOW; persisted; CLOSED queue too | `markNoShowEntry` in `server/src/services/operatorService.ts`; route `POST /api/operator/queue-entries/:entryId/no-show` in `server/src/routes/operator.ts`; migration `20261127120000_f08_queue_entry_no_show`; new fields in `formatQueueEntry` | NOSHOW-002 (API+DB); NOSHOW-017 (E2E) | passed at `37fd6c0` | pending release |
+| AC-26 No-show rejected in other states; Start/Complete reject NO_SHOW | `canMarkNoShow` in `server/src/services/noShowPolicy.ts` | NOSHOW-001 (unit), NOSHOW-003, NOSHOW-020 (API+DB) | passed at `37fd6c0` | pending release |
+| AC-27 Access control for both actions | `requireAuth` → `requireCsrf` → `requireRole(OPERATOR)`; assignment check in the service | NOSHOW-004, NOSHOW-005 (API+DB, row unchanged asserted) | passed at `37fd6c0` | pending release |
+| AC-28 Return to the original FIFO position; CLOSED queue too | `recoverNoShowEntry` (queue-row lock, entry lock, `calledAt` cleared, `recoveredAt` set) | NOSHOW-006 (API+DB, cross-feature F-05); NOSHOW-017 (E2E) | passed at `37fd6c0` | pending release |
+| AC-29 Recovery limit; invalid states; DB CHECK 0–2 | `recoveryDecision`; `RECOVERY_LIMIT_REACHED`; `QueueEntry_noShowCount_range_check` | NOSHOW-001, NOSHOW-007, NOSHOW-008; NOSHOW-017 (E2E) | passed at `37fd6c0` | pending release |
+| AC-30 Rejoin while NO_SHOW blocks a return; F-07 cancel interaction | other-active-entry check + P2002 backstop in `recoverNoShowEntry`; no change to join or cancel | NOSHOW-009, NOSHOW-010 (API+DB, cross-feature F-04/F-07) | passed at `37fd6c0` | pending release |
+| AC-31 Call Next skips NO_SHOW; operator list shows it; aheadCount ignores it | no code change (Call Next and `aheadCount` select only WAITING; list filter excludes only CANCELLED) | NOSHOW-011 (API+DB) | passed at `37fd6c0` | pending release |
+| AC-32 Races: no-show vs Start, double return, return vs rejoin | row lock (no-show), queue-row then entry lock (return) | NOSHOW-012, NOSHOW-013, NOSHOW-014 (10 rounds each) | passed at `37fd6c0` (NOSHOW-014: only the "join wins" outcome was observed) | pending release |
+| AC-33 Operator UI controls, busy, errors, keyboard, 360/1280 px | `client/src/pages/OperatorQueueDetailPage.tsx`, `client/src/api/operator.ts`, `client/src/api/noShow.ts` | NOSHOW-015 (client); NOSHOW-017, NOSHOW-019 (E2E Chromium) | passed at `37fd6c0` | pending release |
+| AC-34 Customer view of NO_SHOW and of a returned entry | `client/src/pages/EntryDetailPage.tsx`, `StatusBadge.tsx`, `EntryTimestamps.tsx` | NOSHOW-016 (client); NOSHOW-018 (E2E) | passed at `37fd6c0` | pending release |
+| NFR-04 for F-08 | — | PERF-S2-002: no-show p95 30.4 ms, recover p95 41.7 ms, reads ≤ 117.4 ms | passed (run 2026-11-27 on the `37fd6c0` code) | pending release |
+| Regression (AC-01 – AC-24) | No existing test file edited | REG-S2-002: all Sprint 1 and F-07 tests inside the full green run (server 161, client 91, E2E 15) | passed at `37fd6c0` | pending release |
+
+Not verified for F-08: Firefox/WebKit E2E; the Cloud SQL migration and Cloud Run deployment; latency on Cloud Run / Cloud SQL and under concurrent load; the "return wins" outcome of the NOSHOW-014 race (not observed in 20 rounds).

@@ -7,7 +7,7 @@
 | Issue | #41 |
 | Depends on | F-05 (operator lifecycle); interacts with F-04 (join, BR-05) and F-07 (cancel) |
 | Contract version | v1 (2026-11-27) |
-| Status | Contract v1, pending review by @Khwanklao |
+| Status | Implemented and verified locally at `37fd6c0` (contract review by @Khwanklao pending; not yet released). *Rev. 2026-11-27:* was "Contract v1, pending review by @Khwanklao". |
 | Author / reviewer | @TeekhathatTT / @Khwanklao |
 | Governing documents | [SRS](../srs.md) v3.0 (§1.2, FR-15, FR-16, BR-15–BR-17, §10.1), [System SDS](../system-sds.md) §14, [Sprint 2 API spec](../sprints/sprint-2/api-spec.md) §7–§11, [Sprint 2 UI spec](../sprints/sprint-2/ui-spec.md) §6–§9, [Sprint 2 test spec](../sprints/sprint-2/tests.md) §7 |
 
@@ -215,14 +215,14 @@ Changed: the enum and columns; `formatQueueEntry` (D-11); two new service functi
 ## 13. Definition of Done
 
 - [ ] Contract v1 reviewed by @Khwanklao and the review recorded
-- [ ] Red tests committed and the red run saved (`docs/sprints/sprint-2/evidence/f08-red-run.txt`)
-- [ ] Migration applied to the local and test databases; partial unique index unchanged
-- [ ] All NOSHOW-001 – NOSHOW-020 tests executed and passing
-- [ ] Sprint 1 and F-07 regression (server, client, E2E) executed and passing with no existing test edited (REG-S2-002)
-- [ ] NFR-04 measured for the two new mutations (PERF-S2-002)
-- [ ] Server typecheck, client typecheck, build and `docker build` pass
-- [ ] Green run saved (`docs/sprints/sprint-2/evidence/f08-green-run.txt`)
-- [ ] Traceability, test spec and completion table updated with actual results and commit SHA
+- [x] Red tests committed and the red run saved (`docs/sprints/sprint-2/evidence/f08-red-run.txt`, red commit `f6a4183`)
+- [x] Migration applied to the local and test databases; partial unique index unchanged (NOSHOW-008)
+- [x] All NOSHOW-001 – NOSHOW-020 tests executed and passing (`37fd6c0`)
+- [x] Sprint 1 and F-07 regression (server, client, E2E) executed and passing with no existing test edited (REG-S2-002)
+- [x] NFR-04 measured for the two new mutations (PERF-S2-002 passed: no-show p95 30.4 ms, recover p95 41.7 ms)
+- [x] Server typecheck, client typecheck, build and `docker build` pass
+- [x] Green run saved (`docs/sprints/sprint-2/evidence/f08-green-run.txt`)
+- [x] Traceability, test spec and completion table updated with actual results and commit SHA
 - [ ] PR into `sprint2-staging` reviewed by @Khwanklao, CI green
 - [ ] Not part of the local DoD: production migration and release deploy (issue #41 DoD, done at release)
 
@@ -239,3 +239,10 @@ Changed: the enum and columns; `formatQueueEntry` (D-11); two new service functi
 | R-7 | Customer permission | A customer gets `403` (role) on these operator routes, not `404`. Agree? |
 | R-8 | Lab 7 BR-06 cap | `lab7-staging` adds a cap of 2 active entries across queues (issue #52). When both branches meet, a return must also respect that cap. This branch is based on `sprint2-staging`, which does not have the cap yet. |
 | R-9 | Migration order | Apply before deploy; rollback needs care once `NO_SHOW` rows exist. |
+
+## 15. Revision history
+
+| Date | Section | Previous text (kept for the record) | New text / reason |
+|---|---|---|---|
+| 2026-11-27 | Header "Status" | "Contract v1, pending review by @Khwanklao" | Implemented and verified locally at `37fd6c0`; review and release pending. |
+| 2026-11-27 | §13 DoD | all items unticked | Ticked only the items whose tests or checks were executed and passed (see `docs/sprints/sprint-2/tests.md` §7.5). Contract review, PR review and release remain open. |

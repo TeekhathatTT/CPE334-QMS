@@ -154,39 +154,39 @@ No approved requirement changes were recorded during this update.
 
 ## Sprint 2 — F-08 No-show Handling and Recovery Traceability
 
-Contract v1 (2026-11-27, issue #41). Every result below is `planned` until the test has been executed. Test specification: [sprints/sprint-2/tests.md §7](./sprints/sprint-2/tests.md#7-f-08-no-show-handling-and-recovery).
+Contract v1 (2026-11-27, issue #41). Every result below is `planned` until the test has been executed. *Rev. 2026-11-27 (results):* every test below was executed; Result = outcome of the green run at commit `37fd6c0` (see [sprints/sprint-2/tests.md §7.5](./sprints/sprint-2/tests.md#75-execution-results-f-08) and `docs/sprints/sprint-2/evidence/f08-green-run.txt`). Release status: pending release. Test specification: [sprints/sprint-2/tests.md §7](./sprints/sprint-2/tests.md#7-f-08-no-show-handling-and-recovery).
 
 ### Requirements to tests
 
 | Requirement | Feature | Sprint | AC | Test ID(s) | Test file | Result (commit) | Contract version |
 |---|---|---|---|---|---|---|---|
-| FR-15 | F-08 | 2 | AC-25, AC-26, AC-27, AC-31, AC-32, AC-33 | NOSHOW-001–NOSHOW-004, NOSHOW-011, NOSHOW-012, NOSHOW-015, NOSHOW-017, NOSHOW-019, NOSHOW-020 | `server/tests/f08-no-show-rule.test.ts`, `server/tests/f08-no-show-recovery.test.ts`, `client/src/test/f08-noShow.test.tsx`, `e2e/tests/f08-no-show.spec.ts` | planned | v1 |
-| FR-16 | F-08 | 2 | AC-27–AC-30, AC-32, AC-33 | NOSHOW-001, NOSHOW-005–NOSHOW-010, NOSHOW-013, NOSHOW-014, NOSHOW-015, NOSHOW-017, NOSHOW-019 | same four files | planned | v1 |
-| BR-15 | F-08 | 2 | AC-25, AC-26, AC-27 | NOSHOW-001–NOSHOW-004, NOSHOW-020 | `server/tests/f08-no-show-rule.test.ts`, `server/tests/f08-no-show-recovery.test.ts` | planned | v1 |
-| BR-16 | F-08 | 2 | AC-27–AC-30 | NOSHOW-001, NOSHOW-005–NOSHOW-009 | same | planned | v1 |
-| BR-17 | F-08 | 2 | AC-25, AC-28, AC-29, AC-31 | NOSHOW-002, NOSHOW-006, NOSHOW-007, NOSHOW-008, NOSHOW-011 | `server/tests/f08-no-show-recovery.test.ts` | planned | v1 |
-| BR-05 (rev. 3.0) | F-04, F-08 | 2 | AC-30, AC-32 | NOSHOW-009, NOSHOW-014 | `server/tests/f08-no-show-recovery.test.ts` | planned | v1 |
-| BR-09 (rev. 3.0) | F-05, F-08 | 2 | AC-26, AC-29 | NOSHOW-001, NOSHOW-003, NOSHOW-007, NOSHOW-020 | `server/tests/f08-no-show-rule.test.ts`, `server/tests/f08-no-show-recovery.test.ts` | planned | v1 |
-| BR-01, BR-10 (F-05 cross-feature) | F-05, F-08 | 2 | AC-28, AC-31 | NOSHOW-006, NOSHOW-011 | `server/tests/f08-no-show-recovery.test.ts` | planned | v1 |
-| BR-13 (F-07 cross-feature) | F-07, F-08 | 2 | AC-30 | NOSHOW-010 | `server/tests/f08-no-show-recovery.test.ts` | planned | v1 |
-| BR-07, FR-03, NFR-02, NFR-08 | F-02, F-08 | 2 | AC-27 | NOSHOW-004, NOSHOW-005 | `server/tests/f08-no-show-recovery.test.ts` | planned | v1 |
-| BR-12, NFR-03, NFR-05 | F-08 | 2 | AC-32 | NOSHOW-012, NOSHOW-013, NOSHOW-014 | `server/tests/f08-no-show-recovery.test.ts` | planned | v1 |
-| FR-07, FR-13 | F-04, F-08 | 2 | AC-25, AC-34 | NOSHOW-002, NOSHOW-016, NOSHOW-018 | `server/tests/f08-no-show-recovery.test.ts`, `client/src/test/f08-noShow.test.tsx`, `e2e/tests/f08-no-show.spec.ts` | planned | v1 |
-| NFR-06 | F-08 | 2 | AC-33 | NOSHOW-015, NOSHOW-019 | `client/src/test/f08-noShow.test.tsx`, `e2e/tests/f08-no-show.spec.ts` | planned | v1 |
-| NFR-04 | F-08 | 2 | operations of AC-25, AC-28, AC-31 | PERF-S2-002 | `server/tests/nfr/perf-s2-002-no-show.ts` | planned | v1 |
-| FR-01–FR-14 (regression) | F-06 | 2 | AC-01–AC-24 | REG-S2-002 | existing suites | planned | v1 |
+| FR-15 | F-08 | 2 | AC-25, AC-26, AC-27, AC-31, AC-32, AC-33 | NOSHOW-001–NOSHOW-004, NOSHOW-011, NOSHOW-012, NOSHOW-015, NOSHOW-017, NOSHOW-019, NOSHOW-020 | `server/tests/f08-no-show-rule.test.ts`, `server/tests/f08-no-show-recovery.test.ts`, `client/src/test/f08-noShow.test.tsx`, `e2e/tests/f08-no-show.spec.ts` | passed (37fd6c0) | v1 |
+| FR-16 | F-08 | 2 | AC-27–AC-30, AC-32, AC-33 | NOSHOW-001, NOSHOW-005–NOSHOW-010, NOSHOW-013, NOSHOW-014, NOSHOW-015, NOSHOW-017, NOSHOW-019 | same four files | passed (37fd6c0) | v1 |
+| BR-15 | F-08 | 2 | AC-25, AC-26, AC-27 | NOSHOW-001–NOSHOW-004, NOSHOW-020 | `server/tests/f08-no-show-rule.test.ts`, `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-16 | F-08 | 2 | AC-27–AC-30 | NOSHOW-001, NOSHOW-005–NOSHOW-009 | same | passed (37fd6c0) | v1 |
+| BR-17 | F-08 | 2 | AC-25, AC-28, AC-29, AC-31 | NOSHOW-002, NOSHOW-006, NOSHOW-007, NOSHOW-008, NOSHOW-011 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-05 (rev. 3.0) | F-04, F-08 | 2 | AC-30, AC-32 | NOSHOW-009, NOSHOW-014 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-09 (rev. 3.0) | F-05, F-08 | 2 | AC-26, AC-29 | NOSHOW-001, NOSHOW-003, NOSHOW-007, NOSHOW-020 | `server/tests/f08-no-show-rule.test.ts`, `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-01, BR-10 (F-05 cross-feature) | F-05, F-08 | 2 | AC-28, AC-31 | NOSHOW-006, NOSHOW-011 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-13 (F-07 cross-feature) | F-07, F-08 | 2 | AC-30 | NOSHOW-010 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-07, FR-03, NFR-02, NFR-08 | F-02, F-08 | 2 | AC-27 | NOSHOW-004, NOSHOW-005 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-12, NFR-03, NFR-05 | F-08 | 2 | AC-32 | NOSHOW-012, NOSHOW-013, NOSHOW-014 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| FR-07, FR-13 | F-04, F-08 | 2 | AC-25, AC-34 | NOSHOW-002, NOSHOW-016, NOSHOW-018 | `server/tests/f08-no-show-recovery.test.ts`, `client/src/test/f08-noShow.test.tsx`, `e2e/tests/f08-no-show.spec.ts` | passed (37fd6c0) | v1 |
+| NFR-06 | F-08 | 2 | AC-33 | NOSHOW-015, NOSHOW-019 | `client/src/test/f08-noShow.test.tsx`, `e2e/tests/f08-no-show.spec.ts` | passed (37fd6c0) | v1 |
+| NFR-04 | F-08 | 2 | operations of AC-25, AC-28, AC-31 | PERF-S2-002 | `server/tests/nfr/perf-s2-002-no-show.ts` | passed (37fd6c0) | v1 |
+| FR-01–FR-14 (regression) | F-06 | 2 | AC-01–AC-24 | REG-S2-002 | existing suites | passed (37fd6c0) | v1 |
 
 ### Acceptance criteria to tests
 
 | Acceptance Criteria | Test ID(s) | Result |
 |---|---|---|
-| AC-25 | NOSHOW-002, NOSHOW-017 | planned |
-| AC-26 | NOSHOW-001, NOSHOW-003, NOSHOW-020 | planned |
-| AC-27 | NOSHOW-004, NOSHOW-005 | planned |
-| AC-28 | NOSHOW-006, NOSHOW-017 | planned |
-| AC-29 | NOSHOW-001, NOSHOW-007, NOSHOW-008, NOSHOW-017 | planned |
-| AC-30 | NOSHOW-009, NOSHOW-010 | planned |
-| AC-31 | NOSHOW-011 | planned |
-| AC-32 | NOSHOW-012, NOSHOW-013, NOSHOW-014 | planned |
-| AC-33 | NOSHOW-015, NOSHOW-017, NOSHOW-019 | planned |
-| AC-34 | NOSHOW-016, NOSHOW-018 | planned |
+| AC-25 | NOSHOW-002, NOSHOW-017 | passed (37fd6c0) |
+| AC-26 | NOSHOW-001, NOSHOW-003, NOSHOW-020 | passed (37fd6c0) |
+| AC-27 | NOSHOW-004, NOSHOW-005 | passed (37fd6c0) |
+| AC-28 | NOSHOW-006, NOSHOW-017 | passed (37fd6c0) |
+| AC-29 | NOSHOW-001, NOSHOW-007, NOSHOW-008, NOSHOW-017 | passed (37fd6c0) |
+| AC-30 | NOSHOW-009, NOSHOW-010 | passed (37fd6c0) |
+| AC-31 | NOSHOW-011 | passed (37fd6c0) |
+| AC-32 | NOSHOW-012, NOSHOW-013, NOSHOW-014 | passed (37fd6c0) |
+| AC-33 | NOSHOW-015, NOSHOW-017, NOSHOW-019 | passed (37fd6c0) |
+| AC-34 | NOSHOW-016, NOSHOW-018 | passed (37fd6c0) |
