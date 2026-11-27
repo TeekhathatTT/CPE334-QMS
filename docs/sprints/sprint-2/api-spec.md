@@ -4,6 +4,8 @@
 |---|---|---|
 | 1.0 | 2026-11-27 | F-07 contract v1: customer cancellation endpoint, `CANCELLED` status, `cancelledAt` field, operator entry-list filter |
 | 2.0 | 2026-11-27 | F-08 contract v1 (issue #41): §7–§11 add the no-show and recover endpoints, the `NO_SHOW` status, the `noShowAt`, `recoveredAt` and `noShowCount` fields and the error code `RECOVERY_LIMIT_REACHED`. §1–§6 (F-07) are unchanged; where F-08 extends them, §7–§11 say so. |
+| 3.0 | 2026-11-27 | F-09 contract v1 (issue #42): §12–§16 add the `Counter` resource, additive `counterId` and `counterName` fields on `QueueEntry`, counter list/status/call-next endpoints, and error codes `COUNTER_CLOSED` and `NO_WAITING_ENTRIES`. §1–§11 (F-07, F-08) are unchanged; where F-09 extends them, §12–§16 say so. |
+| 3.1 | 2026-11-27 | F-09 contract v1.1 (PR review fixes): documents legacy Call Next as an accepted backwards-compatibility trade-off that explicitly sets `"counterId" = NULL`, and upgrades §16 to the composite FK `("counterId", "serviceQueueId") -> Counter("id", "serviceQueueId")` (`MATCH SIMPLE`, `ON DELETE RESTRICT`). |
 
 This document extends the [Sprint 1 API specification](../sprint-1/api-spec.md). Everything in that document still applies unless a section below says otherwise. Base path, envelopes, timestamps, CSRF and UUID rules are unchanged (Sprint 1 §1, §2, §4, §5). Requirements: [SRS](../../srs.md) v2.0, FR-14, BR-13, BR-14. Design: [F-07 feature SDS](../../features/sprint-2-f07-customer-cancellation.md).
 
@@ -285,3 +287,231 @@ curl -i -X POST "http://localhost:3000/api/operator/queue-entries/<entryId>/reco
 - Status, timestamps and `noShowCount` are committed atomically. Queue numbers are never reused.
 
 Traceability: FR-15, FR-16, FR-03, FR-07, FR-08, FR-09, FR-12, FR-13; BR-01, BR-05 (rev. 3.0), BR-07, BR-09 (rev. 3.0), BR-10, BR-11, BR-12, BR-15, BR-16, BR-17; AC-25–AC-34. Tests: [tests.md §7](./tests.md#7-f-08-no-show-handling-and-recovery).
+
+---
+
+# F-09 Multi-counter support (v3.0)
+
+Requirements: [SRS](../../srs.md) v4.0, FR-17–FR-19, BR-18–BR-20, AC-35–AC-44. Design: [F-09 feature SDS](../../features/sprint-2-f09-multi-counter.md).
+
+## 12. Standard objects (F-09)
+
+### 12.1 `Counter` (new)
+
+```json
+{
+  "id": "cccccccc-cccc-4ccc-8ccc-ccccccccccc1",
+  "serviceQueueId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "name": "Counter 1",
+  "status": "OPEN",
+  "assignedOperatorId": null,
+  "createdAt": "2026-11-27T09:00:00.000Z",
+  "updatedAt": "2026-11-27T09:00:00.000Z"
+}
+```
+
+Field rules:
+- `id`, `serviceQueueId`: UUIDv4 strings.
+- `name`: non-empty string (max 80 chars), unique within `serviceQueueId`.
+- `status`: `"OPEN"` or `"CLOSED"`.
+- `assignedOperatorId`: UUIDv4 string of a specific `OPERATOR` user, or `null` (meaning any operator assigned to `serviceQueueId` may operate the counter).
+- `createdAt`, `updatedAt`: RFC 3339 UTC timestamps ending in `Z`.
+
+### 12.2 `QueueEntry` (extends §7.1)
+
+```json
+{
+  "id": "f4d56583-5d7d-4fef-bb21-5e6a5a7a9a68",
+  "serviceQueueId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "customerId": "11111111-1111-4111-8111-111111111111",
+  "queueNumber": 7,
+  "status": "CALLED",
+  "joinedAt": "2026-11-27T09:00:00.000Z",
+  "calledAt": "2026-11-27T09:10:00.000Z",
+  "serviceStartedAt": null,
+  "completedAt": null,
+  "cancelledAt": null,
+  "noShowAt": null,
+  "recoveredAt": null,
+  "noShowCount": 0,
+  "counterId": "cccccccc-cccc-4ccc-8ccc-ccccccccccc1",
+  "counterName": "Counter 1"
+}
+```
+
+Rules added or changed:
+- `counterId` (`string | null`) and `counterName` (`string | null`) are present on **every** serialized `QueueEntry` payload (join, own list, own detail, cancel, operator list, legacy call-next, counter call-next, start, complete, no-show, recover).
+- Both fields are `null` for `WAITING` and `CANCELLED` entries, and for entries called via legacy `POST /api/operator/queues/{queueId}/call-next`.
+- Both fields are non-null when called via `POST /api/operator/counters/{counterId}/call-next`, and are preserved across `CALLED -> SERVING -> COMPLETED` and `CALLED -> NO_SHOW`.
+- Both fields are additive; clients that ignore unknown fields are unaffected.
+
+## 13. Changes to existing endpoints (F-09)
+
+| Endpoint | Change |
+|---|---|
+| `GET /api/me/queue-entries`, `GET /api/me/queue-entries/{entryId}`, `POST /api/queues/{queueId}/entries`, `POST /api/me/queue-entries/{entryId}/cancel` | Additive `counterId` and `counterName` included in every returned `QueueEntry`. Join and cancel always return `counterId: null, counterName: null`. |
+| `GET /api/operator/queues/{queueId}/entries` | Additive `counterId` and `counterName` included in every returned `QueueEntry`. Order (`joinedAt ASC, id ASC`) and `CANCELLED` exclusion unchanged. |
+| `POST /api/operator/queues/{queueId}/call-next` (legacy) | **Preserved as an explicit backwards-compatibility trade-off (v3.1):** `BR-19` applies to counter-scoped Call Next; retaining this legacy endpoint without counter `OPEN`/`assignedOperatorId` checks is explicitly accepted solely to preserve unmodified Sprint 1 / F-07 / F-08 regression suites (deprecation/removal deferred to a future sprint). Its `UPDATE` statement **must** explicitly set `"counterId" = NULL` so it never leaves a stale `counterId` on a newly `CALLED` entry; FIFO ordering, `FOR UPDATE SKIP LOCKED`, `counterId: null`, `counterName: null`, and `204 No Content` when empty (BR-10) remain unchanged. |
+| `POST /api/operator/queue-entries/{entryId}/start`, `/complete`, `/no-show` | Transition logic unchanged; entries retain their existing `counterId` and return `counterId` and `counterName` in the response. Succeeds even if the assigned counter was subsequently set to `CLOSED` (BR-19). |
+| `POST /api/operator/queue-entries/{entryId}/recover` (§9.2) | Clears `counterId = NULL` alongside `calledAt = NULL` when transitioning `NO_SHOW -> WAITING` (BR-16 rev. 4.0, BR-20); response returns `counterId: null, counterName: null`. |
+
+## 14. New endpoints (F-09)
+
+### 14.1 `GET /api/operator/queues/{queueId}/counters`
+
+Purpose: list all counters belonging to an assigned service queue in deterministic order (FR-17).
+
+Request headers:
+- `Cookie: <session-cookie>`
+
+Validation and processing order:
+1. `queueId` must be a valid UUIDv4 (`400 INVALID_ARGUMENT`).
+2. Valid session required (`401 UNAUTHORIZED`).
+3. Role must be `OPERATOR` (`403 FORBIDDEN`).
+4. `requireQueueAssignment` checks that the operator is assigned to `queueId` (`403 FORBIDDEN` if unassigned or queue does not exist, matching `GET /api/operator/queues/{queueId}/entries`).
+5. Query `Counter` where `serviceQueueId = queueId`, ordered by `name ASC, id ASC`.
+
+Success response: `200 OK`
+
+```json
+{
+  "data": {
+    "counters": [
+      {
+        "id": "cccccccc-cccc-4ccc-8ccc-ccccccccccc1",
+        "serviceQueueId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "name": "Counter 1",
+        "status": "OPEN",
+        "assignedOperatorId": null,
+        "createdAt": "2026-11-27T09:00:00.000Z",
+        "updatedAt": "2026-11-27T09:00:00.000Z"
+      },
+      {
+        "id": "cccccccc-cccc-4ccc-8ccc-ccccccccccc2",
+        "serviceQueueId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "name": "Counter 2",
+        "status": "OPEN",
+        "assignedOperatorId": null,
+        "createdAt": "2026-11-27T09:00:00.000Z",
+        "updatedAt": "2026-11-27T09:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+Error responses:
+
+| HTTP | Code | Condition | Database change |
+|---|---|---|---|
+| 400 | `INVALID_ARGUMENT` | `queueId` is not a UUIDv4 | none |
+| 401 | `UNAUTHORIZED` | missing, invalid or expired session | none |
+| 403 | `FORBIDDEN` | role is not `OPERATOR`, or operator not assigned to `queueId` | none |
+| 500 | `INTERNAL_ERROR` | unexpected server failure | none |
+
+### 14.2 `PATCH /api/operator/counters/{counterId}/status`
+
+Purpose: open or close a service counter (FR-17).
+
+Request headers:
+- `Cookie: <session-cookie>`
+- `X-CSRF-Token: <token-from-session>`
+- `Content-Type: application/json`
+
+Request body (strictly validated; unknown/missing/invalid fields rejected with `400 INVALID_ARGUMENT`):
+
+```json
+{
+  "status": "CLOSED"
+}
+```
+
+Allowed values for `status`: `"OPEN"` | `"CLOSED"`.
+
+Validation and processing order:
+1. `counterId` must be a valid UUIDv4 (`400 INVALID_ARGUMENT`).
+2. Valid session required (`401 UNAUTHORIZED`).
+3. `X-CSRF-Token` must match the session (`403 FORBIDDEN`).
+4. Role must be `OPERATOR` (`403 FORBIDDEN`).
+5. Validate JSON body (`{ status: "OPEN" | "CLOSED" }` strictly; `400 INVALID_ARGUMENT` otherwise).
+6. In one transaction: lock `Counter` `FOR UPDATE` (`404 RESOURCE_NOT_FOUND` if missing); verify `OperatorAssignment` for `(caller, counter.serviceQueueId)` and verify `counter.assignedOperatorId === null || counter.assignedOperatorId === caller` (`403 FORBIDDEN` otherwise); update `status` and `updatedAt`.
+7. Commit before responding. Setting the same status again is idempotent and returns `200 OK`. Parent queue availability is not checked.
+
+Success response: `200 OK`, `{ "data": { "counter": <Counter> } }`.
+
+Error responses:
+
+| HTTP | Code | Condition | Database change |
+|---|---|---|---|
+| 400 | `INVALID_ARGUMENT` | `counterId` is not a UUIDv4, or request body fails schema validation | none |
+| 401 | `UNAUTHORIZED` | missing, invalid or expired session | none |
+| 403 | `FORBIDDEN` | CSRF missing/wrong; role not `OPERATOR`; operator not assigned to counter's queue; or `assignedOperatorId` is non-null and ≠ caller | none |
+| 404 | `RESOURCE_NOT_FOUND` | no counter with that id | none |
+| 500 | `INTERNAL_ERROR` | unexpected failure; rolled back | none |
+
+### 14.3 `POST /api/operator/counters/{counterId}/call-next`
+
+Purpose: atomically call the oldest eligible `WAITING` entry in the counter's queue and assign it to that `OPEN` counter (FR-18).
+
+Request headers:
+- `Cookie: <session-cookie>`
+- `X-CSRF-Token: <token-from-session>`
+
+Request body: none (ignored if sent).
+
+Validation and processing order:
+1. `counterId` must be a valid UUIDv4 (`400 INVALID_ARGUMENT`).
+2. Valid session required (`401 UNAUTHORIZED`).
+3. `X-CSRF-Token` must match the session (`403 FORBIDDEN`).
+4. Role must be `OPERATOR` (`403 FORBIDDEN`).
+5. In one transaction:
+   a. Lock `Counter` row `FOR UPDATE`; missing → `404 RESOURCE_NOT_FOUND`.
+   b. Verify `OperatorAssignment` for `(caller, counter.serviceQueueId)` and verify `counter.assignedOperatorId === null || counter.assignedOperatorId === caller`; otherwise → `403 FORBIDDEN`.
+   c. Verify `counter.status === 'OPEN'`; if `CLOSED` → `409 COUNTER_CLOSED`.
+   d. Select oldest unlocked `WAITING` entry in `counter.serviceQueueId` (`ORDER BY "joinedAt" ASC, "id" ASC LIMIT 1 FOR UPDATE SKIP LOCKED`); if none → `409 NO_WAITING_ENTRIES`.
+   e. Update claimed entry: `status = CALLED`, `calledAt = clock_timestamp()`, `counterId = counter.id`.
+6. Commit before responding. Parent queue availability is not checked.
+
+Success response: `200 OK`, `{ "data": { "entry": <QueueEntry> } }` with `status: "CALLED"`, `counterId: counter.id`, and `counterName: counter.name` (example in §12.2).
+
+Error responses:
+
+| HTTP | Code | Condition | Database change |
+|---|---|---|---|
+| 400 | `INVALID_ARGUMENT` | `counterId` is not a UUIDv4 | none |
+| 401 | `UNAUTHORIZED` | missing, invalid or expired session | none |
+| 403 | `FORBIDDEN` | CSRF missing/wrong; role not `OPERATOR`; operator not assigned to counter's queue; or `assignedOperatorId` is non-null and ≠ caller | none |
+| 404 | `RESOURCE_NOT_FOUND` | no counter with that id | none |
+| 409 | `COUNTER_CLOSED` | counter's `status` is `CLOSED` | none |
+| 409 | `NO_WAITING_ENTRIES` | no eligible `WAITING` entry exists in the counter's queue | none |
+| 500 | `INTERNAL_ERROR` | unexpected failure; rolled back | none |
+
+Example (curl, local development, synthetic account):
+
+```bash
+curl -i -b cookies.txt "http://localhost:3000/api/operator/queues/<queueId>/counters"
+
+curl -i -X PATCH "http://localhost:3000/api/operator/counters/<counterId>/status" \
+  -b cookies.txt -H "X-CSRF-Token: <csrf-from-cookie>" -H "Content-Type: application/json" \
+  -d '{"status":"CLOSED"}'
+
+curl -i -X POST "http://localhost:3000/api/operator/counters/<counterId>/call-next" \
+  -b cookies.txt -H "X-CSRF-Token: <csrf-from-cookie>"
+```
+
+## 15. Permission matrix additions (F-09)
+
+| Action / endpoint | Anonymous | CUSTOMER | OPERATOR not assigned | OPERATOR assigned (mismatched `assignedOperatorId`) | OPERATOR assigned (`assignedOperatorId` null or self) |
+|---|---|---|---|---|---|
+| `GET /api/operator/queues/{queueId}/counters` | `401` | `403` | `403` | `200` (lists queue's counters) | `200` |
+| `PATCH /api/operator/counters/{counterId}/status` | `401` | `403` | `403` | `403` | `200` (valid body); `400` (invalid body) |
+| `POST /api/operator/counters/{counterId}/call-next` | `401` | `403` | `403` | `403` | `200` (`OPEN` + waiting); `409 COUNTER_CLOSED`; `409 NO_WAITING_ENTRIES` |
+
+## 16. Lifecycle and integrity rules (extends §11)
+
+- `QueueStatus` values and transitions are unchanged from §11; F-09 adds `Counter.status` (`OPEN` ↔ `CLOSED`).
+- Every `Counter` name is unique per `ServiceQueue` (`Counter_serviceQueueId_name_key`), and `(id, serviceQueueId)` has a unique constraint (`Counter_id_serviceQueueId_key`).
+- `QueueEntry.counterId` is nullable and enforced at the database layer by the composite FK `FOREIGN KEY ("counterId", "serviceQueueId") REFERENCES "Counter"("id", "serviceQueueId") ON DELETE RESTRICT` (`MATCH SIMPLE`, default): `counterId IS NULL` is permitted (for `WAITING`, `CANCELLED`, and legacy calls), while any non-null `counterId` belonging to a different `serviceQueueId` is rejected by PostgreSQL. `WAITING` and `CANCELLED` rows (including after F-08 recovery) always have `counterId = NULL`.
+- Counter lock precedes entry lock (`Counter` `FOR UPDATE` → `QueueEntry` `FOR UPDATE SKIP LOCKED`), preserving a deadlock-free lock order across all endpoints.
+
+Traceability: FR-17–FR-19, FR-03, FR-07–FR-13, FR-16; BR-01, BR-07, BR-10 (rev. 4.0), BR-11, BR-12, BR-16 (rev. 4.0), BR-18–BR-20; AC-35–AC-44. Tests: [tests.md §8](./tests.md#8-f-09-multi-counter-support).
