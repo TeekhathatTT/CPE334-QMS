@@ -6,6 +6,7 @@
 | 2.0 | 2026-11-27 | F-08 contract v1 (issue #41): §7–§11 add the no-show and recover endpoints, the `NO_SHOW` status, the `noShowAt`, `recoveredAt` and `noShowCount` fields and the error code `RECOVERY_LIMIT_REACHED`. §1–§6 (F-07) are unchanged; where F-08 extends them, §7–§11 say so. |
 | 3.0 | 2026-11-27 | F-09 contract v1 (issue #42): §12–§16 add the `Counter` resource, additive `counterId` and `counterName` fields on `QueueEntry`, counter list/status/call-next endpoints, and error codes `COUNTER_CLOSED` and `NO_WAITING_ENTRIES`. §1–§11 (F-07, F-08) are unchanged; where F-09 extends them, §12–§16 say so. |
 | 3.1 | 2026-11-27 | F-09 contract v1.1 (PR review fixes): documents legacy Call Next as an accepted backwards-compatibility trade-off that explicitly sets `"counterId" = NULL`, and upgrades §16 to the composite FK `("counterId", "serviceQueueId") -> Counter("id", "serviceQueueId")` (`MATCH SIMPLE`, `ON DELETE RESTRICT`). |
+| 3.4 | 2026-11-27 | F-08 follows BR-06 (SRS rev. 4.5): §9.2 recover also locks the customer's `User` row first and returns `409 MAX_ACTIVE_ENTRIES_REACHED` when the customer already holds 2 active entries across all queues; §10 updated. (Numbered 3.4 because the F-09 implementation PR uses 3.2 and 3.3.) |
 
 This document extends the [Sprint 1 API specification](../sprint-1/api-spec.md). Everything in that document still applies unless a section below says otherwise. Base path, envelopes, timestamps, CSRF and UUID rules are unchanged (Sprint 1 §1, §2, §4, §5). Requirements: [SRS](../../srs.md) v2.0, FR-14, BR-13, BR-14. Design: [F-07 feature SDS](../../features/sprint-2-f07-customer-cancellation.md).
 
@@ -217,11 +218,12 @@ Request headers and body: as §9.1.
 
 Validation and processing order:
 1. – 4. as §9.1.
-5. In one transaction: read the entry (`404 RESOURCE_NOT_FOUND` if missing); lock its queue row (`FOR UPDATE`, the same lock join takes); lock the entry (`FOR UPDATE`).
+5. In one transaction: read the entry (`404 RESOURCE_NOT_FOUND` if missing); lock the customer's `User` row (`FOR NO KEY UPDATE`, the lock join takes first since BR-06, rev. 3.4); lock its queue row (`FOR UPDATE`, the same lock join takes); lock the entry (`FOR UPDATE`).
 6. The caller must be assigned to the entry's queue (`403 FORBIDDEN`).
 7. Status must be `NO_SHOW` (`409 INVALID_STATE_TRANSITION`).
 8. `noShowCount` must be 1 (`409 RECOVERY_LIMIT_REACHED` when it is 2).
 9. The customer must have no other `WAITING`, `CALLED` or `SERVING` entry in the same queue (`409 DUPLICATE_ACTIVE_ENTRY`).
+9a. The customer must hold fewer than 2 `WAITING`, `CALLED` or `SERVING` entries across all queues (`409 MAX_ACTIVE_ENTRIES_REACHED`, BR-06, rev. 3.4).
 10. Update `status = WAITING`, `calledAt = NULL`, `recoveredAt = clock_timestamp()`. `joinedAt`, `queueNumber`, `noShowAt` and `noShowCount` are kept.
 11. The response is sent only after commit.
 
@@ -260,6 +262,7 @@ Success: `200 OK`
 | 409 | `INVALID_STATE_TRANSITION` | status is not `NO_SHOW` | none |
 | 409 | `RECOVERY_LIMIT_REACHED` | `noShowCount` is 2 (the entry was already returned once) | none |
 | 409 | `DUPLICATE_ACTIVE_ENTRY` | the customer already has another active entry in that queue | none |
+| 409 | `MAX_ACTIVE_ENTRIES_REACHED` | the customer already holds 2 active entries across all queues (BR-06, rev. 3.4) | none |
 | 500 | `INTERNAL_ERROR` | unexpected failure; rolled back | none |
 
 Example (curl, local development, synthetic account):
@@ -276,7 +279,7 @@ curl -i -X POST "http://localhost:3000/api/operator/queue-entries/<entryId>/reco
 | Action / endpoint | Anonymous | CUSTOMER | OPERATOR not assigned | OPERATOR assigned |
 |---|---|---|---|---|
 | `POST /api/operator/queue-entries/{entryId}/no-show` | `401` | `403` (owner included) | `403` | `CALLED` → `200`; other status `409` |
-| `POST /api/operator/queue-entries/{entryId}/recover` | `401` | `403` (owner included) | `403` | `NO_SHOW` count 1 → `200`; count 2 `409 RECOVERY_LIMIT_REACHED`; other active entry `409 DUPLICATE_ACTIVE_ENTRY`; other status `409 INVALID_STATE_TRANSITION` |
+| `POST /api/operator/queue-entries/{entryId}/recover` | `401` | `403` (owner included) | `403` | `NO_SHOW` count 1 → `200`; count 2 `409 RECOVERY_LIMIT_REACHED`; other active entry `409 DUPLICATE_ACTIVE_ENTRY`; customer already holds 2 active entries `409 MAX_ACTIVE_ENTRIES_REACHED` (rev. 3.4); other status `409 INVALID_STATE_TRANSITION` |
 
 ## 11. Lifecycle and integrity rules (extends §5)
 

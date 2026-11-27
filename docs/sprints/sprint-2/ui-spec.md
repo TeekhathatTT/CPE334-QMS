@@ -8,6 +8,7 @@
 | 2.1 | 2026-11-27 | Implementation note for §8.1: in the Active Service card, Mark no-show is the third button, after Start Service and Complete Service, not directly next to Start Service. Labels, visibility, busy state, keyboard order and all acceptance criteria are unchanged. |
 | 3.0 | 2026-11-27 | F-09 contract v1 (issue #42): §10–§13 add the operator Counters panel (open/close toggle, counter-scoped Call Next, active entry counter badges) and customer assigned-counter messaging/badges. §1–§9 (F-07, F-08) unchanged. |
 | 3.1 | 2026-11-27 | F-09 contract v1.1 (PR review fixes): disables controls with `"Assigned to another operator"` for non-owned counters, shows legacy Call Next fallback whenever the operator has zero usable counters, and standardizes counter badges strictly to `CALLED` and `SERVING` entries only (removing `"may appear"` ambiguity). |
+| 3.3 | 2026-11-27 | F-08 follows BR-06 (SRS rev. 4.5): §8.3 adds the operator message for `409 MAX_ACTIVE_ENTRIES_REACHED` on Return to queue. (Numbered 3.3 because the F-09 implementation PR uses 3.2.) |
 
 This document extends the [Sprint 1 UI specification](../sprint-1/ui-spec.md). All Sprint 1 rules (accessibility, responsiveness, error states, session expiry) still apply. Requirements: [SRS](../../srs.md) FR-14, BR-13, BR-14, AC-24. API: [api-spec.md](./api-spec.md) §3.1. Design: [F-07 feature SDS](../../features/sprint-2-f07-customer-cancellation.md).
 
@@ -138,6 +139,7 @@ An in-flight guard per entry (the existing `entryActionInFlightRef`) means a dou
 |---|---|
 | `409 RECOVERY_LIMIT_REACHED` | "This entry was already returned to the queue once and cannot be returned again." |
 | `409 DUPLICATE_ACTIVE_ENTRY` | "This customer has already joined the queue again, so this entry cannot be returned." |
+| `409 MAX_ACTIVE_ENTRIES_REACHED` (rev. 3.3) | "This customer already has 2 active queue entries, so this entry cannot be returned right now." The list is refreshed. |
 | other `409` | "This queue entry's status has changed. The queue has been refreshed." (existing) |
 | `404` | "We couldn't find that queue entry." (existing) |
 | `403` CSRF / other | existing CSRF / permission messages |

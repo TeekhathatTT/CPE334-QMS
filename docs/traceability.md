@@ -172,6 +172,7 @@ Contract v1 (2026-11-27, issue #41). Every result below is `planned` until the t
 | BR-16 | F-08 | 2 | AC-27–AC-30 | NOSHOW-001, NOSHOW-005–NOSHOW-009 | same | passed (37fd6c0) | v1 |
 | BR-17 | F-08 | 2 | AC-25, AC-28, AC-29, AC-31 | NOSHOW-002, NOSHOW-006, NOSHOW-007, NOSHOW-008, NOSHOW-011 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
 | BR-05 (rev. 3.0) | F-04, F-08 | 2 | AC-30, AC-32 | NOSHOW-009, NOSHOW-014 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-16 (rev. 4.5), BR-06 | F-08, Lab 7 | 2 | AC-45 | NOSHOW-021, NOSHOW-022, NOSHOW-023 | `server/tests/f08-no-show-recovery.test.ts`, `client/src/test/f08-noShow.test.tsx` | planned | v1.1 |
 | BR-09 (rev. 3.0) | F-05, F-08 | 2 | AC-26, AC-29 | NOSHOW-001, NOSHOW-003, NOSHOW-007, NOSHOW-020 | `server/tests/f08-no-show-rule.test.ts`, `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
 | BR-01, BR-10 (F-05 cross-feature) | F-05, F-08 | 2 | AC-28, AC-31 | NOSHOW-006, NOSHOW-011 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
 | BR-13 (F-07 cross-feature) | F-07, F-08 | 2 | AC-30 | NOSHOW-010 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
@@ -196,6 +197,7 @@ Contract v1 (2026-11-27, issue #41). Every result below is `planned` until the t
 | AC-32 | NOSHOW-012, NOSHOW-013, NOSHOW-014 | passed (37fd6c0) |
 | AC-33 | NOSHOW-015, NOSHOW-017, NOSHOW-019 | passed (37fd6c0) |
 | AC-34 | NOSHOW-016, NOSHOW-018 | passed (37fd6c0) |
+| AC-45 | NOSHOW-021, NOSHOW-022, NOSHOW-023 | planned |
 
 ## Sprint 2 — F-09 Multi-counter Support Traceability
 

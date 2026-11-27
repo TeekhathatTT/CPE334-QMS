@@ -6,7 +6,7 @@
 | Sprint | 2 (Deliverable 2, Part B) |
 | Issue | #41 |
 | Depends on | F-05 (operator lifecycle); interacts with F-04 (join, BR-05) and F-07 (cancel) |
-| Contract version | v1 (2026-11-27) |
+| Contract version | v1.1 (2026-11-27; v1.1 adds the BR-06 check on return, D-13) |
 | Status | Implemented and verified locally at `37fd6c0` (contract review by @Khwanklao pending; not yet released). *Rev. 2026-11-27:* was "Contract v1, pending review by @Khwanklao". |
 | Author / reviewer | @TeekhathatTT / @Khwanklao |
 | Governing documents | [SRS](../srs.md) v3.0 (§1.2, FR-15, FR-16, BR-15–BR-17, §10.1), [System SDS](../system-sds.md) §14, [Sprint 2 API spec](../sprints/sprint-2/api-spec.md) §7–§11, [Sprint 2 UI spec](../sprints/sprint-2/ui-spec.md) §6–§9, [Sprint 2 test spec](../sprints/sprint-2/tests.md) §7 |
@@ -95,6 +95,7 @@ stateDiagram-v2
 | D-10 | **Permissions follow Start/Complete exactly:** session, CSRF, role `OPERATOR`, then in the transaction: entry exists (`404`), operator assigned to the entry's queue (`403`), then state checks (`409`). A customer, including the owner, gets `403` from the role check, so there is no ownership-based `404` on these routes. |
 | D-11 | **New fields on every `QueueEntry` payload:** `noShowAt` (string or `null`), `recoveredAt` (string or `null`), `noShowCount` (integer). They are additive. |
 | D-12 | **No confirmation step for Mark no-show.** Start and Complete have none, and the first no-show can be undone by Return to queue. The second is final; the button stays a separate, clearly labelled control (R-6). |
+| D-13 | **A return respects the BR-06 cap (v1.1).** Lab 7 limited a customer to 2 active entries across all queues, checked on join. A return also makes an entry active, so it is rejected with `409 MAX_ACTIVE_ENTRIES_REACHED` when the customer already holds 2, after the same-queue check (like join, BR-05 first). The entry stays `NO_SHOW` with `noShowCount` 1, so the operator can return it once the customer has a free slot. Allowing the return as an exception was rejected: it would let a customer exceed the cap through an operator action and make BR-06 depend on the path. |
 
 ## 6. UI definition
 
@@ -129,6 +130,7 @@ Error contract (both): `400 INVALID_ARGUMENT` (malformed id), `401 UNAUTHORIZED`
 |---|---|---|
 | `409 RECOVERY_LIMIT_REACHED` | "This entry was already returned to the queue once and cannot be returned again." | refresh the list |
 | `409 DUPLICATE_ACTIVE_ENTRY` (recover) | "This customer has already joined the queue again, so this entry cannot be returned." | refresh the list |
+| `409 MAX_ACTIVE_ENTRIES_REACHED` (recover, v1.1) | "This customer already has 2 active queue entries, so this entry cannot be returned right now." | refresh the list |
 | `409 INVALID_STATE_TRANSITION` / other `409` | existing "This queue entry's status has changed. The queue has been refreshed." | refresh the list |
 | `404` | existing "We couldn't find that queue entry." | refresh the list |
 | `403` | existing CSRF or permission message | none |
@@ -164,19 +166,21 @@ Because Start also locks the row `FOR UPDATE` before checking the status, no-sho
 
 **Recover** (`recoverNoShowEntry`), one transaction:
 1. Read the entry (no lock) to find its queue; missing → `404`.
-2. Lock the queue row `SELECT ... FROM "ServiceQueue" WHERE id = $q FOR UPDATE`. Join takes the same lock first (System SDS §4.1), so a return and a join by the same customer to the same queue run one after the other.
+2. Lock the customer's user row `SELECT id FROM "User" WHERE id = $c FOR NO KEY UPDATE` (v1.1), then the queue row `SELECT ... FROM "ServiceQueue" WHERE id = $q FOR UPDATE`. Join takes the same lock first (System SDS §4.1), so a return and a join by the same customer to the same queue run one after the other.
 3. Lock the entry `FOR UPDATE` and re-read it with `clock_timestamp()`.
 4. Assignment missing → `403`. Status not `NO_SHOW` → `409 INVALID_STATE_TRANSITION`. `noShowCount` ≥ 2 → `409 RECOVERY_LIMIT_REACHED`.
 5. Another active entry for the same customer and queue → `409 DUPLICATE_ACTIVE_ENTRY`.
+5a. The customer already holds 2 active entries across all queues → `409 MAX_ACTIVE_ENTRIES_REACHED` (BR-06, v1.1).
 6. Update `status = WAITING`, `calledAt = NULL`, `recoveredAt = now`. A unique violation on `QueueEntry_active_customer_queue_uidx` (should not happen after step 5) is also mapped to `409 DUPLICATE_ACTIVE_ENTRY`.
 
-Lock order is always queue row, then entry row. No other code locks an entry and then the queue row, so the new path adds no deadlock cycle. Call Next locks only entries (`SKIP LOCKED`) and only `WAITING` ones, so it never waits on a `NO_SHOW` row.
+Lock order is always user row (v1.1), then queue row, then entry row, the same order join uses since BR-06 (Lab 7), so a return and a join by the same customer to any queue run one after the other. No other code locks an entry and then the queue row, so the new path adds no deadlock cycle. Call Next locks only entries (`SKIP LOCKED`) and only `WAITING` ones, so it never waits on a `NO_SHOW` row.
 
 | Race | Possible outcomes | Never happens |
 |---|---|---|
 | no-show vs Start on one `CALLED` entry | no-show `200` + Start `409`, or Start `200` + no-show `409` | both `200`; a `NO_SHOW` row with `serviceStartedAt` set |
 | recover vs recover | one `200`, one `409 INVALID_STATE_TRANSITION` | two `200`s |
 | recover vs join (same customer and queue) | recover `200` + join `409 DUPLICATE_ACTIVE_ENTRY`, or join `201` + recover `409 DUPLICATE_ACTIVE_ENTRY` | two active entries |
+| recover vs join of another queue (same customer, 1 other active entry) (v1.1) | recover `200` + join `409 MAX_ACTIVE_ENTRIES_REACHED`, or join `201` + recover `409 MAX_ACTIVE_ENTRIES_REACHED` | 3 active entries for the customer |
 | recover vs Call Next | Call Next may call the returned entry after the recover commits, or call another entry | Call Next calls a `NO_SHOW` entry |
 
 ## 11. Validation, boundaries and permissions
@@ -196,6 +200,7 @@ Route order (same as Start/Complete): `validateUuidParam` → `requireAuth` → 
 | OPERATOR | assigned | `NO_SHOW`, count 1, no other active entry | recover | `200`, `WAITING` |
 | OPERATOR | assigned | `NO_SHOW`, count 2 | recover | `409 RECOVERY_LIMIT_REACHED` |
 | OPERATOR | assigned | `NO_SHOW`, count 1, customer has another active entry in the queue | recover | `409 DUPLICATE_ACTIVE_ENTRY` |
+| OPERATOR | assigned | `NO_SHOW`, count 1, no other active entry in the queue, customer holds 2 active entries elsewhere (v1.1) | recover | `409 MAX_ACTIVE_ENTRIES_REACHED`, no change |
 | OPERATOR | assigned | not `NO_SHOW` | recover | `409 INVALID_STATE_TRANSITION` |
 
 The queue's availability (`OPEN`/`CLOSED`) does not change any row of this table.
@@ -246,3 +251,4 @@ Changed: the enum and columns; `formatQueueEntry` (D-11); two new service functi
 |---|---|---|---|
 | 2026-11-27 | Header "Status" | "Contract v1, pending review by @Khwanklao" | Implemented and verified locally at `37fd6c0`; review and release pending. |
 | 2026-11-27 | §13 DoD | all items unticked | Ticked only the items whose tests or checks were executed and passed (see `docs/sprints/sprint-2/tests.md` §7.5). Contract review, PR review and release remain open. |
+| 2026-11-27 | Header, §5 D-13, §8, §10, §11 | v1: a return checked only `DUPLICATE_ACTIVE_ENTRY` (same queue); lock order queue row, then entry row. | v1.1: a return also checks the BR-06 cap (`409 MAX_ACTIVE_ENTRIES_REACHED`) and locks the customer's user row first, matching join after Lab 7. Reason: the Lab 7 merge made it possible for a return to leave a customer with 3 active entries (SRS rev. 4.4/4.5). |
