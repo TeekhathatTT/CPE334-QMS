@@ -19,7 +19,7 @@ This document maps the Sprint 1 baseline requirements (and approved Lab 7 change
 | FR-09 | F-05 | 1 | AC-11, AC-12, AC-13 | FLOW-001–FLOW-003, CONCURRENCY-003 |
 | FR-10 | F-05 | 1 | AC-14 | FLOW-004, FLOW-005 |
 | FR-11 | F-05 | 1 | AC-15 | FLOW-006, FLOW-007 |
-| FR-12 | F-03, F-04, F-05 | 1 | AC-07, AC-13, AC-16; Lab 7 AC-1–AC-4 | API-001, QUEUE-003, QUEUE-004, QUEUE-009, QUEUE-010, QUEUE-011, FLOW-005, FLOW-007, CONCURRENCY-004, CONCURRENCY-005, UI-002 |
+| FR-12 | F-03, F-04, F-05 | 1 | AC-07, AC-13, AC-16; CR51-AC1–CR51-AC4 | API-001, QUEUE-003, QUEUE-004, QUEUE-009, QUEUE-010, QUEUE-011, FLOW-005, FLOW-007, CONCURRENCY-004, CONCURRENCY-005, UI-002 |
 | FR-13 | F-01, F-04, F-05 | 1 | AC-08, AC-15 | QUEUE-002, FLOW-002, FLOW-004, FLOW-006, REL-001 |
 
 F-06 is the cross-cutting verification responsibility for this entire baseline; feature ownership above identifies the features that establish each requirement.
@@ -33,7 +33,7 @@ F-06 is the cross-cutting verification responsibility for this entire baseline; 
 | BR-03 | Queue-number generation uses a database transaction and row lock | F-01, F-03 | AC-09 | NUMBER-002, CONCURRENCY-001 |
 | BR-04 | Queue numbers do not reset during Sprint 1 | F-03 | AC-08, AC-09 | NUMBER-001 |
 | BR-05 | At most one active entry per customer per queue; completed entries may be rejoined | F-04 | AC-07, AC-08 | QUEUE-003, QUEUE-005, CONCURRENCY-002 |
-| BR-06 | A customer may hold at most 2 active entries (`WAITING`, `CALLED`, `SERVING`) across all queues simultaneously; 3rd join rejected with `409 MAX_ACTIVE_ENTRIES_REACHED` (Issue #51) | F-04 | AC-07; Lab 7 AC-1, AC-2, AC-3, AC-4 | QUEUE-008, QUEUE-009, QUEUE-010, QUEUE-011, CONCURRENCY-005, UI-002 |
+| BR-06 | A customer may hold at most 2 active entries (`WAITING`, `CALLED`, `SERVING`) across all queues simultaneously; 3rd join rejected with `409 MAX_ACTIVE_ENTRIES_REACHED` (Issue #51) | F-04 | AC-07; CR51-AC1, CR51-AC2, CR51-AC3, CR51-AC4 | QUEUE-008, QUEUE-009, QUEUE-010, QUEUE-011, CONCURRENCY-005, UI-002 |
 | BR-07 | Customer reads are self-scoped and operators are restricted to assigned queues | F-02, F-04, F-05 | AC-04, AC-05, AC-10 | RBAC-004, RBAC-005, QUEUE-006 |
 | BR-08 | Only OPEN queues appear in the customer catalog and may be joined | F-03, F-04 | AC-06, AC-07 | QUEUE-001, QUEUE-004 |
 | BR-09 | Lifecycle is `WAITING -> CALLED -> SERVING -> COMPLETED` with no alternate transitions | F-05 | AC-12, AC-14, AC-15, AC-16 | FLOW-002, FLOW-004, FLOW-005, FLOW-006, FLOW-007 |

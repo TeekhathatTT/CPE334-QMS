@@ -67,7 +67,7 @@ Navigation:
 ## 4. Interaction rules
 
 - Customers can list only `OPEN` queues.
-- Customers may join multiple different queues but may hold only one active entry per customer per queue.
+- Customers may hold at most one active entry per queue (BR-05) and at most 2 active entries across all queues (BR-06).
 - A customer sees only their own queue entries; cross-owner access is denied by the API and should display a safe generic not-found style message in the UI.
 - Operators see only queues assigned to them and no other queue data.
 - Operator actions are hidden or disabled when the current queue entry state does not permit the action.
@@ -231,4 +231,4 @@ This UI contract aligns with the SRS, system SDS, and Sprint 1 API specification
 | Version | Date | Ref | Summary of Changes |
 |---|---|---|---|
 | 1.0 | 2026-11-11 | Sprint 1 Baseline | Initial Sprint 1 UI Specification (accepted at commit `e304cd9`, Cloud Run revision `qms-00005-5kz`). |
-| 1.1 | 2026-11-27 | Issue #51 (Lab 7 Part A) | Added `409 MAX_ACTIVE_ENTRIES_REACHED` (`BR-06`) customer error state handling in §7. |
+| 1.1 | 2026-11-27 | Issue #51 (Lab 7 Part A) | Updated §4 interaction rules for the 2-active-entry cross-queue cap (`BR-06`) and added `409 MAX_ACTIVE_ENTRIES_REACHED` customer error state handling in §7 (`CR51-AC1`–`CR51-AC4`). |

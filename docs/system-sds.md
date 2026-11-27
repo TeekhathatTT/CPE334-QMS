@@ -159,11 +159,11 @@ Prisma models can declare ordinary fields, primary keys, unique constraints, and
 
 Queue number allocation uses the PostgreSQL row-level locking decision in BR-03 and AD-02, extended in Issue #51 (Lab 7 Part A) to enforce the cross-queue 2-active-entry cap (BR-06) safely under concurrent joins to *distinct* queues by the same customer. The implementation must perform these logical steps in one database transaction:
 
-1. Begin a transaction and acquire a **customer-scoped serialization lock** (for example, `SELECT id FROM "User" WHERE id = $customerId::uuid FOR UPDATE`) *before* locking the target `ServiceQueue` row. Consistent lock ordering (`User` → `ServiceQueue`) prevents deadlocks while serializing concurrent joins by the same customer across distinct queues so two racing joins cannot bypass the 2-active-entry cap.
+1. Begin a transaction and acquire a **customer-scoped serialization lock** (`SELECT id FROM "User" WHERE id = $customerId::uuid FOR NO KEY UPDATE`) *before* locking the target `ServiceQueue` row. Consistent lock ordering (`User` → `ServiceQueue`) prevents deadlocks while serializing concurrent joins by the same customer across distinct queues so two racing joins cannot bypass the 2-active-entry cap. Using `FOR NO KEY UPDATE` (rather than `FOR UPDATE`) avoids conflicting with PostgreSQL `FOR KEY SHARE` locks taken by foreign-key inserts (such as `Session` rows during login).
 2. Acquire a row-level lock on the target `ServiceQueue` row (`SELECT ... FROM "ServiceQueue" WHERE id = $queueId::uuid FOR UPDATE`).
 3. Confirm the queue exists (`404 RESOURCE_NOT_FOUND`) and is `OPEN` (`409 QUEUE_NOT_AVAILABLE`).
-4. Confirm the customer does not already hold an active entry (`status IN ('WAITING', 'CALLED', 'SERVING')`) in the **same** queue; if so, reject with `409 DUPLICATE_ACTIVE_ENTRY` (BR-05 / AC-4 takes precedence over BR-06).
-5. Count the customer's active entries (`status IN ('WAITING', 'CALLED', 'SERVING')`) across **all** queues; if the count is `>= 2`, reject with `409 MAX_ACTIVE_ENTRIES_REACHED` (BR-06 / AC-2) before mutating `lastQueueNumber`. Terminal statuses (`COMPLETED`, and future `CANCELLED`/`NO_SHOW` once implemented) are excluded from the active count.
+4. Confirm the customer does not already hold an active entry (`status IN ('WAITING', 'CALLED', 'SERVING')`) in the **same** queue; if so, reject with `409 DUPLICATE_ACTIVE_ENTRY` (BR-05 / `CR51-AC4` takes precedence over BR-06).
+5. Count the customer's active entries (`status IN ('WAITING', 'CALLED', 'SERVING')`) across **all** queues; if the count is `>= 2`, reject with `409 MAX_ACTIVE_ENTRIES_REACHED` (BR-06 / `CR51-AC2`) before mutating `lastQueueNumber`. Terminal statuses (`COMPLETED`, and future `CANCELLED`/`NO_SHOW` once implemented) are excluded from the active count.
 6. Increment that queue's `lastQueueNumber`.
 7. Use the newly allocated value as `QueueEntry.queueNumber`.
 8. Insert the `QueueEntry` with status `WAITING` and a server-generated `joinedAt` (`clock_timestamp()` captured after acquiring the queue lock).
@@ -363,5 +363,5 @@ These record choices the specification left open for the operator workflow and e
 | Version | Date | Ref | Summary of Changes |
 |---|---|---|---|
 | 1.0 | 2026-11-11 | Sprint 1 Baseline | Initial System-Level SDS and verified Sprint 1 implementation decisions §§10–12 (accepted at `main` commit `e304cd9`, Cloud Run revision `qms-00005-5kz`). |
-| 1.1 | 2026-11-27 | Issue #51 (Lab 7 Part A) | Updated §2 Role Matrix, §4.1 transaction locking & active-entry cap enforcement (`User` → `ServiceQueue` lock order, `BR-05` precedence before `BR-06`, max 2 active entries across all queues), and §§5.3–5.4 error contract (`409 MAX_ACTIVE_ENTRIES_REACHED`). Confirmed no DB migration is required. |
+| 1.1 | 2026-11-27 | Issue #51 (Lab 7 Part A) | Updated §2 Role Matrix, §4.1 transaction locking & active-entry cap enforcement (`User` `FOR NO KEY UPDATE` → `ServiceQueue` `FOR UPDATE` lock order, `BR-05` precedence before `BR-06`, max 2 active entries across all queues; `CR51-AC1`–`CR51-AC4`), and §§5.3–5.4 error contract (`409 MAX_ACTIVE_ENTRIES_REACHED`). Confirmed no DB migration is required. |
 

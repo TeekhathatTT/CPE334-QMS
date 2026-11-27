@@ -55,7 +55,7 @@ Access control is enforced on every request: role, ownership, and queue assignme
 | FR-09 | Atomically call the oldest eligible `WAITING` entry; if no entry is eligible, return `204 No Content`. | OPERATOR | M | AC-11, AC-12, AC-13 |
 | FR-10 | Move a managed `CALLED` entry to `SERVING`. | OPERATOR | M | AC-14 |
 | FR-11 | Move a managed `SERVING` entry to `COMPLETED`. | OPERATOR | M | AC-15 |
-| FR-12 | Reject malformed data, duplicate active joins, cross-queue active entry cap breaches (`BR-06`), closed queues, invalid state transitions, and stale concurrent mutations through the API error contract. | All | M | AC-07, AC-13, AC-16; Lab 7 AC-1–AC-4 |
+| FR-12 | Reject malformed data, duplicate active joins, cross-queue active entry cap breaches (`BR-06`), closed queues, invalid state transitions, and stale concurrent mutations through the API error contract. | All | M | AC-07, AC-13, AC-16; CR51-AC1–CR51-AC4 |
 | FR-13 | Record server-generated UTC lifecycle timestamps and preserve completed entries for historical review. | System | M | AC-08, AC-15 |
 
 ## 5. Business Rules and Decisions
@@ -144,4 +144,4 @@ The primary documentation set is:
 | Version | Date | Ref | Summary of Changes |
 |---|---|---|---|
 | 1.0 | 2026-11-11 | Sprint 1 Baseline | Initial Sprint 1 SRS baseline (accepted at `main` commit `e304cd9`, Cloud Run revision `qms-00005-5kz`). |
-| 1.1 | 2026-11-27 | Issue #51 (Lab 7 Part A) | Updated `BR-06`, `FR-12`, `AD-06`, and §7 Error Contract to limit customers to at most 2 active entries (`WAITING`, `CALLED`, `SERVING`) across all queues simultaneously (`409 MAX_ACTIVE_ENTRIES_REACHED`; AC-1–AC-4). Preserved `BR-05` (`409 DUPLICATE_ACTIVE_ENTRY`). |
+| 1.1 | 2026-11-27 | Issue #51 (Lab 7 Part A) | Updated `BR-06`, `FR-12`, `AD-06`, and §7 Error Contract to limit customers to at most 2 active entries (`WAITING`, `CALLED`, `SERVING`) across all queues simultaneously (`409 MAX_ACTIVE_ENTRIES_REACHED`; `CR51-AC1`–`CR51-AC4`). Preserved `BR-05` (`409 DUPLICATE_ACTIVE_ENTRY`). |

@@ -39,10 +39,10 @@ Use the standard API error envelope and the Sprint 1 contract in [../srs.md](../
 | QUEUE-005 | Rejoin after completion | completed entry may be rejoined later | Database integration | **PASSED** (Verified in `tests/foundation.test.ts`, `tests/queue-registration.test.ts`) |
 | QUEUE-006 | Privacy enforcement | customer can access only own entry | API integration | **PASSED** (#4, `tests/queue-registration.test.ts`) |
 | QUEUE-007 | FIFO operator listing | entries ordered according to FIFO rule | API integration | **PASSED** (#6, `tests/operator-workflow.test.ts`) |
-| QUEUE-008 | Customer joins up to 2 distinct queues (BR-06 AC-1) | customer with 0 or 1 active entry can join an OPEN distinct queue (`201 Created`) | API integration | **PASSED** (#4, `tests/queue-registration.test.ts`) |
-| QUEUE-009 | 3rd active queue join rejected (BR-06 AC-2) | customer with 2 active entries (`WAITING`, `CALLED`, or `SERVING`) attempting to join a 3rd OPEN queue receives `409 MAX_ACTIVE_ENTRIES_REACHED` with no entry persisted and `lastQueueNumber` unchanged | API integration / Database integration | Pending (Lab 7 Part B — Issue #51) |
-| QUEUE-010 | Re-allow join after active entry becomes terminal (BR-06 AC-3) | after 1 of 2 active entries transitions to `COMPLETED` (and forward-compatibly `CANCELLED`/`NO_SHOW`), customer can join a new OPEN queue (`201 Created`) | API integration / Database integration | Pending (Lab 7 Part B — Issue #51) |
-| QUEUE-011 | Same-queue duplicate precedence at 2-entry cap (BR-06 AC-4) | customer with 2 active entries (in Q1 and Q2) attempting to re-join Q1 receives `409 DUPLICATE_ACTIVE_ENTRY` (not `MAX_ACTIVE_ENTRIES_REACHED`) with no mutation | API integration / Database integration | Pending (Lab 7 Part B — Issue #51) |
+| QUEUE-008 | Customer joins up to 2 distinct queues (BR-06 `CR51-AC1`) | customer with 0 or 1 active entry can join an OPEN distinct queue (`201 Created`) | API integration | Re-verify in Lab 7 Part B (previously PASSED on Sprint 1 baseline `e304cd9`, #4, `tests/queue-registration.test.ts`) |
+| QUEUE-009 | 3rd active queue join rejected (BR-06 `CR51-AC2`) | customer with 2 active entries (`WAITING`, `CALLED`, or `SERVING`) attempting to join a 3rd OPEN queue receives `409 MAX_ACTIVE_ENTRIES_REACHED` with no entry persisted and `lastQueueNumber` unchanged | API integration / Database integration | Pending (Lab 7 Part B — Issue #51) |
+| QUEUE-010 | Re-allow join after active entry becomes terminal (BR-06 `CR51-AC3`) | after 1 of 2 active entries transitions to `COMPLETED` (and forward-compatibly `CANCELLED`/`NO_SHOW`), customer can join a new OPEN queue (`201 Created`) | API integration / Database integration | Pending (Lab 7 Part B — Issue #51) |
+| QUEUE-011 | Same-queue duplicate precedence at 2-entry cap (BR-06 `CR51-AC4`) | customer with 2 active entries (in Q1 and Q2) attempting to re-join Q1 receives `409 DUPLICATE_ACTIVE_ENTRY` (not `MAX_ACTIVE_ENTRIES_REACHED`) with no mutation | API integration / Database integration | Pending (Lab 7 Part B — Issue #51) |
 | NUMBER-001 | Queue-number uniqueness and sequential order | successful sequential joins receive the next positive number without duplicates within the queue | API integration / Database integration | **PASSED** (Verified in `tests/foundation.test.ts`, `tests/queue-registration.test.ts`) |
 | NUMBER-002 | Number allocation rollback | failed transaction does not persist a queue number | Database integration | **PASSED** (#4, `tests/queue-registration.test.ts`) |
 | API-001 | Malformed request rejection | malformed payloads and identifiers return `400 INVALID_ARGUMENT` without mutation | API integration | **PASSED** (Verified in `tests/foundation.test.ts`, `tests/queue-registration.test.ts`, `tests/operator-workflow.test.ts`) |
@@ -62,8 +62,8 @@ Use the standard API error envelope and the Sprint 1 contract in [../srs.md](../
 | CONCURRENCY-002 | Duplicate active entry race | only one active row survives under concurrent duplicate joins | Database integration | **PASSED** (#4, `tests/queue-registration.test.ts`) |
 | CONCURRENCY-003 | Call-next race | concurrent call-next requests claim different entries correctly | Database integration | **PASSED** (#6, `tests/operator-workflow.test.ts`) |
 | CONCURRENCY-004 | Stale concurrent mutation | stale mutation returns conflict response without corrupting state | Database integration | **PASSED** (#6, `tests/operator-workflow.test.ts`) |
-| CONCURRENCY-005 | Concurrent cross-queue join race at 2-entry cap (BR-06 AC-1, AC-2) | customer with 1 active entry racing joins to Q2 and Q3 gets exactly one `201 Created` and one `409 MAX_ACTIVE_ENTRIES_REACHED`; max 2 active entries persisted | Database concurrency / API integration | Pending (Lab 7 Part B — Issue #51) |
-| UI-002 | Customer UI feedback for `409 MAX_ACTIVE_ENTRIES_REACHED` (BR-06 AC-2) | safe alert displayed without server internals; join buttons remain enabled | Client component test | Pending (Lab 7 Part B — Issue #51) |
+| CONCURRENCY-005 | Concurrent cross-queue join race at 2-entry cap (BR-06 `CR51-AC1`, `CR51-AC2`) | customer with 1 active entry racing joins to Q2 and Q3 gets exactly one `201 Created` and one `409 MAX_ACTIVE_ENTRIES_REACHED`; max 2 active entries persisted | Database concurrency / API integration | Pending (Lab 7 Part B — Issue #51) |
+| UI-002 | Customer UI feedback for `409 MAX_ACTIVE_ENTRIES_REACHED` (BR-06 `CR51-AC2`) | safe alert displayed without server internals; join buttons remain enabled | Client component test | Pending (Lab 7 Part B — Issue #51) |
 | PERF-001 | Local performance targets | p95 read and mutation timings meet Sprint 1 local targets | Performance | **PASSED** (#7, `server/tests/nfr/perf-001.ts`: 1,000-entry dataset, 100 timed requests per operation; worst read p95 109.7 ms ≤ 500, worst mutation p95 257.9 ms ≤ 1,000; see §13.9) |
 | REL-001 | Commit durability | successful mutation persists after commit and survives restart validation | Database integration | **PASSED** (#7, `server/tests/nfr/rel-001.ts`: rows visible on a separate connection right after each 2xx; API and PostgreSQL SIGKILLed, WAL crash recovery, data identical after restart; see §13.9) |
 | UI-001 | Responsive core workflows | pages remain usable at 360 px and 1280 px without horizontal overflow | Browser E2E | **PASSED** (#7, Playwright Chromium + Firefox + WebKit, `e2e/tests/responsive.spec.ts`: all six customer and operator screens at 360 × 800 and 1280 × 800, two consecutive runs; see §13) |
@@ -978,14 +978,14 @@ The whole E2E suite now also runs in **Firefox** and **WebKit** (`npm run test:e
 
 | Acceptance Criterion | Covered STS Test ID(s) |
 |---|---|
-| **AC-1:** Customer with 0 or 1 active entry can join an `OPEN` queue (`201 Created`) | `QUEUE-002`, `QUEUE-008`, `CONCURRENCY-005` |
-| **AC-2:** Customer with 2 active entries attempting to join a 3rd `OPEN` queue is rejected with `409 MAX_ACTIVE_ENTRIES_REACHED`; no entry persisted | `QUEUE-009`, `CONCURRENCY-005`, `UI-002` |
-| **AC-3:** After one active entry becomes `COMPLETED` (and forward-compatibly `CANCELLED`/`NO_SHOW`), customer can join a new `OPEN` queue (`201 Created`) | `QUEUE-010` |
-| **AC-4:** Duplicate active entry in the same queue is still rejected with `409 DUPLICATE_ACTIVE_ENTRY` | `QUEUE-003`, `QUEUE-011`, `CONCURRENCY-002` |
+| **CR51-AC1:** Customer with 0 or 1 active entry can join an `OPEN` queue (`201 Created`) | `QUEUE-002`, `QUEUE-008`, `CONCURRENCY-005` |
+| **CR51-AC2:** Customer with 2 active entries attempting to join a 3rd `OPEN` queue is rejected with `409 MAX_ACTIVE_ENTRIES_REACHED`; no entry persisted | `QUEUE-009`, `CONCURRENCY-005`, `UI-002` |
+| **CR51-AC3:** After one active entry becomes `COMPLETED` (and forward-compatibly `CANCELLED`/`NO_SHOW`), customer can join a new `OPEN` queue (`201 Created`) | `QUEUE-010` |
+| **CR51-AC4:** Duplicate active entry in the same queue is still rejected with `409 DUPLICATE_ACTIVE_ENTRY` | `QUEUE-003`, `QUEUE-011`, `CONCURRENCY-002` |
 
 ---
 
-### QUEUE-009 — Reject 3rd Active Queue Join Across Distinct Queues (AC-2)
+### QUEUE-009 — Reject 3rd Active Queue Join Across Distinct Queues (`CR51-AC2`)
 **Test Level:** API Integration / Database Integration Test (`server/tests/queue-registration.test.ts`)
 
 **Preconditions:**
@@ -1018,7 +1018,7 @@ The whole E2E suite now also runs in **Firefox** and **WebKit** (`npm run test:e
 
 ---
 
-### QUEUE-010 — Allow Joining a New OPEN Queue After an Active Entry Becomes Terminal (AC-3)
+### QUEUE-010 — Allow Joining a New OPEN Queue After an Active Entry Becomes Terminal (`CR51-AC3`)
 **Test Level:** API Integration / Database Integration Test (`server/tests/queue-registration.test.ts`)
 
 **Preconditions:**
@@ -1050,7 +1050,7 @@ The whole E2E suite now also runs in **Firefox** and **WebKit** (`npm run test:e
 
 ---
 
-### QUEUE-011 — Same-Queue Duplicate Precedence at the 2-Active-Entry Cap (AC-4)
+### QUEUE-011 — Same-Queue Duplicate Precedence at the 2-Active-Entry Cap (`CR51-AC4`)
 **Test Level:** API Integration / Database Integration Test (`server/tests/queue-registration.test.ts`)
 
 **Preconditions:**
@@ -1080,7 +1080,7 @@ The whole E2E suite now also runs in **Firefox** and **WebKit** (`npm run test:e
 
 ---
 
-### CONCURRENCY-005 — Concurrent Cross-Queue Join Race at the 2-Active-Entry Cap (AC-1, AC-2)
+### CONCURRENCY-005 — Concurrent Cross-Queue Join Race at the 2-Active-Entry Cap (`CR51-AC1`, `CR51-AC2`)
 **Test Level:** Database Concurrency / API Integration Test (`server/tests/queue-registration.test.ts`)
 
 **Preconditions:**
@@ -1113,7 +1113,7 @@ The whole E2E suite now also runs in **Firefox** and **WebKit** (`npm run test:e
 
 ---
 
-### UI-002 — Customer UI Displays Safe Error Message for `409 MAX_ACTIVE_ENTRIES_REACHED` (AC-2)
+### UI-002 — Customer UI Displays Safe Error Message for `409 MAX_ACTIVE_ENTRIES_REACHED` (`CR51-AC2`)
 **Test Level:** Client Component Integration Test (`client/src/test/customer.test.tsx`)
 
 **Preconditions:**
@@ -1145,5 +1145,5 @@ The whole E2E suite now also runs in **Firefox** and **WebKit** (`npm run test:e
 | Version | Date | Ref | Summary of Changes |
 |---|---|---|---|
 | 1.0 | 2026-11-14 | Sprint 1 Baseline (Issues #2–#7) | Complete Sprint 1 STS and execution evidence (§§6–13; accepted at `main` commit `e304cd9`, Cloud Run revision `qms-00005-5kz`). |
-| 1.1 | 2026-11-27 | Issue #51 (Lab 7 Part A) | Updated `QUEUE-008` wording and added planned Lab 7 Part B test cases (`QUEUE-009`, `QUEUE-010`, `QUEUE-011`, `CONCURRENCY-005`, `UI-002`) with AC-1–AC-4 coverage in §2 and §14. |
+| 1.1 | 2026-11-27 | Issue #51 (Lab 7 Part A) | Updated `QUEUE-008` wording/status (re-verify in Lab 7 Part B) and added planned Lab 7 Part B test cases (`QUEUE-009`, `QUEUE-010`, `QUEUE-011`, `CONCURRENCY-005`, `UI-002`) with `CR51-AC1`–`CR51-AC4` coverage in §2 and §14. |
 

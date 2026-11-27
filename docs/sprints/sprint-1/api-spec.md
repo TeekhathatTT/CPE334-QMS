@@ -272,7 +272,7 @@ Validation rules:
 - Authenticated user must be `CUSTOMER`
 - `queueId` must refer to an existing queue
 - Queue must be `OPEN`
-- Customer must not already have an active entry (`WAITING`, `CALLED`, or `SERVING`) in the same queue (`BR-05`; checked before `BR-06` so AC-4 is preserved)
+- Customer must not already have an active entry (`WAITING`, `CALLED`, or `SERVING`) in the same queue (`BR-05`; checked before `BR-06` so `CR51-AC4` is preserved)
 - Customer must hold fewer than **2 active entries** (`WAITING`, `CALLED`, or `SERVING`) across all queues simultaneously (`BR-06`, Issue #51); terminal entries (`COMPLETED`, and future `CANCELLED`/`NO_SHOW`) do not count toward this cap
 - Queue-number allocation and entry creation must happen in a single transaction (serialized per customer and per queue)
 
@@ -303,8 +303,8 @@ Error responses:
 - `403 FORBIDDEN` if the user is not a `CUSTOMER` or CSRF token is missing/invalid
 - `404 RESOURCE_NOT_FOUND` if the queue does not exist
 - `409 QUEUE_NOT_AVAILABLE` if the queue is `CLOSED`
-- `409 DUPLICATE_ACTIVE_ENTRY` if the customer already has an active entry in that queue (`BR-05`, AC-4; takes precedence over `MAX_ACTIVE_ENTRIES_REACHED`)
-- `409 MAX_ACTIVE_ENTRIES_REACHED` if the customer already holds 2 active entries (`WAITING`, `CALLED`, or `SERVING`) across queues (`BR-06`, AC-2); no entry is persisted and `lastQueueNumber` is unchanged:
+- `409 DUPLICATE_ACTIVE_ENTRY` if the customer already has an active entry in that queue (`BR-05`, `CR51-AC4`; takes precedence over `MAX_ACTIVE_ENTRIES_REACHED`)
+- `409 MAX_ACTIVE_ENTRIES_REACHED` if the customer already holds 2 active entries (`WAITING`, `CALLED`, or `SERVING`) across queues (`BR-06`, `CR51-AC2`); no entry is persisted and `lastQueueNumber` is unchanged:
 
 ```json
 {
@@ -641,4 +641,4 @@ This API specification aligns with the SRS, system SDS, and Sprint 1 feature inv
 | Version | Date | Ref | Summary of Changes |
 |---|---|---|---|
 | 1.0 | 2026-11-11 | Sprint 1 Baseline | Initial Sprint 1 API Specification (accepted at commit `e304cd9`, Cloud Run revision `qms-00005-5kz`). |
-| 1.1 | 2026-11-27 | Issue #51 (Lab 7 Part A) | Added `409 MAX_ACTIVE_ENTRIES_REACHED` error code in §2, updated `POST /api/queues/{queueId}/entries` validation & error envelope in §7.2 (with `DUPLICATE_ACTIVE_ENTRY` precedence), and updated §9 active-entry cap rule for `BR-06` (AC-1–AC-4). |
+| 1.1 | 2026-11-27 | Issue #51 (Lab 7 Part A) | Added `409 MAX_ACTIVE_ENTRIES_REACHED` error code in §2, updated `POST /api/queues/{queueId}/entries` validation & error envelope in §7.2 (with `DUPLICATE_ACTIVE_ENTRY` precedence), and updated §9 active-entry cap rule for `BR-06` (`CR51-AC1`–`CR51-AC4`). |
