@@ -1,5 +1,7 @@
 # Software Requirements Specification (SRS)
 
+> **Version:** 1.1 | **Last Updated:** 2026-11-27 | **Sprint 1 Baseline:** commit `e304cd9` (`main`), deployed Cloud Run revision `qms-00005-5kz` | **Change Ref:** Issue #51 (Lab 7 Part A — BR-06)
+
 ## 1. Purpose and Scope
 
 The Queue and Service Management System (QMS) supports a service counter or restaurant by replacing informal queue coordination with a persistent, auditable, role-based workflow. Sprint 1 delivers the minimum usable vertical slice: authentication, authorization, queue discovery, customer queue registration, queue-number assignment, customer status lookup, and operator lifecycle control. The system is designed for browser-based use, an HTTP API, relational storage, and seed data for local verification.
@@ -53,7 +55,7 @@ Access control is enforced on every request: role, ownership, and queue assignme
 | FR-09 | Atomically call the oldest eligible `WAITING` entry; if no entry is eligible, return `204 No Content`. | OPERATOR | M | AC-11, AC-12, AC-13 |
 | FR-10 | Move a managed `CALLED` entry to `SERVING`. | OPERATOR | M | AC-14 |
 | FR-11 | Move a managed `SERVING` entry to `COMPLETED`. | OPERATOR | M | AC-15 |
-| FR-12 | Reject malformed data, duplicate active joins, closed queues, invalid state transitions, and stale concurrent mutations through the API error contract. | All | M | AC-07, AC-13, AC-16 |
+| FR-12 | Reject malformed data, duplicate active joins, cross-queue active entry cap breaches (`BR-06`), closed queues, invalid state transitions, and stale concurrent mutations through the API error contract. | All | M | AC-07, AC-13, AC-16; Lab 7 AC-1–AC-4 |
 | FR-13 | Record server-generated UTC lifecycle timestamps and preserve completed entries for historical review. | System | M | AC-08, AC-15 |
 
 ## 5. Business Rules and Decisions
@@ -65,7 +67,7 @@ Access control is enforced on every request: role, ownership, and queue assignme
 | BR-03 | Number generation is protected at the database layer using a transactional row lock | Prevents duplicate numbers under concurrent join requests; application pre-checks are insufficient alone |
 | BR-04 | Queue numbers do not automatically reset in Sprint 1 | Keeps the queue-number contract deterministic and avoids service-day ambiguity |
 | BR-05 | One active entry per customer per queue; active = `WAITING`, `CALLED`, `SERVING` | Completed entries may be rejoined; no cancellation/no-show behavior is in scope |
-| BR-06 | A customer may join multiple queues at the same time, but only one active entry per customer per queue | Queues are independent and distinct service flows |
+| BR-06 | A customer may hold at most 2 active queue entries (`WAITING`, `CALLED`, or `SERVING`) across all queues simultaneously, and at most one active entry per customer per queue (BR-05). Attempting to join a 3rd `OPEN` queue while holding 2 active entries is rejected with `409 MAX_ACTIVE_ENTRIES_REACHED`. | Prevents queue hoarding across counters while allowing customers to participate in up to two distinct service flows simultaneously. Terminal entries (`COMPLETED`, and future `CANCELLED`/`NO_SHOW`) do not count toward the 2-entry limit (Updated 2026-11-27, Issue #51). |
 | BR-07 | One queue entry belongs to one customer and one queue; customer reads are self-scoped and operators scope through assigned queues | Prevents cross-customer and cross-queue leakage |
 | BR-08 | Queue availability is `OPEN` or `CLOSED`; only `OPEN` queues appear in the customer join catalog | Makes availability testable and consistent with the queuing workflow |
 | BR-09 | Valid lifecycle is `WAITING -> CALLED -> SERVING -> COMPLETED` | No alternate transitions or repeats are allowed |
@@ -104,6 +106,7 @@ Access control is enforced on every request: role, ownership, and queue assignme
 | Customer attempts to access another customer's entry | 404 | `RESOURCE_NOT_FOUND` |
 | Invalid queue state transition | 409 | `INVALID_STATE_TRANSITION` |
 | Closed queue or duplicate active join | 409 | `QUEUE_NOT_AVAILABLE` or `DUPLICATE_ACTIVE_ENTRY` |
+| Cross-queue active entry cap reached (2 active entries held) | 409 | `MAX_ACTIVE_ENTRIES_REACHED` |
 | Invalid payload or malformed identifier | 400 | `INVALID_ARGUMENT` |
 | Empty queue on Call Next | 204 | No body |
 
@@ -118,7 +121,7 @@ The `RESOURCE_NOT_FOUND` code is deliberately used for customer cross-owner look
 | AD-03 | Sprint 1 scope cut | Customer self-registration and password reset are excluded; seed data initializes required test users and queues | Keeps Sprint 1 focused on the required vertical slice and avoids unsupported user-management features | SRS, features, API spec |
 | AD-04 | Queue numbering | Positive integer queue numbers are unique within a service queue and never reset during Sprint 1 | Simple, testable, deterministic numbering without calendar or service-day complexity | SRS, system-sds, tests |
 | AD-05 | Queue availability | `OPEN` / `CLOSED`; CLOSED queues reject new joins but existing entries may still be completed by assigned operators | Matches service-delivery needs without adding scheduling logic | SRS, system-sds, API spec |
-| AD-06 | Duplicate prevention | One active entry per customer per queue; completed entries may be rejoined | Prevents double-booking while allowing a fresh entry after completion | SRS, system-sds, tests |
+| AD-06 | Duplicate prevention & active entry cap | At most one active entry per customer per queue (BR-05) and at most 2 active entries across all queues simultaneously (BR-06); terminal entries (`COMPLETED`, and future `CANCELLED`/`NO_SHOW`) release a slot | Prevents same-queue double-booking and cross-queue hoarding while allowing fresh entries after completion (Updated 2026-11-27, Issue #51) | SRS, Feature SDS, system-sds, API spec, tests |
 | AD-07 | Customer privacy | Return `404 RESOURCE_NOT_FOUND` for cross-owner lookups, matching the public behavior of a missing entry | Prevents leakage of private information through resource enumeration | SRS, API spec, tests |
 | AD-08 | Operator permissions | Operators may only act on queues assigned to them | Ensures service workflow is scoped to real operational responsibility | SRS, system-sds, API spec |
 
@@ -135,3 +138,10 @@ The primary documentation set is:
 - [sprints/sprint-1/api-spec.md](./sprints/sprint-1/api-spec.md)
 - [sprints/sprint-1/ui-spec.md](./sprints/sprint-1/ui-spec.md)
 - [sprints/sprint-1/tests.md](./sprints/sprint-1/tests.md)
+
+## 10. Revision History
+
+| Version | Date | Ref | Summary of Changes |
+|---|---|---|---|
+| 1.0 | 2026-11-11 | Sprint 1 Baseline | Initial Sprint 1 SRS baseline (accepted at `main` commit `e304cd9`, Cloud Run revision `qms-00005-5kz`). |
+| 1.1 | 2026-11-27 | Issue #51 (Lab 7 Part A) | Updated `BR-06`, `FR-12`, `AD-06`, and §7 Error Contract to limit customers to at most 2 active entries (`WAITING`, `CALLED`, `SERVING`) across all queues simultaneously (`409 MAX_ACTIVE_ENTRIES_REACHED`; AC-1–AC-4). Preserved `BR-05` (`409 DUPLICATE_ACTIVE_ENTRY`). |

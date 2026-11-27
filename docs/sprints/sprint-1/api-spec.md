@@ -1,5 +1,7 @@
 # Sprint 1 API Specification
 
+> **Version:** 1.1 | **Last Updated:** 2026-11-27 | **Sprint 1 Baseline:** commit `e304cd9` (`main`), deployed revision `qms-00005-5kz` | **Change Ref:** Issue #51 (Lab 7 Part A — BR-06)
+
 ## 1. Base conventions
 
 - Base path: `/api`
@@ -22,7 +24,8 @@
 | 403 | `FORBIDDEN` | Authenticated user lacks role permission or queue assignment |
 | 404 | `RESOURCE_NOT_FOUND` | Resource does not exist; also used for cross-owner customer privacy enforcement |
 | 409 | `QUEUE_NOT_AVAILABLE` | Queue is closed or otherwise not eligible for join |
-| 409 | `DUPLICATE_ACTIVE_ENTRY` | Customer already has an active entry in the same queue |
+| 409 | `DUPLICATE_ACTIVE_ENTRY` | Customer already has an active entry in the same queue (`BR-05`) |
+| 409 | `MAX_ACTIVE_ENTRIES_REACHED` | Customer already holds the maximum of 2 active entries (`WAITING`, `CALLED`, or `SERVING`) across all queues (`BR-06`) |
 | 409 | `INVALID_STATE_TRANSITION` | Requested lifecycle transition is illegal |
 | 409 | `CONCURRENT_MODIFICATION` | Stale or conflicting mutation was attempted |
 | 500 | `INTERNAL_ERROR` | Unexpected server failure |
@@ -269,8 +272,9 @@ Validation rules:
 - Authenticated user must be `CUSTOMER`
 - `queueId` must refer to an existing queue
 - Queue must be `OPEN`
-- Customer must not already have an active entry in the same queue
-- Queue-number allocation and entry creation must happen in a single transaction
+- Customer must not already have an active entry (`WAITING`, `CALLED`, or `SERVING`) in the same queue (`BR-05`; checked before `BR-06` so AC-4 is preserved)
+- Customer must hold fewer than **2 active entries** (`WAITING`, `CALLED`, or `SERVING`) across all queues simultaneously (`BR-06`, Issue #51); terminal entries (`COMPLETED`, and future `CANCELLED`/`NO_SHOW`) do not count toward this cap
+- Queue-number allocation and entry creation must happen in a single transaction (serialized per customer and per queue)
 
 Success response:
 - HTTP `201 Created`
@@ -296,10 +300,21 @@ Success response:
 Error responses:
 - `400 INVALID_ARGUMENT` for malformed `queueId`
 - `401 UNAUTHORIZED` for missing or invalid session
-- `403 FORBIDDEN` if the user is not a `CUSTOMER`
+- `403 FORBIDDEN` if the user is not a `CUSTOMER` or CSRF token is missing/invalid
 - `404 RESOURCE_NOT_FOUND` if the queue does not exist
 - `409 QUEUE_NOT_AVAILABLE` if the queue is `CLOSED`
-- `409 DUPLICATE_ACTIVE_ENTRY` if the customer already has an active entry in that queue
+- `409 DUPLICATE_ACTIVE_ENTRY` if the customer already has an active entry in that queue (`BR-05`, AC-4; takes precedence over `MAX_ACTIVE_ENTRIES_REACHED`)
+- `409 MAX_ACTIVE_ENTRIES_REACHED` if the customer already holds 2 active entries (`WAITING`, `CALLED`, or `SERVING`) across queues (`BR-06`, AC-2); no entry is persisted and `lastQueueNumber` is unchanged:
+
+```json
+{
+  "error": {
+    "code": "MAX_ACTIVE_ENTRIES_REACHED",
+    "message": "You may hold at most 2 active queue entries at the same time.",
+    "requestId": "3d00f7f6-6cb5-4ab3-9d32-9d3d96f3b0c6"
+  }
+}
+```
 
 ### 7.3 `GET /api/me/queue-entries`
 
@@ -612,7 +627,7 @@ Error responses:
 - Only `WAITING` entries are eligible for `call-next`
 - Queue numbers are positive integers unique within a single `serviceQueueId`
 - Queue numbers are never reset during Sprint 1
-- A customer may hold at most one active entry per queue; completed entries may be rejoined later
+- A customer may hold at most one active entry per queue (`BR-05`) and at most 2 active entries (`WAITING`, `CALLED`, or `SERVING`) across all queues simultaneously (`BR-06`, Issue #51); terminal entries (`COMPLETED`, and future `CANCELLED`/`NO_SHOW`) release a slot so the customer may join a new `OPEN` queue
 - Queue ordering uses `joinedAt ASC, id ASC`
 - Number allocation and entry creation are committed in the same transaction
 - State timestamp mutation and status update are committed atomically
@@ -620,3 +635,10 @@ Error responses:
 ## 10. Traceability
 
 This API specification aligns with the SRS, system SDS, and Sprint 1 feature inventory for FR-01 through FR-13 and business rules BR-01 through BR-12.
+
+## 11. Revision History
+
+| Version | Date | Ref | Summary of Changes |
+|---|---|---|---|
+| 1.0 | 2026-11-11 | Sprint 1 Baseline | Initial Sprint 1 API Specification (accepted at commit `e304cd9`, Cloud Run revision `qms-00005-5kz`). |
+| 1.1 | 2026-11-27 | Issue #51 (Lab 7 Part A) | Added `409 MAX_ACTIVE_ENTRIES_REACHED` error code in §2, updated `POST /api/queues/{queueId}/entries` validation & error envelope in §7.2 (with `DUPLICATE_ACTIVE_ENTRY` precedence), and updated §9 active-entry cap rule for `BR-06` (AC-1–AC-4). |
