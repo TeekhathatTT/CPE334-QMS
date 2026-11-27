@@ -1,0 +1,23 @@
+# Lab 7 Part B (#52) REGRESSION - full client suite
+# Implementation commit: bfa2464 (tests from 2664740)
+# Command: cd client && npx vitest run
+# Node v22.20.0 | vitest/2.1.9 win32-x64 node-v22.20.0 | Version 1.63.0 | PostgreSQL 16.15 | 2026-11-27T05:08:39Z
+
+
+ RUN  v2.1.9 C:/Users/UNS_CT/Desktop/CPE_2569/CPE334/Lab5/QMS/qms/client
+
+ ✓ src/test/integration-guards.test.tsx (6 tests) 362ms
+ ✓ src/test/entryDetail.test.tsx (17 tests) 735ms
+ ✓ src/test/operator.test.tsx (13 tests) 1205ms
+ ✓ src/test/customer.test.tsx (27 tests) 2359ms
+ ✓ src/test/auth.test.tsx (15 tests) 3344ms
+   ✓ LoginPage > shows the generic failure message in an alert and not the session-expired banner 724ms
+   ✓ LoginPage > disables the submit button and shows "Signing in..." while the request is in flight 765ms
+   ✓ LoginPage > sends a signed-in customer to their home page 669ms
+   ✓ LoginPage > sends a signed-in operator to their home page 713ms
+
+ Test Files  5 passed (5)
+      Tests  78 passed (78)
+   Start at  12:06:49
+   Duration  6.48s (transform 433ms, setup 2.52s, collect 2.43s, tests 8.00s, environment 5.64s, prepare 785ms)
+
