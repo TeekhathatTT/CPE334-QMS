@@ -10,6 +10,8 @@ import {
   callNextEntry,
   startServiceEntry,
   completeServiceEntry,
+  markNoShowEntry,
+  recoverNoShowEntry,
 } from '../services/operatorService';
 
 export const operatorRouter = express.Router();
@@ -142,3 +144,42 @@ operatorRouter.post(
   }
 );
 
+/**
+ * POST /api/operator/queue-entries/:entryId/no-show
+ * F-08: marks a CALLED entry NO_SHOW (Sprint 2 api-spec §9.1).
+ * Allowed role: assigned OPERATOR only. Requires CSRF protection.
+ */
+operatorRouter.post(
+  '/queue-entries/:entryId/no-show',
+  requireAuth,
+  requireCsrf,
+  requireRole(Role.OPERATOR),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const entry = await markNoShowEntry(req.user!.id, req.params.entryId);
+      res.status(200).json({ data: { entry } });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/operator/queue-entries/:entryId/recover
+ * F-08: returns a NO_SHOW entry to the queue once, at its original FIFO position (Sprint 2 api-spec §9.2).
+ * Allowed role: assigned OPERATOR only. Requires CSRF protection.
+ */
+operatorRouter.post(
+  '/queue-entries/:entryId/recover',
+  requireAuth,
+  requireCsrf,
+  requireRole(Role.OPERATOR),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const entry = await recoverNoShowEntry(req.user!.id, req.params.entryId);
+      res.status(200).json({ data: { entry } });
+    } catch (error) {
+      next(error);
+    }
+  }
+);

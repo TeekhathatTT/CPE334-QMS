@@ -7,6 +7,8 @@ export type ErrorCode =
   | 'DUPLICATE_ACTIVE_ENTRY'
   | 'INVALID_STATE_TRANSITION'
   | 'CONCURRENT_MODIFICATION'
+  /** F-08: a NO_SHOW entry that was already returned to the queue once (BR-16). */
+  | 'RECOVERY_LIMIT_REACHED'
   | 'INTERNAL_ERROR';
 
 export class AppError extends Error {
