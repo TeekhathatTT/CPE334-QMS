@@ -68,7 +68,7 @@ Feature design: [features/sprint-2-f08-no-show-recovery.md](./features/sprint-2-
 ### 1.3 Sprint 2 additions (rev. 4.0)
 
 F-09 (Multi-counter support, Issue #42) adds to Sprint 2:
-- named service counters (`OPEN` / `CLOSED`) belonging to a `ServiceQueue`, provisioned via deterministic idempotent seed data (`Counter 1`, `Counter 2` per seeded queue)
+- named service counters (`OPEN` / `CLOSED`) belonging to a `ServiceQueue`, provisioned via deterministic idempotent dev/test seed data (`Counter 1`, `Counter 2` per seeded queue) and a dedicated idempotent counter-only provisioning script/migration for Cloud SQL / production
 - operator endpoints to list a queue's counters (`GET /api/operator/queues/{queueId}/counters`), toggle counter status (`PATCH /api/operator/counters/{counterId}/status`), and call the next eligible `WAITING` entry for a specific `OPEN` counter (`POST /api/operator/counters/{counterId}/call-next`)
 - concurrency-safe multi-counter claiming (`Counter` row lock + `QueueEntry` `FOR UPDATE SKIP LOCKED`) so parallel calls across counters never double-claim the same entry
 - additive `counterId` and `counterName` fields on every serialized `QueueEntry` payload, displayed on both the operator queue workspace and the customer's ticket when `CALLED` or `SERVING`
