@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { Role, AccountStatus, QueueAvailability, PrismaClient } from '@prisma/client';
+import { Role, AccountStatus, QueueAvailability, CounterStatus, PrismaClient } from '@prisma/client';
 import { prisma } from '../src/db';
 import { hashPassword } from '../src/auth/password';
 
@@ -154,10 +154,42 @@ export async function seed(client: PrismaClient = prisma, password: string = res
     },
   });
 
+  // 5. Default Counters (F-09, local dev/test only — production uses prisma/provision-counters.ts).
+  // Upserts by `(serviceQueueId, name)` with `update: {}` so running `provision-counters.ts` before
+  // `seed.ts` never triggers P2002 and re-seeding preserves existing IDs and operational status.
+  const counterDefs = [
+    { id: 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1', serviceQueueId: queue1.id, name: 'Counter 1' },
+    { id: 'cccccccc-cccc-4ccc-8ccc-ccccccccccc2', serviceQueueId: queue1.id, name: 'Counter 2' },
+    { id: 'dddddddd-dddd-4ddd-8ddd-ddddddddddd1', serviceQueueId: queue2.id, name: 'Counter 1' },
+    { id: 'dddddddd-dddd-4ddd-8ddd-ddddddddddd2', serviceQueueId: queue2.id, name: 'Counter 2' },
+  ];
+
+  const counters = [];
+  for (const def of counterDefs) {
+    const counter = await client.counter.upsert({
+      where: {
+        serviceQueueId_name: {
+          serviceQueueId: def.serviceQueueId,
+          name: def.name,
+        },
+      },
+      update: {},
+      create: {
+        id: def.id,
+        serviceQueueId: def.serviceQueueId,
+        name: def.name,
+        status: CounterStatus.OPEN,
+        assignedOperatorId: null,
+      },
+    });
+    counters.push(counter.name);
+  }
+
   return {
     customers: [customer1.email, customer2.email],
     operators: [operator1.email, operator2.email],
     queues: [queue1.name, queue2.name],
+    counters,
     assignment: {
       operatorId: assignment1.operatorId,
       serviceQueueId: assignment1.serviceQueueId,

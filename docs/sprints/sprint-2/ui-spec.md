@@ -8,6 +8,7 @@
 | 2.1 | 2026-11-27 | Implementation note for §8.1: in the Active Service card, Mark no-show is the third button, after Start Service and Complete Service, not directly next to Start Service. Labels, visibility, busy state, keyboard order and all acceptance criteria are unchanged. |
 | 3.0 | 2026-11-27 | F-09 contract v1 (issue #42): §10–§13 add the operator Counters panel (open/close toggle, counter-scoped Call Next, active entry counter badges) and customer assigned-counter messaging/badges. §1–§9 (F-07, F-08) unchanged. |
 | 3.1 | 2026-11-27 | F-09 contract v1.1 (PR review fixes): disables controls with `"Assigned to another operator"` for non-owned counters, shows legacy Call Next fallback whenever the operator has zero usable counters, and standardizes counter badges strictly to `CALLED` and `SERVING` entries only (removing `"may appear"` ambiguity). |
+| 3.2 | 2026-11-27 | F-09 contract v1.3 (implementation PR review fixes): gates the legacy Call Next fallback strictly on `countersStatus === 'loaded' && !countersPollError`, adds loading/initial-error/poll-error Retry states (disabling counter controls on poll failure), adds counter refetch on non-CSRF `403` and `409 NO_WAITING_ENTRIES`, and adds `COUNTER-019` to §13 mapping. |
 | 3.3 | 2026-11-27 | F-08 follows BR-06 (SRS rev. 4.5): §8.3 adds the operator message for `409 MAX_ACTIVE_ENTRIES_REACHED` on Return to queue. (Numbered 3.3 because the F-09 implementation PR uses 3.2.) |
 
 This document extends the [Sprint 1 UI specification](../sprint-1/ui-spec.md). All Sprint 1 rules (accessibility, responsiveness, error states, session expiry) still apply. Requirements: [SRS](../../srs.md) FR-14, BR-13, BR-14, AC-24. API: [api-spec.md](./api-spec.md) §3.1. Design: [F-07 feature SDS](../../features/sprint-2-f07-customer-cancellation.md).
@@ -211,7 +212,11 @@ Deterministic badge rule (both customer and operator views): render the counter 
 
 - Heading: `"Counters (N)"` (positioned above Active Service on `/operator/queues/:id`).
 - Empty state (when `counters.length === 0`): `"No counters configured for this queue."`.
-- **Legacy Call Next fallback rule:** render the existing top-level queue-level **Call Next** button whenever the signed-in operator has **zero usable (accessible) counters** in the queue—that is, `counters.length === 0` OR every counter in `counters` has `assignedOperatorId !== null && assignedOperatorId !== currentUser.id`.
+- **Loading & error states (`countersStatus`, `countersPollError`):**
+  - While `countersStatus === 'loading'`: display `"Loading counters..."`; do **not** render the legacy Call Next fallback.
+  - On initial `GET /api/operator/queues/{queueId}/counters` failure (`countersStatus === 'error'`, e.g., `500`/`403`/network): do **not** render the legacy Call Next fallback; render an error note (`"We couldn't load counters for this queue. Please try again."`) with a **Retry** button.
+  - On a subsequent 10 s poll failure (`countersPollError === true`): keep the last loaded counter cards visible, render an error note (`"Could not refresh counters. Counter actions are paused until counters are reloaded."`) with a **Retry** button, and disable all counter toggle and Call Next buttons until Retry or a subsequent poll succeeds.
+- **Legacy Call Next fallback rule (strictly gated):** render the existing top-level queue-level **Call Next** button **only** when `countersStatus === 'loaded' && !countersPollError` and the signed-in operator has **zero usable (accessible) counters** in the queue—that is, `counters.length === 0` OR every counter in `counters` has `assignedOperatorId !== null && assignedOperatorId !== currentUser.id`.
 - Each counter card displays:
   1. Counter name (e.g., `Counter 1`) and `Open` / `Closed` status badge.
   2. Ownership notice (only when `counter.assignedOperatorId !== null && counter.assignedOperatorId !== currentUser.id`): visible label `"Assigned to another operator"`.
@@ -235,10 +240,10 @@ Disabling Call Next on a `CLOSED` counter is a UX convenience, not an authorizat
 | API response | Message | Follow-up |
 |---|---|---|
 | `409 COUNTER_CLOSED` | `"This counter is closed. Open the counter before calling the next customer."` | Refresh counters and entries |
-| `409 NO_WAITING_ENTRIES` | `"There are no waiting customers in this queue right now."` | Refresh entries |
+| `409 NO_WAITING_ENTRIES` | `"There are no waiting customers in this queue right now."` | Refresh entries and counters |
 | `400 INVALID_ARGUMENT` | `"Invalid counter request. Please refresh and try again."` | None |
 | `404 RESOURCE_NOT_FOUND` | `"We couldn't find that counter."` | Refresh counters |
-| `403 FORBIDDEN` (CSRF / RBAC) | Existing CSRF or `"You do not have permission to perform this action."` | None |
+| `403 FORBIDDEN` (CSRF / RBAC) | Existing CSRF or `"You do not have permission to perform this action."` | Refresh counters on non-CSRF `403` |
 | `401 UNAUTHORIZED` | Existing global session-expired banner | Global handler |
 | Network or other | `"Something went wrong. Please try again."` | None |
 
@@ -252,6 +257,7 @@ Server error messages are never rendered directly to users.
 
 | UI behavior | AC | Planned tests |
 |---|---|---|
-| Counters panel, Open/Close toggle, Call Next disabled when `CLOSED`, active entry counter badges, busy/error states | AC-42 | COUNTER-014, COUNTER-016, COUNTER-017 |
+| Counters panel, Open/Close toggle, Call Next disabled when `CLOSED`, active entry counter badges, loading/error/poll-error Retry states, busy/error states | AC-42 | COUNTER-014, COUNTER-016, COUNTER-017 |
 | Customer counter prompt (`CALLED` / `SERVING`), `null` fallback, My Active Tickets counter badge | AC-43 | COUNTER-015, COUNTER-016, COUNTER-017 |
+| Zero-usable-counter legacy queue-level Call Next fallback (`204` neutral empty message and Sprint 1 customer prompt) | AC-39, AC-42, AC-43 | COUNTER-014, COUNTER-019 |
 | Keyboard-only operation; 360 px / 1280 px zero horizontal overflow | AC-42, AC-43 | COUNTER-018 |

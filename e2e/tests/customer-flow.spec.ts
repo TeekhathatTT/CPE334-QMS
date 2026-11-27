@@ -103,16 +103,16 @@ test.describe('Customer workflow', () => {
 
     const POLL_WINDOW = { timeout: 15_000 }; // REFRESH_INTERVAL_MS is 10 s; allow one interval + margin
 
-    await opPage.getByRole('button', { name: 'Call Next' }).click();
-    await expect(opPage.getByRole('status').filter({ hasText: 'Called queue number 1.' })).toBeVisible();
+    await opPage.getByRole('button', { name: 'Call next customer to Counter 1' }).click();
+    await expect(opPage.getByRole('status').filter({ hasText: 'Called queue number 1 to Counter 1.' })).toBeVisible();
     await expect(page.locator('article [data-status="CALLED"]')).toHaveText('Called', POLL_WINDOW);
-    await expect(page.getByTestId('entry-message')).toHaveText('Please go to the service desk.');
+    await expect(page.getByTestId('entry-message')).toHaveText('Please proceed to Counter 1.');
     await expect(page.getByTestId('status-announcer')).toContainText('is now Called');
     await shot(page, 'customer-06-sees-called');
 
     await opPage.getByRole('button', { name: 'Start Service for queue number 1' }).click();
     await expect(page.locator('article [data-status="SERVING"]')).toHaveText('In service', POLL_WINDOW);
-    await expect(page.getByTestId('entry-message')).toHaveText('Your service is in progress.');
+    await expect(page.getByTestId('entry-message')).toHaveText('Your service is in progress at Counter 1.');
 
     await opPage.getByRole('button', { name: 'Complete Service for queue number 1' }).click();
     await expect(page.locator('article [data-status="COMPLETED"]')).toHaveText('Completed', POLL_WINDOW);

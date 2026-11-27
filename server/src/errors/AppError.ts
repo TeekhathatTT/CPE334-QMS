@@ -10,6 +10,10 @@ export type ErrorCode =
   | 'CONCURRENT_MODIFICATION'
   /** F-08: a NO_SHOW entry that was already returned to the queue once (BR-16). */
   | 'RECOVERY_LIMIT_REACHED'
+  /** F-09: counter-scoped Call Next attempted on a CLOSED counter (BR-19). */
+  | 'COUNTER_CLOSED'
+  /** F-09: counter-scoped Call Next attempted when no WAITING entries exist (BR-19). */
+  | 'NO_WAITING_ENTRIES'
   | 'INTERNAL_ERROR';
 
 export class AppError extends Error {

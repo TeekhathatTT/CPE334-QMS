@@ -70,8 +70,13 @@ export function mockApi(routes: Record<string, RouteHandler>): Mock {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const key = `${(init.method ?? 'GET').toUpperCase()} ${String(input)}`;
     const handler = handlers[key];
-    if (!handler) throw new Error(`Unexpected request: ${key}`);
-    return handler(init);
+    if (handler) return handler(init);
+    // Default queue counters list to empty so unmodified Sprint 1 / F-08 operator tests render neutrally
+    // (same convention as GET /api/queues, GET /api/me/queue-entries, and GET /api/operator/queues above).
+    if (/^GET \/api\/operator\/queues\/[^/]+\/counters$/.test(key)) {
+      return jsonResponse(200, { data: { counters: [] } });
+    }
+    throw new Error(`Unexpected request: ${key}`);
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
