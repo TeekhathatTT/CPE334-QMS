@@ -6,6 +6,7 @@
 | 2.0 | 2026-11-27 | F-08 contract v1 (issue #41): §7–§11 add the no-show and recover endpoints, the `NO_SHOW` status, the `noShowAt`, `recoveredAt` and `noShowCount` fields and the error code `RECOVERY_LIMIT_REACHED`. §1–§6 (F-07) are unchanged; where F-08 extends them, §7–§11 say so. |
 | 3.0 | 2026-11-27 | F-09 contract v1 (issue #42): §12–§16 add the `Counter` resource, additive `counterId` and `counterName` fields on `QueueEntry`, counter list/status/call-next endpoints, and error codes `COUNTER_CLOSED` and `NO_WAITING_ENTRIES`. §1–§11 (F-07, F-08) are unchanged; where F-09 extends them, §12–§16 say so. |
 | 3.1 | 2026-11-27 | F-09 contract v1.1 (PR review fixes): documents legacy Call Next as an accepted backwards-compatibility trade-off that explicitly sets `"counterId" = NULL`, and upgrades §16 to the composite FK `("counterId", "serviceQueueId") -> Counter("id", "serviceQueueId")` (`MATCH SIMPLE`, `ON DELETE RESTRICT`). |
+| 3.2 | 2026-11-27 | F-09 contract v1.2 alignment: §14.1 `GET /api/operator/queues/{queueId}/counters` returns `404 RESOURCE_NOT_FOUND` for an unknown valid UUIDv4 `queueId` (matching existing `requireQueueAssignment` middleware and `GET /api/operator/queues/{queueId}/entries`). |
 
 This document extends the [Sprint 1 API specification](../sprint-1/api-spec.md). Everything in that document still applies unless a section below says otherwise. Base path, envelopes, timestamps, CSRF and UUID rules are unchanged (Sprint 1 §1, §2, §4, §5). Requirements: [SRS](../../srs.md) v2.0, FR-14, BR-13, BR-14. Design: [F-07 feature SDS](../../features/sprint-2-f07-customer-cancellation.md).
 
@@ -368,7 +369,7 @@ Validation and processing order:
 1. `queueId` must be a valid UUIDv4 (`400 INVALID_ARGUMENT`).
 2. Valid session required (`401 UNAUTHORIZED`).
 3. Role must be `OPERATOR` (`403 FORBIDDEN`).
-4. `requireQueueAssignment` checks that the operator is assigned to `queueId` (`403 FORBIDDEN` if unassigned or queue does not exist, matching `GET /api/operator/queues/{queueId}/entries`).
+4. `requireQueueAssignment` checks that `queueId` exists (`404 RESOURCE_NOT_FOUND` if missing) and that the operator is assigned to `queueId` (`403 FORBIDDEN` if unassigned), matching `GET /api/operator/queues/{queueId}/entries`.
 5. Query `Counter` where `serviceQueueId = queueId`, ordered by `name ASC, id ASC`.
 
 Success response: `200 OK`
@@ -407,6 +408,7 @@ Error responses:
 | 400 | `INVALID_ARGUMENT` | `queueId` is not a UUIDv4 | none |
 | 401 | `UNAUTHORIZED` | missing, invalid or expired session | none |
 | 403 | `FORBIDDEN` | role is not `OPERATOR`, or operator not assigned to `queueId` | none |
+| 404 | `RESOURCE_NOT_FOUND` | no service queue with that `queueId` | none |
 | 500 | `INTERNAL_ERROR` | unexpected server failure | none |
 
 ### 14.2 `PATCH /api/operator/counters/{counterId}/status`

@@ -6,10 +6,10 @@
 | Sprint | 2 (Deliverable 2, Part B) |
 | Issue | #42 |
 | Depends on | F-03 (queues), F-05 (operator lifecycle); interacts with F-04 (customer reads), F-07 (cancel) and F-08 (no-show recovery) |
-| Contract version | v1.1 (2026-11-27) |
-| Status | Contract v1.1, pending re-review by @TeekhathatTT |
+| Contract version | v1.2 (2026-11-27) |
+| Status | Implemented and verified locally on `feature/sprint2/42-multi-counter-impl` (pending PR review by @TeekhathatTT and release). *Rev. 2026-11-27:* was "Contract v1.1, pending re-review by @TeekhathatTT". |
 | Author / reviewer | @Khwanklao / @TeekhathatTT |
-| Governing documents | [SRS](../srs.md) v4.1 (§1.3, FR-17–FR-19, BR-18–BR-20, §10.2), [System SDS](../system-sds.md) §15, [Sprint 2 API spec](../sprints/sprint-2/api-spec.md) v3.1 (§12–§16), [Sprint 2 UI spec](../sprints/sprint-2/ui-spec.md) v3.1 (§10–§13), [Sprint 2 test spec](../sprints/sprint-2/tests.md) v3.1 (§8) |
+| Governing documents | [SRS](../srs.md) v4.2 (§1.3, FR-17–FR-19, BR-18–BR-20, §10.2), [System SDS](../system-sds.md) §15, [Sprint 2 API spec](../sprints/sprint-2/api-spec.md) v3.2 (§12–§16), [Sprint 2 UI spec](../sprints/sprint-2/ui-spec.md) v3.1 (§10–§13), [Sprint 2 test spec](../sprints/sprint-2/tests.md) v3.3 (§8) |
 
 ## 1. Purpose and scope
 
@@ -235,7 +235,8 @@ Route middleware order:
 | any role, missing/wrong CSRF | — | — | any | `PATCH /status`, `POST /call-next` | `403 FORBIDDEN`, no change |
 | CUSTOMER | — | — | any | any F-09 route | `403 FORBIDDEN`, no change |
 | OPERATOR | — (malformed UUID) | — | — | any F-09 route | `400 INVALID_ARGUMENT` |
-| OPERATOR | not assigned (or unknown `queueId`) | — | any | `GET .../queues/{queueId}/counters` | `403 FORBIDDEN` |
+| OPERATOR | not assigned | — | any | `GET .../queues/{queueId}/counters` | `403 FORBIDDEN` |
+| OPERATOR | — (unknown valid UUIDv4 `queueId`) | — | — | `GET .../queues/{queueId}/counters` | `404 RESOURCE_NOT_FOUND` |
 | OPERATOR | — (unknown valid UUIDv4 `counterId`) | — | — | `PATCH /status`, `POST /call-next` | `404 RESOURCE_NOT_FOUND` |
 | OPERATOR | not assigned to counter's queue | any | any | `PATCH /status`, `POST /call-next` | `403 FORBIDDEN`, no change |
 | OPERATOR | assigned | non-null, ≠ caller | any | `PATCH /status`, `POST /call-next` | `403 FORBIDDEN`, no change |
@@ -259,15 +260,15 @@ Changed: Prisma schema & migration (`CounterStatus`, `Counter` with `UNIQUE ("id
 
 ## 13. Definition of Done
 
-- [ ] Contract v1.1 reviewed by @TeekhathatTT and the review recorded
-- [ ] Red tests committed and the red run saved (`docs/sprints/sprint-2/evidence/f09-red-run.txt`)
-- [ ] Migration applied to the local and test databases; composite FK and idempotent dev/test seed verified without breaking existing constraints (`COUNTER-013`)
-- [ ] All `COUNTER-001` – `COUNTER-018` tests executed and passing
-- [ ] Sprint 1, F-07, and F-08 regression (server, client, E2E) executed and passing with no existing test edited (`REG-S2-003`)
-- [ ] NFR-04 measured for the new F-09 read and mutation paths (`PERF-S2-003`)
-- [ ] Server typecheck, client typecheck, build, `prisma migrate diff` (test DB → schema), and `docker build` pass
-- [ ] Green run saved (`docs/sprints/sprint-2/evidence/f09-green-run.txt`)
-- [ ] Traceability, test spec, and completion table updated with actual results and commit SHA
+- [x] Contract v1.1 reviewed by @TeekhathatTT and merged to `sprint2-staging` (plus v1.2 `requireQueueAssignment` `404` alignment)
+- [x] Red tests committed on `feature/sprint2/42-multi-counter-impl` (existing 202 server + 105 client tests green; F-09 suites red)
+- [x] Migration applied to `qms_db` and `qms_test_db`; composite FK, idempotent dev/test seed, and counter-only provisioning script (`server/prisma/provision-counters.ts`) verified (`COUNTER-013`)
+- [x] All `COUNTER-001` – `COUNTER-018` tests executed and passing locally (server 22 unit + 12 API+DB/concurrency, client 15, E2E 3)
+- [x] Sprint 1, F-07, and F-08 regression executed and passing locally (`REG-S2-003`: 202 existing server + 105 existing client tests unmodified; 6 existing E2E specs updated per Option A to target `Counter 1`, 21/21 E2E passing)
+- [x] NFR-04 measured for all 5 F-09 read and mutation paths (`PERF-S2-003` passed: worst read p95 `103.9 ms`, worst mutation p95 `94.6 ms`; [evidence/perf-s2-003.txt](../sprints/sprint-2/evidence/perf-s2-003.txt))
+- [x] Server typecheck, server build, and client typecheck + production build (`tsc && vite build`) pass
+- [ ] `docker build` verified on this branch (not yet run locally; will also run in GitHub Actions CI)
+- [x] Traceability, test spec, and completion table updated with actual verified results
 - [ ] PR into `sprint2-staging` reviewed by @TeekhathatTT, CI green
 - [ ] Not part of the local DoD: production migration, counter-only Cloud SQL provisioning, and release deploy (issue #42 DoD, done at release)
 
@@ -291,3 +292,5 @@ Changed: Prisma schema & migration (`CounterStatus`, `Counter` with `UNIQUE ("id
 |---|---|---|---|
 | 2026-11-27 | All | — | Contract v1 authored for Issue #42 (`F-09 Multi-counter support`), pending review by @TeekhathatTT. |
 | 2026-11-27 | Header, §5 (`D-1`–`D-3`), §6, §9, §10.3, §12, §13, §14 (`R-1`, `R-3`, `R-4`, `R-6`, `R-9`) | Contract v1 claimed rollback was unconditionally safe, listed legacy `callNextEntry` under §12 "no change", used a single-column `ON DELETE SET NULL` FK on `counterId`, suggested running `seed.ts` on Cloud SQL, did not disable other-operator counters in UI or show fallback when 0 usable counters existed, and lacked explicit `BR-19` legacy trade-off wording. | Contract v1.1 addressing PR review feedback from @TeekhathatTT (4 Blocking + 5 Non-blocking): documents legacy Call Next as an explicit backwards-compatibility trade-off (Blocking #3); moves legacy `callNextEntry` out of §12 "no change" to explicitly set `counterId = NULL` and documents rollback/roll-forward risk + cleanup SQL in §9 (Blocking #4); adds disabled UI state `"Assigned to another operator"` + 0-usable-counter fallback (Nit #1); upgrades to composite FK `("counterId", "serviceQueueId") -> Counter("id", "serviceQueueId")` (`MATCH SIMPLE`, `ON DELETE RESTRICT`) (Nit #2); aligns parallel race wording (Nit #3); restricts `seed.ts` to dev/test and requires counter-only Cloud SQL provisioning (Nit #4); standardizes counter badge strictly to `CALLED`/`SERVING` only (Nit #5). |
+| 2026-11-27 | §11, §9 provisioning script path | Contract v1.1 stated unknown `queueId` on `GET .../counters` returned `403 FORBIDDEN`. | Contract v1.2 alignment: unknown `queueId` returns `404 RESOURCE_NOT_FOUND` matching existing `requireQueueAssignment` middleware (`server/src/middleware/queueAssignment.ts`), and counter-only Cloud SQL provisioning implemented at `server/prisma/provision-counters.ts`. |
+| 2026-11-27 | Header "Status", §13 DoD | "Contract v1.1, pending re-review by @TeekhathatTT"; all DoD items unticked | Implemented and verified locally on `feature/sprint2/42-multi-counter-impl` (Server 236/236, Client 120/120, E2E 21/21, PERF-S2-003 5/5 PASS); ticked only locally verified DoD items while leaving `docker build`, PR review, and production release open. |
