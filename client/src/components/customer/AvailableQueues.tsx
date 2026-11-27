@@ -10,6 +10,7 @@ import type { Loadable } from './loadable';
 /** Issue #5 decision 7: join error codes mapped to safe text. Server messages are never shown. */
 export const JOIN_ERROR_TEXT = {
   DUPLICATE_ACTIVE_ENTRY: 'You already have an active entry in this queue.',
+  MAX_ACTIVE_ENTRIES_REACHED: 'You can hold at most 2 active queue entries at the same time.',
   QUEUE_NOT_AVAILABLE: 'This queue is not available right now.',
   RESOURCE_NOT_FOUND: 'This queue is no longer available.',
   FORBIDDEN: "We couldn't verify this request. Please refresh the page or sign in again.",
@@ -26,6 +27,9 @@ function describeJoinFailure(err: unknown): JoinFailure {
   if (err instanceof ApiError) {
     if (err.status === 409 && err.code === 'DUPLICATE_ACTIVE_ENTRY') {
       return { text: JOIN_ERROR_TEXT.DUPLICATE_ACTIVE_ENTRY, refetchQueues: false };
+    }
+    if (err.status === 409 && err.code === 'MAX_ACTIVE_ENTRIES_REACHED') {
+      return { text: JOIN_ERROR_TEXT.MAX_ACTIVE_ENTRIES_REACHED, refetchQueues: false };
     }
     if (err.status === 409 && err.code === 'QUEUE_NOT_AVAILABLE') {
       return { text: JOIN_ERROR_TEXT.QUEUE_NOT_AVAILABLE, refetchQueues: true };
