@@ -1,5 +1,7 @@
 # Sprint 1 UI Specification
 
+> **Version:** 1.1 | **Last Updated:** 2026-11-27 | **Sprint 1 Baseline:** commit `e304cd9` (`main`), deployed revision `qms-00005-5kz` | **Change Ref:** Issue #51 (Lab 7 Part A — BR-06)
+
 ## 1. Purpose and UX goals
 
 The Sprint 1 user interface supports the minimum viable queue workflow for two roles: `CUSTOMER` and `OPERATOR`. The UI must communicate queue state clearly, enforce server-side authorization, and expose only the data the user is allowed to view. The interface is a browser contract for user behavior; it is not a claim that the application is already implemented.
@@ -65,7 +67,7 @@ Navigation:
 ## 4. Interaction rules
 
 - Customers can list only `OPEN` queues.
-- Customers may join multiple different queues but may hold only one active entry per customer per queue.
+- Customers may hold at most one active entry per queue (BR-05) and at most 2 active entries across all queues (BR-06).
 - A customer sees only their own queue entries; cross-owner access is denied by the API and should display a safe generic not-found style message in the UI.
 - Operators see only queues assigned to them and no other queue data.
 - Operator actions are hidden or disabled when the current queue entry state does not permit the action.
@@ -163,7 +165,8 @@ The UI must use text and icons, not color alone, to indicate status. The display
 | Queue is empty when calling next | Show neutral empty state, leave queue unchanged, and keep existing entries visible |
 | Invalid lifecycle transition | Show a conflict message and refresh queue data from the source of truth |
 | Closed queue join attempt | Show a queue unavailable message and keep the form enabled |
-| Duplicate active entry | Show a “you already have an active entry in this queue” message |
+| Duplicate active entry (`409 DUPLICATE_ACTIVE_ENTRY`) | Show a “you already have an active entry in this queue” message |
+| Maximum active entries reached (`409 MAX_ACTIVE_ENTRIES_REACHED`, `BR-06`) | Show a user-safe message explaining the customer can hold at most 2 active queue entries at once (`"You can hold at most 2 active queue entries at the same time."`), keep controls enabled, and never expose server internals |
 
 ### Session Expiry Handling (401 UNAUTHORIZED)
 
@@ -222,3 +225,10 @@ The UI must support the critical Sprint 1 flows:
 - safe handling of privacy violations and invalid state transitions
 
 This UI contract aligns with the SRS, system SDS, and Sprint 1 API specification and supports the required Sprint 1 acceptance criteria.
+
+## 11. Revision History
+
+| Version | Date | Ref | Summary of Changes |
+|---|---|---|---|
+| 1.0 | 2026-11-11 | Sprint 1 Baseline | Initial Sprint 1 UI Specification (accepted at commit `e304cd9`, Cloud Run revision `qms-00005-5kz`). |
+| 1.1 | 2026-11-27 | Issue #51 (Lab 7 Part A) | Updated §4 interaction rules for the 2-active-entry cross-queue cap (`BR-06`) and added `409 MAX_ACTIVE_ENTRIES_REACHED` customer error state handling in §7 (`CR51-AC1`–`CR51-AC4`). |

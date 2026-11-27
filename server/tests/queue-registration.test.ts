@@ -327,7 +327,7 @@ describe('Issue #4: Service Queue Creation & Queue Number Generation', () => {
       expect(res2.body.data.entry.status).toBe('WAITING');
     });
 
-    it('allows a customer to hold active entries across distinct queues simultaneously (QUEUE-008)', async () => {
+    it('allows a customer with 0 or 1 active entry to join a distinct OPEN queue, up to 2 active entries (QUEUE-008, BR-06 CR51-AC1)', async () => {
       const custAuth = await login(app, CUSTOMER1.email);
 
       // Create a second OPEN queue for testing multi-queue join
@@ -358,6 +358,160 @@ describe('Issue #4: Service Queue Creation & Queue Number Generation', () => {
         where: { customerId: CUSTOMER1.id, status: QueueStatus.WAITING },
       });
       expect(activeEntries).toHaveLength(2);
+    });
+  });
+
+  describe('3b. Lab 7 BR-06: at most 2 active entries across all queues (Issue #52)', () => {
+    type Auth = { cookieHeader: string; csrfToken: string };
+
+    const join = (auth: Auth, queueId: string) =>
+      request(app)
+        .post(`/api/queues/${queueId}/entries`)
+        .set('Cookie', auth.cookieHeader)
+        .set('X-CSRF-Token', auth.csrfToken);
+
+    const createOpenQueue = (name: string) =>
+      prisma.serviceQueue.create({
+        data: { name, availability: QueueAvailability.OPEN, lastQueueNumber: 0n },
+      });
+
+    const countActive = (customerId: string) =>
+      prisma.queueEntry.count({
+        where: {
+          customerId,
+          status: { in: [QueueStatus.WAITING, QueueStatus.CALLED, QueueStatus.SERVING] },
+        },
+      });
+
+    // Seed an active entry directly so the status combination can be chosen per case.
+    const seedEntry = async (customerId: string, queueId: string, status: QueueStatus) => {
+      const queue = await prisma.serviceQueue.update({
+        where: { id: queueId },
+        data: { lastQueueNumber: { increment: 1 } },
+      });
+      return prisma.queueEntry.create({
+        data: { customerId, serviceQueueId: queueId, queueNumber: queue.lastQueueNumber, status },
+      });
+    };
+
+    it.each([
+      [QueueStatus.WAITING, QueueStatus.WAITING],
+      [QueueStatus.CALLED, QueueStatus.WAITING],
+      [QueueStatus.SERVING, QueueStatus.CALLED],
+    ])(
+      'rejects a 3rd-queue join with 409 MAX_ACTIVE_ENTRIES_REACHED when holding %s + %s, with no DB write (QUEUE-009, CR51-AC2)',
+      async (statusQ1, statusQ2) => {
+        const custAuth = await login(app, CUSTOMER1.email);
+        const q2 = await createOpenQueue('BR-06 Queue 2');
+        const q3 = await createOpenQueue('BR-06 Queue 3');
+        await seedEntry(CUSTOMER1.id, OPEN_QUEUE_ID, statusQ1);
+        await seedEntry(CUSTOMER1.id, q2.id, statusQ2);
+        const totalBefore = await prisma.queueEntry.count();
+
+        const res = await join(custAuth, q3.id);
+
+        expect(res.status).toBe(409);
+        expect(res.body.data).toBeUndefined();
+        expect(res.body.error.code).toBe('MAX_ACTIVE_ENTRIES_REACHED');
+        expect(res.body.error.requestId).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        );
+
+        const q3After = await prisma.serviceQueue.findUniqueOrThrow({ where: { id: q3.id } });
+        expect(q3After.lastQueueNumber).toBe(0n);
+        expect(await prisma.queueEntry.count({ where: { serviceQueueId: q3.id } })).toBe(0);
+        expect(await prisma.queueEntry.count()).toBe(totalBefore);
+        expect(await countActive(CUSTOMER1.id)).toBe(2);
+      }
+    );
+
+    it('the cap is per customer: another customer can still join while CUSTOMER1 is at the cap (QUEUE-009 boundary)', async () => {
+      const cust1 = await login(app, CUSTOMER1.email);
+      const cust2 = await login(app, CUSTOMER2.email);
+      const q2 = await createOpenQueue('BR-06 Queue 2');
+      const q3 = await createOpenQueue('BR-06 Queue 3');
+
+      expect((await join(cust1, OPEN_QUEUE_ID)).status).toBe(201);
+      expect((await join(cust1, q2.id)).status).toBe(201);
+      expect((await join(cust1, q3.id)).status).toBe(409);
+
+      const res = await join(cust2, q3.id);
+      expect(res.status).toBe(201);
+      expect(res.body.data.entry.queueNumber).toBe(1);
+    });
+
+    it('allows joining a new OPEN queue after one of 2 active entries becomes COMPLETED (QUEUE-010, CR51-AC3)', async () => {
+      const custAuth = await login(app, CUSTOMER1.email);
+      const q2 = await createOpenQueue('BR-06 Queue 2');
+      const q3 = await createOpenQueue('BR-06 Queue 3');
+
+      const e1 = await join(custAuth, OPEN_QUEUE_ID);
+      expect(e1.status).toBe(201);
+      expect((await join(custAuth, q2.id)).status).toBe(201);
+
+      const blocked = await join(custAuth, q3.id);
+      expect(blocked.status).toBe(409);
+      expect(blocked.body.error.code).toBe('MAX_ACTIVE_ENTRIES_REACHED');
+
+      await prisma.queueEntry.update({
+        where: { id: e1.body.data.entry.id },
+        data: { status: QueueStatus.COMPLETED, completedAt: new Date() },
+      });
+
+      const res = await join(custAuth, q3.id);
+      expect(res.status).toBe(201);
+      expect(res.body.data.entry.serviceQueueId).toBe(q3.id);
+      expect(res.body.data.entry.customerId).toBe(CUSTOMER1.id);
+      expect(res.body.data.entry.status).toBe('WAITING');
+      expect(res.body.data.entry.queueNumber).toBe(1);
+
+      const q3After = await prisma.serviceQueue.findUniqueOrThrow({ where: { id: q3.id } });
+      expect(q3After.lastQueueNumber).toBe(1n);
+      expect(await countActive(CUSTOMER1.id)).toBe(2);
+      const completed = await prisma.queueEntry.findUniqueOrThrow({ where: { id: e1.body.data.entry.id } });
+      expect(completed.status).toBe(QueueStatus.COMPLETED);
+    });
+
+    it('same-queue duplicate at the cap returns 409 DUPLICATE_ACTIVE_ENTRY, not MAX_ACTIVE_ENTRIES_REACHED (QUEUE-011, CR51-AC4)', async () => {
+      const custAuth = await login(app, CUSTOMER1.email);
+      const q2 = await createOpenQueue('BR-06 Queue 2');
+
+      expect((await join(custAuth, OPEN_QUEUE_ID)).status).toBe(201);
+      expect((await join(custAuth, q2.id)).status).toBe(201);
+      const totalBefore = await prisma.queueEntry.count();
+
+      const res = await join(custAuth, OPEN_QUEUE_ID);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('DUPLICATE_ACTIVE_ENTRY');
+      const q1After = await prisma.serviceQueue.findUniqueOrThrow({ where: { id: OPEN_QUEUE_ID } });
+      expect(q1After.lastQueueNumber).toBe(1n);
+      expect(await prisma.queueEntry.count()).toBe(totalBefore);
+    });
+
+    it('concurrent joins to 2 distinct queues with 1 active entry: exactly one 201 and one 409, never 3 active (CONCURRENCY-005)', async () => {
+      const custAuth = await login(app, CUSTOMER1.email);
+      const q2 = await createOpenQueue('BR-06 Queue 2');
+      const q3 = await createOpenQueue('BR-06 Queue 3');
+      expect((await join(custAuth, OPEN_QUEUE_ID)).status).toBe(201);
+
+      const responses = await Promise.all([join(custAuth, q2.id), join(custAuth, q3.id)]);
+
+      const statuses = responses.map((r) => r.status).sort();
+      expect(statuses).toEqual([201, 409]);
+      const winner = responses.find((r) => r.status === 201)!;
+      const loser = responses.find((r) => r.status === 409)!;
+      expect(winner.body.data.entry.queueNumber).toBe(1);
+      expect(loser.body.error.code).toBe('MAX_ACTIVE_ENTRIES_REACHED');
+
+      expect(await countActive(CUSTOMER1.id)).toBe(2);
+      const winnerQueueId: string = winner.body.data.entry.serviceQueueId;
+      const loserQueueId = winnerQueueId === q2.id ? q3.id : q2.id;
+      const winnerQueue = await prisma.serviceQueue.findUniqueOrThrow({ where: { id: winnerQueueId } });
+      const loserQueue = await prisma.serviceQueue.findUniqueOrThrow({ where: { id: loserQueueId } });
+      expect(winnerQueue.lastQueueNumber).toBe(1n);
+      expect(loserQueue.lastQueueNumber).toBe(0n);
+      expect(await prisma.queueEntry.count({ where: { serviceQueueId: loserQueueId } })).toBe(0);
     });
   });
 

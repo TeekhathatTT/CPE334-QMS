@@ -95,10 +95,25 @@ export async function listOpenQueues(): Promise<QueueSummary[]> {
   return queues.map(formatQueueSummary);
 }
 
+/** BR-06 (Lab 7, Issue #51): active entries a customer may hold across all queues. */
+export const MAX_ACTIVE_ENTRIES_PER_CUSTOMER = 2;
+
+const ACTIVE_STATUSES = ['WAITING', 'CALLED', 'SERVING'] as const;
+
 export async function joinQueue(customerId: string, queueId: string): Promise<SerializedQueueEntry> {
   try {
     const entry = await prisma.$transaction(
       async (tx) => {
+        // BR-06: serialize joins by the same customer across distinct queues so two racing joins
+        // cannot both pass the active-entry count (system-sds §4.1). Lock order is always
+        // User -> ServiceQueue to avoid deadlocks. FOR NO KEY UPDATE does not conflict with the
+        // FOR KEY SHARE locks taken by FK inserts that reference this user (e.g. Session at login).
+        await tx.$queryRaw`
+          SELECT id FROM "User"
+          WHERE id = ${customerId}::uuid
+          FOR NO KEY UPDATE
+        `;
+
         // Row-level lock on ServiceQueue to guarantee monotonic, non-duplicate queue numbers under concurrent load.
         // We obtain clock_timestamp() AS "now" after acquiring the FOR UPDATE lock so that
         // joinedAt reflects the exact lock acquisition order rather than transaction start time.
@@ -125,12 +140,26 @@ export async function joinQueue(customerId: string, queueId: string): Promise<Se
           where: {
             customerId,
             serviceQueueId: queueId,
-            status: { in: ['WAITING', 'CALLED', 'SERVING'] },
+            status: { in: [...ACTIVE_STATUSES] },
           },
         });
 
+        // BR-05 is checked first so a same-queue duplicate keeps its own error (CR51-AC4).
         if (existingActive) {
           throw new AppError(409, 'DUPLICATE_ACTIVE_ENTRY', 'Customer already has an active entry in this queue.');
+        }
+
+        // BR-06: terminal entries (COMPLETED) do not count toward the cap.
+        const activeCount = await tx.queueEntry.count({
+          where: { customerId, status: { in: [...ACTIVE_STATUSES] } },
+        });
+
+        if (activeCount >= MAX_ACTIVE_ENTRIES_PER_CUSTOMER) {
+          throw new AppError(
+            409,
+            'MAX_ACTIVE_ENTRIES_REACHED',
+            `You may hold at most ${MAX_ACTIVE_ENTRIES_PER_CUSTOMER} active queue entries at the same time.`
+          );
         }
 
         const nextNumber = BigInt(queue.lastQueueNumber) + 1n;
