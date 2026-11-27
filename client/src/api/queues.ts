@@ -5,7 +5,7 @@
 import { ApiError, apiRequest } from './client';
 
 export type QueueAvailability = 'OPEN' | 'CLOSED';
-export type QueueEntryStatus = 'WAITING' | 'CALLED' | 'SERVING' | 'COMPLETED' | 'CANCELLED';
+export type QueueEntryStatus = 'WAITING' | 'CALLED' | 'SERVING' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
 
 /** api-spec §3.2 */
 export interface QueueSummary {
@@ -28,6 +28,12 @@ export interface QueueEntry {
   completedAt: string | null;
   /** F-07 (Sprint 2 api-spec §1.1). The server always sends it; optional so older fixtures stay valid. */
   cancelledAt?: string | null;
+  /** F-08 (Sprint 2 api-spec §7.1): latest no-show time. Optional so older fixtures stay valid. */
+  noShowAt?: string | null;
+  /** F-08: time the entry was returned to the queue. */
+  recoveredAt?: string | null;
+  /** F-08: number of no-shows, 0-2. */
+  noShowCount?: number;
   aheadCount?: number;
 }
 

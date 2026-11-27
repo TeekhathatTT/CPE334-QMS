@@ -6,6 +6,8 @@ import {
   completeQueueEntry,
   listAssignedQueues,
   listOperatorQueueEntries,
+  markNoShowQueueEntry,
+  recoverQueueEntry,
   startQueueEntry,
 } from '../api/operator';
 import {
@@ -28,6 +30,7 @@ import {
   primaryButtonClass,
 } from '../components/customer/ui';
 import { Spinner } from '../components/Spinner';
+import { canReturnToQueue } from '../api/noShow';
 import { usePolling } from '../hooks/usePolling';
 
 export const OPERATOR_QUEUE_FORBIDDEN_TEXT = 'You do not have permission to manage this queue.';
@@ -41,7 +44,14 @@ export const OPERATOR_ACTION_ERROR_TEXT = {
   NOT_FOUND: "We couldn't find that queue entry.",
   CSRF: "We couldn't verify this request. Please refresh the page or sign in again.",
   GENERIC: 'Something went wrong. Please try again.',
+  /** F-08 (Sprint 2 ui-spec §8.3). */
+  RECOVERY_LIMIT: 'This entry was already returned to the queue once and cannot be returned again.',
+  /** F-08: the customer rejoined while the entry was NO_SHOW. */
+  REJOINED: 'This customer has already joined the queue again, so this entry cannot be returned.',
 } as const;
+
+/** F-08 (Sprint 2 ui-spec §8.4). */
+export const OPERATOR_NO_SHOW_LIMIT_TEXT = 'Already returned once. This entry cannot be returned again.';
 
 interface ActionFailure {
   text: string;
@@ -58,6 +68,12 @@ function isCsrfForbidden(err: ApiError): boolean {
 function describeActionFailure(err: unknown, target: 'queue' | 'entry'): ActionFailure {
   if (err instanceof ApiError) {
     if (err.status === 409) {
+      if (err.code === 'RECOVERY_LIMIT_REACHED') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.RECOVERY_LIMIT, refetchEntries: true };
+      }
+      if (err.code === 'DUPLICATE_ACTIVE_ENTRY') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.REJOINED, refetchEntries: true };
+      }
       return { text: OPERATOR_ACTION_ERROR_TEXT.CONFLICT, refetchEntries: true };
     }
     if (err.status === 404) {
@@ -98,6 +114,8 @@ export function OperatorQueueDetailPage() {
   const [callingNext, setCallingNext] = useState(false);
   const [startingIds, setStartingIds] = useState<ReadonlySet<string>>(new Set());
   const [completingIds, setCompletingIds] = useState<ReadonlySet<string>>(new Set());
+  const [noShowingIds, setNoShowingIds] = useState<ReadonlySet<string>>(new Set());
+  const [recoveringIds, setRecoveringIds] = useState<ReadonlySet<string>>(new Set());
   const [feedback, setFeedback] = useState<FeedbackBanner | null>(null);
   const [announcement, setAnnouncement] = useState('');
 
@@ -294,6 +312,60 @@ export function OperatorQueueDetailPage() {
     }
   };
 
+  const toggleIn = (setter: typeof setNoShowingIds, entryId: string, pending: boolean) => {
+    setter((current) => {
+      const next = new Set(current);
+      if (pending) next.add(entryId);
+      else next.delete(entryId);
+      return next;
+    });
+  };
+
+  /**
+   * F-08: Mark no-show (CALLED -> NO_SHOW) and Return to queue (NO_SHOW -> WAITING). Same flow as
+   * Start/Complete: per-entry in-flight guard, busy state, success message, then reload the list;
+   * on 409/404 the list is reloaded as well (Sprint 2 ui-spec §8.2).
+   */
+  const runNoShowAction = async (
+    entry: QueueEntry,
+    action: (entryId: string) => Promise<QueueEntry>,
+    setter: typeof setNoShowingIds,
+    success: (updated: QueueEntry) => string
+  ) => {
+    if (entryActionInFlightRef.current.has(entry.id)) return;
+    entryActionInFlightRef.current.add(entry.id);
+    toggleIn(setter, entry.id, true);
+    setFeedback(null);
+
+    try {
+      const updated = await action(entry.id);
+      if (!mounted.current) return;
+      const msg = success(updated);
+      setFeedback({ kind: 'success', text: msg });
+      setAnnouncement(msg);
+      await loadEntries();
+    } catch (err) {
+      if (!mounted.current || isSessionExpiredError(err)) return;
+      const { text, refetchEntries } = describeActionFailure(err, 'entry');
+      setFeedback({ kind: 'error', text });
+      setAnnouncement(text);
+      if (refetchEntries) void loadEntries();
+    } finally {
+      entryActionInFlightRef.current.delete(entry.id);
+      if (mounted.current) toggleIn(setter, entry.id, false);
+    }
+  };
+
+  const handleMarkNoShow = (entry: QueueEntry) => {
+    if (entry.status !== 'CALLED') return;
+    void runNoShowAction(entry, markNoShowQueueEntry, setNoShowingIds, (u) => `Marked queue number ${u.queueNumber} as no-show.`);
+  };
+
+  const handleReturnToQueue = (entry: QueueEntry) => {
+    if (!canReturnToQueue(entry)) return;
+    void runNoShowAction(entry, recoverQueueEntry, setRecoveringIds, (u) => `Returned queue number ${u.queueNumber} to the queue.`);
+  };
+
   const queueMeta = queues?.find((q) => q.id === id);
   const queueTitle = queueMeta?.name ?? UNKNOWN_QUEUE_NAME;
 
@@ -305,6 +377,8 @@ export function OperatorQueueDetailPage() {
     view.state === 'ready' ? view.entries.filter((e) => e.status === 'WAITING') : [];
   const completedEntries =
     view.state === 'ready' ? view.entries.filter((e) => e.status === 'COMPLETED') : [];
+  const noShowEntries =
+    view.state === 'ready' ? view.entries.filter((e) => e.status === 'NO_SHOW') : [];
 
   return (
     <div className="space-y-6">
@@ -367,7 +441,8 @@ export function OperatorQueueDetailPage() {
               )}
               <p className="text-sm font-medium text-slate-700">
                 Waiting: <span data-testid="waiting-count">{waitingEntries.length}</span> · Active:{' '}
-                <span data-testid="active-count">{activeEntries.length}</span> · Completed:{' '}
+                <span data-testid="active-count">{activeEntries.length}</span> · No-show:{' '}
+                <span data-testid="no-show-count">{noShowEntries.length}</span> · Completed:{' '}
                 <span data-testid="completed-count">{completedEntries.length}</span>
               </p>
             </div>
@@ -429,7 +504,9 @@ export function OperatorQueueDetailPage() {
                 {activeEntries.map((entry) => {
                   const isStarting = startingIds.has(entry.id);
                   const isCompleting = completingIds.has(entry.id);
-                  const canStart = entry.status === 'CALLED' && !isStarting && !isCompleting;
+                  const isNoShowing = noShowingIds.has(entry.id);
+                  const canStart = entry.status === 'CALLED' && !isStarting && !isCompleting && !isNoShowing;
+                  const canMarkNoShow = entry.status === 'CALLED' && !isStarting && !isNoShowing;
                   const canComplete = entry.status === 'SERVING' && !isCompleting && !isStarting;
 
                   return (
@@ -495,6 +572,25 @@ export function OperatorQueueDetailPage() {
                               'Complete Service'
                             )}
                           </button>
+
+                          {entry.status === 'CALLED' && (
+                            <button
+                              type="button"
+                              onClick={() => handleMarkNoShow(entry)}
+                              disabled={!canMarkNoShow}
+                              aria-label={`Mark queue number ${entry.queueNumber} as no-show`}
+                              className={`flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-orange-400 bg-white px-4 py-2 font-semibold text-orange-900 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50 ${focusRing}`}
+                            >
+                              {isNoShowing ? (
+                                <>
+                                  <Spinner />
+                                  Marking no-show...
+                                </>
+                              ) : (
+                                'Mark no-show'
+                              )}
+                            </button>
+                          )}
                         </div>
                       </div>
                     </li>
@@ -544,6 +640,66 @@ export function OperatorQueueDetailPage() {
                   </li>
                 ))}
               </ol>
+            )}
+          </section>
+
+          {/* F-08: No-show entries (Sprint 2 ui-spec §8.4) */}
+          <section aria-labelledby="no-show-entries-heading" className="space-y-3">
+            <h2 id="no-show-entries-heading" className="text-lg font-bold text-slate-900">
+              No-show ({noShowEntries.length})
+            </h2>
+            {noShowEntries.length === 0 ? (
+              <EmptyNote>No missed entries.</EmptyNote>
+            ) : (
+              <ul className="space-y-2.5" aria-label="No-show queue entries">
+                {noShowEntries.map((entry) => {
+                  const isRecovering = recoveringIds.has(entry.id);
+                  return (
+                    <li
+                      key={entry.id}
+                      data-testid={`no-show-entry-${entry.queueNumber}`}
+                      className="flex min-w-0 flex-col gap-3 rounded-xl border border-orange-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex shrink-0 flex-col items-center justify-center rounded-lg bg-slate-800 px-4 py-1.5 text-white">
+                          <span className="text-[10px] uppercase tracking-wide">Queue #</span>
+                          <span className="text-xl font-bold">{entry.queueNumber}</span>
+                        </div>
+                        <div className="min-w-0 space-y-1">
+                          <StatusBadge status={entry.status} />
+                          <p className="break-all text-xs text-slate-600">
+                            <span className="font-medium text-slate-700">Customer ID: </span>
+                            {entry.customerId}
+                          </p>
+                          <EntryTimestamps entry={entry} />
+                        </div>
+                      </div>
+                      <div className="flex min-w-0 flex-col gap-2 sm:items-end">
+                        {canReturnToQueue(entry) ? (
+                          <button
+                            type="button"
+                            onClick={() => handleReturnToQueue(entry)}
+                            disabled={isRecovering}
+                            aria-label={`Return queue number ${entry.queueNumber} to the queue`}
+                            className={`flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-amber-700 px-4 py-2 font-semibold text-white hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50 ${focusRing}`}
+                          >
+                            {isRecovering ? (
+                              <>
+                                <Spinner />
+                                Returning to queue...
+                              </>
+                            ) : (
+                              'Return to queue'
+                            )}
+                          </button>
+                        ) : (
+                          <p className="text-sm font-medium text-slate-700">{OPERATOR_NO_SHOW_LIMIT_TEXT}</p>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </section>
 

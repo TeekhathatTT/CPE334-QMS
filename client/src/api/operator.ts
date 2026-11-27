@@ -61,3 +61,20 @@ export async function completeQueueEntry(entryId: string): Promise<QueueEntry> {
   return required(data?.entry);
 }
 
+/** F-08: `POST /api/operator/queue-entries/{entryId}/no-show` — CALLED -> NO_SHOW (Sprint 2 api-spec §9.1). */
+export async function markNoShowQueueEntry(entryId: string): Promise<QueueEntry> {
+  const data = await apiRequest<{ entry: QueueEntry }>(
+    `/api/operator/queue-entries/${encodeURIComponent(entryId)}/no-show`,
+    { method: 'POST' }
+  );
+  return required(data?.entry);
+}
+
+/** F-08: `POST /api/operator/queue-entries/{entryId}/recover` — NO_SHOW -> WAITING, once (Sprint 2 api-spec §9.2). */
+export async function recoverQueueEntry(entryId: string): Promise<QueueEntry> {
+  const data = await apiRequest<{ entry: QueueEntry }>(
+    `/api/operator/queue-entries/${encodeURIComponent(entryId)}/recover`,
+    { method: 'POST' }
+  );
+  return required(data?.entry);
+}
