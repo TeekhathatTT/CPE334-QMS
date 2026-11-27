@@ -512,4 +512,69 @@ describe('F-08: no-show handling and recovery', () => {
     }
     console.log(`NOSHOW-014 outcomes: return won ${outcomes.recover}, join won ${outcomes.join}`);
   });
+
+  /** Two extra OPEN queues for the BR-06 tests; operator1 is assigned to Q2 so it can complete there. */
+  async function extraQueues(): Promise<{ q2: string; q3: string }> {
+    const q2 = await prisma.serviceQueue.create({ data: { name: 'NOSHOW BR-06 Queue 2', availability: 'OPEN' } });
+    const q3 = await prisma.serviceQueue.create({ data: { name: 'NOSHOW BR-06 Queue 3', availability: 'OPEN' } });
+    await prisma.operatorAssignment.create({ data: { operatorId: OPERATOR1.id, serviceQueueId: q2.id } });
+    return { q2: q2.id, q3: q3.id };
+  }
+
+  async function activeCount(customerId: string): Promise<number> {
+    const rows = await prisma.$queryRaw<Array<{ n: bigint }>>`
+      SELECT COUNT(*)::bigint AS n FROM "QueueEntry"
+      WHERE "customerId" = ${customerId}::uuid AND "status" IN ('WAITING', 'CALLED', 'SERVING')`;
+    return Number(rows[0].n);
+  }
+
+  it('NOSHOW-021 (AC-45): a return is rejected at the BR-06 cap and allowed once a slot is free', async () => {
+    const { q2, q3 } = await extraQueues();
+    const a = await noShowEntry();
+    const inQ2 = await join(customer1, q2);
+    expect(inQ2.status, 'join Q2').toBe(201);
+    expect((await join(customer1, q3)).status, 'join Q3').toBe(201);
+    expect(await activeCount(CUSTOMER1.id)).toBe(2);
+
+    const before = await row(a.id);
+    const blocked = await recover(operator1, a.id);
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.error.code).toBe('MAX_ACTIVE_ENTRIES_REACHED');
+    expect(await row(a.id), 'A unchanged').toEqual(before);
+    expect(await activeCount(CUSTOMER1.id)).toBe(2);
+
+    const q2Entry = inQ2.body.data.entry.id as string;
+    expect((await post(operator1, `/api/operator/queues/${q2}/call-next`)).status).toBe(200);
+    expect((await start(operator1, q2Entry)).status).toBe(200);
+    expect((await complete(operator1, q2Entry)).status).toBe(200);
+
+    const ok = await recover(operator1, a.id);
+    expect(ok.status).toBe(200);
+    expect(ok.body.data.entry.status).toBe('WAITING');
+    expect(await activeCount(CUSTOMER1.id)).toBe(2);
+  });
+
+  it('NOSHOW-022 (AC-45): a return and a join of a third queue in parallel, 10 rounds: never 3 active entries', async () => {
+    const { q2, q3 } = await extraQueues();
+    const outcomes = { recover: 0, join: 0 };
+    for (let round = 0; round < 10; round += 1) {
+      await prisma.queueEntry.deleteMany({});
+      const a = await noShowEntry();
+      expect((await join(customer1, q2)).status, `round ${round}: join Q2`).toBe(201);
+      const [r, j] = await Promise.all([recover(operator1, a.id), join(customer1, q3)]);
+      if (r.status === 200) {
+        outcomes.recover += 1;
+        expect(j.status, `round ${round}: join after the return`).toBe(409);
+        expect(j.body.error.code).toBe('MAX_ACTIVE_ENTRIES_REACHED');
+      } else {
+        outcomes.join += 1;
+        expect(j.status, `round ${round}: join first`).toBe(201);
+        expect(r.status, `round ${round}: return after the join`).toBe(409);
+        expect(r.body.error.code).toBe('MAX_ACTIVE_ENTRIES_REACHED');
+        expect((await row(a.id))?.status).toBe('NO_SHOW');
+      }
+      expect(await activeCount(CUSTOMER1.id), `round ${round}: active entries`).toBe(2);
+    }
+    console.log(`NOSHOW-022 outcomes: return won ${outcomes.recover}, join won ${outcomes.join}`);
+  });
 });

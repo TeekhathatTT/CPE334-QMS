@@ -4,6 +4,7 @@ import { AppError } from '../errors/AppError';
 import { canCallNextOnCounter, canOperatorUseCounter } from './counterPolicy';
 import { canMarkNoShow, recoveryDecision } from './noShowPolicy';
 import {
+  MAX_ACTIVE_ENTRIES_PER_CUSTOMER,
   formatQueueEntry,
   formatQueueSummary,
   type QueueSummary,
@@ -325,24 +326,34 @@ export async function markNoShowEntry(operatorId: string, entryId: string): Prom
  * Sprint 2 api-spec §9.2; feature SDS §10). The entry keeps its `joinedAt` and queue number, so it is
  * back at its original FIFO position; `calledAt` is cleared and `recoveredAt` recorded.
  *
- * Locks the queue row first (the same lock `joinQueue` takes), then the entry, so a return and a join
- * by the same customer to the same queue are serialized and cannot leave two active entries.
+ * Locks the customer's user row, then the queue row, then the entry: the same order `joinQueue` uses
+ * since BR-06 (Lab 7), so a return and a join by the same customer are serialized. A return to the same
+ * queue cannot leave two active entries there (BR-05), and a return cannot push the customer past the
+ * cross-queue cap (BR-06, F-08 contract v1.1 D-13).
  *
  * - Missing entry: 404 RESOURCE_NOT_FOUND
  * - Operator not assigned: 403 FORBIDDEN
  * - Status is not NO_SHOW: 409 INVALID_STATE_TRANSITION
  * - Already returned once (noShowCount 2): 409 RECOVERY_LIMIT_REACHED
  * - Customer has another active entry in the queue: 409 DUPLICATE_ACTIVE_ENTRY
+ * - Customer already holds MAX_ACTIVE_ENTRIES_PER_CUSTOMER active entries: 409 MAX_ACTIVE_ENTRIES_REACHED
  */
 export async function recoverNoShowEntry(operatorId: string, entryId: string): Promise<SerializedQueueEntry> {
   try {
     return await prisma.$transaction(
       async (tx) => {
-        const found = await tx.queueEntry.findUnique({ where: { id: entryId }, select: { serviceQueueId: true } });
+        const found = await tx.queueEntry.findUnique({
+          where: { id: entryId },
+          select: { serviceQueueId: true, customerId: true },
+        });
         if (!found) {
           throw new AppError(404, 'RESOURCE_NOT_FOUND', 'Queue entry not found.');
         }
 
+        // BR-06: lock the customer first, exactly as joinQueue does, so the cap count below cannot race a join.
+        await tx.$queryRaw`
+          SELECT id FROM "User" WHERE id = ${found.customerId}::uuid FOR NO KEY UPDATE
+        `;
         await tx.$queryRaw`
           SELECT "id" FROM "ServiceQueue" WHERE "id" = ${found.serviceQueueId}::uuid FOR UPDATE
         `;
@@ -376,6 +387,21 @@ export async function recoverNoShowEntry(operatorId: string, entryId: string): P
         });
         if (otherActive) {
           throw new AppError(409, 'DUPLICATE_ACTIVE_ENTRY', 'The customer already has another active entry in this queue.');
+        }
+
+        // BR-06 after BR-05, as on join. The entry itself is NO_SHOW, so it is not counted.
+        const activeCount = await tx.queueEntry.count({
+          where: {
+            customerId: entry.customerId,
+            status: { in: [QueueStatus.WAITING, QueueStatus.CALLED, QueueStatus.SERVING] },
+          },
+        });
+        if (activeCount >= MAX_ACTIVE_ENTRIES_PER_CUSTOMER) {
+          throw new AppError(
+            409,
+            'MAX_ACTIVE_ENTRIES_REACHED',
+            `The customer already holds ${MAX_ACTIVE_ENTRIES_PER_CUSTOMER} active queue entries, so this entry cannot be returned now.`
+          );
         }
 
         const updated = await tx.queueEntry.update({

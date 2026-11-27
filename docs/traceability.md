@@ -1,6 +1,8 @@
 # Traceability Matrix
 
-This document maps the Sprint 1 baseline requirements to their responsible features, acceptance criteria, and planned verification tests. Test IDs are plans, not evidence that tests have passed. Feature titles and sprint assignments are aligned with [features.md](./features.md).
+> **Version:** 1.1 | **Last Updated:** 2026-11-27 | **Sprint 1 Baseline:** commit `e304cd9` (`main`), deployed revision `qms-00005-5kz` | **Change Ref:** Issue #51 (Lab 7 Part A — BR-06)
+
+This document maps the Sprint 1 baseline requirements (and approved Lab 7 changes) to their responsible features, acceptance criteria, and verification tests. Feature titles and sprint assignments are aligned with [features.md](./features.md).
 
 ## Functional Requirements Traceability
 
@@ -17,7 +19,7 @@ This document maps the Sprint 1 baseline requirements to their responsible featu
 | FR-09 | F-05 | 1 | AC-11, AC-12, AC-13 | FLOW-001–FLOW-003, CONCURRENCY-003 |
 | FR-10 | F-05 | 1 | AC-14 | FLOW-004, FLOW-005 |
 | FR-11 | F-05 | 1 | AC-15 | FLOW-006, FLOW-007 |
-| FR-12 | F-03, F-04, F-05 | 1 | AC-07, AC-13, AC-16 | API-001, QUEUE-003, QUEUE-004, FLOW-005, FLOW-007, CONCURRENCY-004 |
+| FR-12 | F-03, F-04, F-05 | 1 | AC-07, AC-13, AC-16; CR51-AC1–CR51-AC4 | API-001, QUEUE-003, QUEUE-004, QUEUE-009, QUEUE-010, QUEUE-011, FLOW-005, FLOW-007, CONCURRENCY-004, CONCURRENCY-005, UI-002 |
 | FR-13 | F-01, F-04, F-05 | 1 | AC-08, AC-15 | QUEUE-002, FLOW-002, FLOW-004, FLOW-006, REL-001 |
 
 F-06 is the cross-cutting verification responsibility for this entire baseline; feature ownership above identifies the features that establish each requirement.
@@ -31,7 +33,7 @@ F-06 is the cross-cutting verification responsibility for this entire baseline; 
 | BR-03 | Queue-number generation uses a database transaction and row lock | F-01, F-03 | AC-09 | NUMBER-002, CONCURRENCY-001 |
 | BR-04 | Queue numbers do not reset during Sprint 1 | F-03 | AC-08, AC-09 | NUMBER-001 |
 | BR-05 | At most one active entry per customer per queue; completed entries may be rejoined | F-04 | AC-07, AC-08 | QUEUE-003, QUEUE-005, CONCURRENCY-002 |
-| BR-06 | A customer may join multiple queues simultaneously | F-04 | AC-07 | QUEUE-008 |
+| BR-06 | A customer may hold at most 2 active entries (`WAITING`, `CALLED`, `SERVING`) across all queues simultaneously; 3rd join rejected with `409 MAX_ACTIVE_ENTRIES_REACHED` (Issue #51) | F-04 | AC-07; CR51-AC1, CR51-AC2, CR51-AC3, CR51-AC4 | QUEUE-008, QUEUE-009, QUEUE-010, QUEUE-011, CONCURRENCY-005, UI-002 |
 | BR-07 | Customer reads are self-scoped and operators are restricted to assigned queues | F-02, F-04, F-05 | AC-04, AC-05, AC-10 | RBAC-004, RBAC-005, QUEUE-006 |
 | BR-08 | Only OPEN queues appear in the customer catalog and may be joined | F-03, F-04 | AC-06, AC-07 | QUEUE-001, QUEUE-004 |
 | BR-09 | Lifecycle is `WAITING -> CALLED -> SERVING -> COMPLETED` with no alternate transitions | F-05 | AC-12, AC-14, AC-15, AC-16 | FLOW-002, FLOW-004, FLOW-005, FLOW-006, FLOW-007 |
@@ -108,7 +110,9 @@ These features are intentionally deferred from Sprint 1. Their future-specific r
 
 ### Approved Changes
 
-No approved requirement changes were recorded during this update.
+| Date | Issue / CR | Baseline Ref | Summary | Updated Contracts & Tests |
+|---|---|---|---|---|
+| 2026-11-27 | Issue #51 (Lab 7 Part A — BR-06) | Commit `e304cd9` (`main`), Cloud Run revision `qms-00005-5kz` | Updated `BR-06` from unlimited simultaneous queues to at most 2 active entries (`WAITING`, `CALLED`, `SERVING`) per customer across all queues (`409 MAX_ACTIVE_ENTRIES_REACHED`); preserved `BR-05` (`409 DUPLICATE_ACTIVE_ENTRY`). | [srs.md](./srs.md) (v1.1), [features/sprint-1-core-queue.md](./features/sprint-1-core-queue.md) (v1.1), [system-sds.md](./system-sds.md) (v1.1), [api-spec.md](./sprints/sprint-1/api-spec.md) (v1.1), [ui-spec.md](./sprints/sprint-1/ui-spec.md) (v1.1), [tests.md](./sprints/sprint-1/tests.md) (v1.1: `QUEUE-009`–`QUEUE-011`, `CONCURRENCY-005`, `UI-002`), [labs/lab-07/impact-analysis.md](./labs/lab-07/impact-analysis.md) |
 
 *Rev. 2026-11-27:* the F-07 change below is proposed in contract v1 and is **pending review** by @Khwanklao. It is not yet an approved change.
 
@@ -170,6 +174,7 @@ Contract v1 (2026-11-27, issue #41). Every result below is `planned` until the t
 | BR-16 | F-08 | 2 | AC-27–AC-30 | NOSHOW-001, NOSHOW-005–NOSHOW-009 | same | passed (37fd6c0) | v1 |
 | BR-17 | F-08 | 2 | AC-25, AC-28, AC-29, AC-31 | NOSHOW-002, NOSHOW-006, NOSHOW-007, NOSHOW-008, NOSHOW-011 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
 | BR-05 (rev. 3.0) | F-04, F-08 | 2 | AC-30, AC-32 | NOSHOW-009, NOSHOW-014 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-16 (rev. 4.5), BR-06 | F-08, Lab 7 | 2 | AC-45 | NOSHOW-021, NOSHOW-022, NOSHOW-023 | `server/tests/f08-no-show-recovery.test.ts`, `client/src/test/f08-noShow.test.tsx` | passed (4c6c7a7) | v1.1 |
 | BR-09 (rev. 3.0) | F-05, F-08 | 2 | AC-26, AC-29 | NOSHOW-001, NOSHOW-003, NOSHOW-007, NOSHOW-020 | `server/tests/f08-no-show-rule.test.ts`, `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
 | BR-01, BR-10 (F-05 cross-feature) | F-05, F-08 | 2 | AC-28, AC-31 | NOSHOW-006, NOSHOW-011 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
 | BR-13 (F-07 cross-feature) | F-07, F-08 | 2 | AC-30 | NOSHOW-010 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
@@ -194,6 +199,7 @@ Contract v1 (2026-11-27, issue #41). Every result below is `planned` until the t
 | AC-32 | NOSHOW-012, NOSHOW-013, NOSHOW-014 | passed (37fd6c0) |
 | AC-33 | NOSHOW-015, NOSHOW-017, NOSHOW-019 | passed (37fd6c0) |
 | AC-34 | NOSHOW-016, NOSHOW-018 | passed (37fd6c0) |
+| AC-45 | NOSHOW-021, NOSHOW-022, NOSHOW-023 | passed (4c6c7a7) |
 
 ## Sprint 2 — F-09 Multi-counter Support Traceability
 

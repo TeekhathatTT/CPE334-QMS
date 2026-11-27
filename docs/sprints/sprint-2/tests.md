@@ -12,6 +12,7 @@
 | 3.2 | 2026-11-27 | F-09 contract v1.2 alignment: COUNTER-004 expects `404 RESOURCE_NOT_FOUND` for an unknown valid UUIDv4 `queueId` (matching existing `requireQueueAssignment` middleware). |
 | 3.3 | 2026-11-27 | F-09 green run executed on `feature/sprint2/42-multi-counter-impl`: §8.1 status column and new §8.5 hold actual results (Server 18/18 files / 236 tests, Client 8/8 files / 120 tests, E2E 21/21 Chromium, PERF-S2-003 5/5 PASS). Notes the Option A selector updates to 6 existing E2E specs for `Counter 1`. |
 | 3.4 | 2026-11-27 | F-09 contract v1.3 & final green run (implementation PR review fixes): adds `COUNTER-019` (zero-usable-counter legacy fallback E2E), expands `COUNTER-013` with `ON UPDATE RESTRICT` (`23503` + `pg_constraint`) and `provision:counters` → `seed` idempotency, expands `COUNTER-014` with loading/initial-error/poll-error Retry and `403`/`409` refetch checks (20 F-09 client cases total), and updates §8.5 execution results (Server 18/18 / 236 tests, Client 8/8 / 125 tests, E2E 22/22 Chromium). |
+| 3.5 | 2026-11-27 | F-08 follows BR-06 (SRS rev. 4.5): adds NOSHOW-021 – NOSHOW-023 to §7.1 and AC-45 to §7.2. Executed: red `b0ebcb7`, green `4c6c7a7` (§7.5 file table). (Numbered 3.5 because the F-09 implementation PR uses up to 3.4.) |
 
 This document is the plan for verifying F-07. It is not evidence that anything passed. A test counts as passed only after it has been executed and its raw output saved under `docs/sprints/sprint-2/evidence/`. Requirements: [SRS](../../srs.md) v2.0 §10 (AC-17–AC-24). API: [api-spec.md](./api-spec.md). UI: [ui-spec.md](./ui-spec.md). Design: [F-07 feature SDS](../../features/sprint-2-f07-customer-cancellation.md).
 
@@ -161,6 +162,9 @@ Helper used below: "A is called" means operator1 sends Call Next on General Inqu
 | NOSHOW-018 | E2E: customer sees No-show, then Waiting after return | E2E | customer1 joined, called and marked no-show through the API | customer1 opens the entry detail page; operator1 returns it through the API; Refresh | page shows "No-show", "Missed:" and the first message, no Leave queue button; after Refresh "Waiting", "Returned to queue:" and the Leave queue button | AC-34 | `e2e/tests/f08-no-show.spec.ts` | **passed** (37fd6c0) |
 | NOSHOW-019 | E2E: keyboard only and responsive | E2E | entries in Waiting, Active (`CALLED`) and No-show sections | keyboard only: Tab to Mark no-show, Enter; Tab to Return to queue, Enter; then 360 × 800 and 1280 × 800 | both actions succeed with the keyboard alone; no page-level horizontal overflow at either width | AC-33 | `e2e/tests/f08-no-show.spec.ts` | **passed** (37fd6c0) |
 | NOSHOW-020 | Start and Complete reject NO_SHOW | API+DB (cross-feature F-05) | A `NO_SHOW` | operator1 `start` and `complete` A | both `409 INVALID_STATE_TRANSITION`; A unchanged | AC-26 | `server/tests/f08-no-show-recovery.test.ts` | **passed** (37fd6c0) |
+| NOSHOW-021 | Return is rejected at the BR-06 cap, then allowed once a slot is free | API+DB | customer1 joins Q1 (A) and two extra OPEN queues Q2, Q3 created by the test with operator1 assigned to Q1; A called and marked `NO_SHOW`; customer1 joins Q2 and Q3 (2 active) | operator1 `recover` A; then complete customer1's Q2 entry; `recover` A again | first: `409 MAX_ACTIVE_ENTRIES_REACHED`, A unchanged (`NO_SHOW`, count 1, `recoveredAt` NULL); second: `200`, A `WAITING`; customer1 never has more than 2 active entries | AC-45 | `server/tests/f08-no-show-recovery.test.ts` | **passed** (4c6c7a7; red b0ebcb7) |
+| NOSHOW-022 | Race: return vs join of a third queue by the same customer | API+DB concurrency | per round: A (customer1, Q1) `NO_SHOW` count 1, customer1 active in Q2; 10 rounds | operator1 `recover` A and customer1 `join` Q3 in parallel | each round: exactly one succeeds and the other gets `409 MAX_ACTIVE_ENTRIES_REACHED`; customer1 has exactly 2 active entries; no deadlock | AC-45 | `server/tests/f08-no-show-recovery.test.ts` | **passed** (4c6c7a7; red b0ebcb7) |
+| NOSHOW-023 | Operator message for a return blocked by the cap | Client | mocked API: Return to queue returns `409 MAX_ACTIVE_ENTRIES_REACHED` | render `OperatorQueueDetailPage`, click Return to queue | alert shows "This customer already has 2 active queue entries, so this entry cannot be returned right now."; the entries list is fetched again | AC-45 | `client/src/test/f08-noShow.test.tsx` | **passed** (4c6c7a7; red b0ebcb7) |
 | REG-S2-002 | Sprint 1 and F-07 regression unchanged | All | none | `npm run test`, `npm run test:client`, `npm run test:e2e`, server and client typecheck | all Sprint 1 and F-07 tests pass with no existing test file edited | AC-01–AC-24 | existing `server/tests/*.test.ts`, `client/src/test/*.test.tsx`, `e2e/tests/*.spec.ts` | **passed** (37fd6c0) |
 | PERF-S2-002 | NFR-04 for F-08 | Performance (standalone script) | 1,000 `WAITING` entries in the OPEN queue; PERF-001 method | 1. Call Next + mark no-show for 105 entries (only no-show timed); 2. operator list with 105 `NO_SHOW` rows; 3. recover the 105 entries; 4. own entry detail with `NO_SHOW` rows in the queue | p95 ≤ 1,000 ms for the mutations, ≤ 500 ms for reads; functional checks: every response has the expected status | NFR-04 (operations of AC-25, AC-28, AC-31) | `server/tests/nfr/perf-s2-002-no-show.ts` (`npm run test:perf:f08 --workspace=server`) | **passed** (run 2026-11-27 on the `37fd6c0` code, see §7.5) |
 
@@ -178,6 +182,7 @@ Helper used below: "A is called" means operator1 sends Call Next on General Inqu
 | AC-32 | NOSHOW-012, NOSHOW-013, NOSHOW-014 |
 | AC-33 | NOSHOW-015, NOSHOW-017, NOSHOW-019 |
 | AC-34 | NOSHOW-016, NOSHOW-018 |
+| AC-45 | NOSHOW-021, NOSHOW-022, NOSHOW-023 |
 
 ### 7.3 Row invariants asserted after every F-08 API+DB scenario
 
@@ -231,6 +236,8 @@ Actual test files:
 | NOSHOW-002 – NOSHOW-014, NOSHOW-020 | `server/tests/f08-no-show-recovery.test.ts` | `NOSHOW-0NN (AC-NN): ...` (16 tests) |
 | NOSHOW-015, NOSHOW-016 | `client/src/test/f08-noShow.test.tsx` | `F-08 NOSHOW-015: ...`, `F-08 NOSHOW-016: ...` (14 cases) |
 | NOSHOW-017 – NOSHOW-019 | `e2e/tests/f08-no-show.spec.ts` | `NOSHOW-017: ...` – `NOSHOW-019: ...` |
+| NOSHOW-021, NOSHOW-022 | `server/tests/f08-no-show-recovery.test.ts` | `NOSHOW-021 (AC-45): ...`, `NOSHOW-022 (AC-45): ...` (red `b0ebcb7`, green `4c6c7a7`; evidence `f08-br06-red-run.txt`, `f08-br06-green-run.txt`) |
+| NOSHOW-023 | `client/src/test/f08-noShow.test.tsx` | `F-08 NOSHOW-023: ...` (same commits and evidence) |
 | PERF-S2-002 | `server/tests/nfr/perf-s2-002-no-show.ts` | — |
 | REG-S2-002 | existing Sprint 1 and F-07 suites (no file edited) | — |
 

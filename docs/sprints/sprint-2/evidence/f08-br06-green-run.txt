@@ -1,0 +1,77 @@
+# F-08 + BR-06 green run (NOSHOW-021 - NOSHOW-023) and regression
+# Implementation in the working tree on top of b0ebcb7 (red tests); committed right after this run
+# Date: 2026-11-27T15:18:54Z
+
+$ (server/) npm run typecheck
+> qms-server@1.0.0 typecheck
+> tsc --noEmit && tsc --project tsconfig.test.json --noEmit
+
+
+$ (client/) npx tsc --noEmit -p .
+exit 0
+
+$ (server/) npx vitest run tests/f08-no-show-recovery.test.ts -t "NOSHOW-02[12]"
+
+ RUN  v2.1.9 C:/Users/UNS_CT/Desktop/CPE_2569/CPE334/Lab5/QMS/qms/server
+
+stdout | tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-022 (AC-45): a return and a join of a third queue in parallel, 10 rounds: never 3 active entries
+NOSHOW-022 outcomes: return won 1, join won 9
+
+ ✓ tests/f08-no-show-recovery.test.ts (18 tests | 16 skipped) 2589ms
+   ✓ F-08: no-show handling and recovery > NOSHOW-021 (AC-45): a return is rejected at the BR-06 cap and allowed once a slot is free 959ms
+   ✓ F-08: no-show handling and recovery > NOSHOW-022 (AC-45): a return and a join of a third queue in parallel, 10 rounds: never 3 active entries 1604ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed | 16 skipped (18)
+   Start at  22:19:16
+   Duration  4.32s (transform 300ms, setup 0ms, collect 1.16s, tests 2.59s, environment 0ms, prepare 188ms)
+
+
+$ (client/) npx vitest run src/test/f08-noShow.test.tsx -t "NOSHOW-023"
+
+ RUN  v2.1.9 C:/Users/UNS_CT/Desktop/CPE_2569/CPE334/Lab5/QMS/qms/client
+
+ ✓ src/test/f08-noShow.test.tsx (15 tests | 14 skipped) 853ms
+   ✓ F-08 NOSHOW-023: return blocked by the BR-06 cap (AC-45) > Return to queue on 409 MAX_ACTIVE_ENTRIES_REACHED shows the cap message and reloads the list 847ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 14 skipped (15)
+   Start at  22:19:24
+   Duration  9.13s (transform 970ms, setup 1.77s, collect 1.98s, tests 853ms, environment 2.58s, prepare 279ms)
+
+
+$ npm test   (full server suite, real PostgreSQL)
+ ✓ tests/queue-registration.test.ts (32 tests) 18248ms
+ ✓ tests/integration-sprint1.test.ts (9 tests) 8999ms
+ ✓ tests/operator-workflow.test.ts (18 tests) 14364ms
+stdout | tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-022 (AC-45): a return and a join of a third queue in parallel, 10 rounds: never 3 active entries
+NOSHOW-022 outcomes: return won 0, join won 10
+ ✓ tests/f08-no-show-recovery.test.ts (18 tests) 16559ms
+   ✓ F-08: no-show handling and recovery > NOSHOW-020 (AC-26): Start and Complete reject a NO_SHOW entry 549ms
+   ✓ F-08: no-show handling and recovery > NOSHOW-021 (AC-45): a return is rejected at the BR-06 cap and allowed once a slot is free 724ms
+   ✓ F-08: no-show handling and recovery > NOSHOW-022 (AC-45): a return and a join of a third queue in parallel, 10 rounds: never 3 active entries 1468ms
+ ✓ tests/f07-customer-cancellation.test.ts (15 tests) 10426ms
+ ✓ tests/foundation.test.ts (16 tests) 369ms
+ ✓ tests/auth.test.ts (18 tests) 2249ms
+ ✓ tests/seed.test.ts (7 tests) 864ms
+ ✓ tests/rbac-middleware.test.ts (9 tests) 3286ms
+ ✓ tests/csrf.test.ts (6 tests) 1012ms
+ ✓ tests/join-csrf.test.ts (6 tests) 1881ms
+ ✓ tests/health.test.ts (7 tests) 139ms
+ ✓ tests/static-client.test.ts (10 tests) 165ms
+ ✓ tests/config.test.ts (9 tests) 6ms
+ ✓ tests/f08-no-show-rule.test.ts (25 tests) 9ms
+ ✓ tests/f07-cancel-rule.test.ts (6 tests) 6ms
+ Test Files  16 passed (16)
+      Tests  211 passed (211)
+
+$ npm run test:client
+ ✓ src/test/integration-guards.test.tsx (6 tests) 1408ms
+ ✓ src/test/entryDetail.test.tsx (17 tests) 2335ms
+ ✓ src/test/operator.test.tsx (13 tests) 3519ms
+ ✓ src/test/f08-noShow.test.tsx (15 tests) 3725ms
+ ✓ src/test/f07-leaveQueue.test.tsx (14 tests) 3953ms
+ ✓ src/test/auth.test.tsx (15 tests) 4878ms
+ ✓ src/test/customer.test.tsx (27 tests) 5836ms
+ Test Files  7 passed (7)
+      Tests  107 passed (107)

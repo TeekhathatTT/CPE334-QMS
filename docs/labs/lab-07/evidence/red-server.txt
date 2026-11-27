@@ -1,0 +1,133 @@
+# Lab 7 Part B (#52) RED run - server
+# Tested implementation commit: aa1c0fa (lab7-staging, code identical to Sprint 1 baseline e304cd9 for server/ and client/)
+# Test files: working tree with the new BR-06 tests applied on top of aa1c0fa
+# Command: cd server && npx vitest run tests/queue-registration.test.ts
+# Node v22.20.0 | vitest/2.1.9 win32-x64 node-v22.20.0 | PostgreSQL 16.15 | 2026-11-27T05:05:07Z
+
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 C:/Users/UNS_CT/Desktop/CPE_2569/CPE334/Lab5/QMS/qms/server
+
+stderr | tests/queue-registration.test.ts > Issue #4: Service Queue Creation & Queue Number Generation > 2. Normal Queue Registration (POST /api/queues/:queueId/entries) > rolls back lastQueueNumber atomically when entry creation fails inside the transaction (NUMBER-002)
+[Unhandled Error] PrismaClientKnownRequestError: 
+Invalid `prisma.queueEntry.create()` invocation:
+
+
+Unique constraint failed on the fields: (`serviceQueueId`,`queueNumber`)
+    at $n.handleRequestError (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at l (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at __vite_ssr_import_1__.prisma.$transaction.maxWait (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\server\src\services\queueService.ts:128:25)
+    at Proxy._transactionWithCallback (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:130:8000)
+    at Module.joinQueue (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\server\src\services\queueService.ts:83:19)
+    at C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\server\src\routes\queues.ts:47:21 {
+  code: 'P2002',
+  clientVersion: '5.22.0',
+  meta: {
+    modelName: 'QueueEntry',
+    target: [ 'serviceQueueId', 'queueNumber' ]
+  }
+}
+
+ ❯ tests/queue-registration.test.ts (32 tests | 6 failed) 5535ms
+   × Issue #4: Service Queue Creation & Queue Number Generation > 3b. Lab 7 BR-06: at most 2 active entries across all queues (Issue #52) > rejects a 3rd-queue join with 409 MAX_ACTIVE_ENTRIES_REACHED when holding WAITING + WAITING, with no DB write (QUEUE-009, CR51-AC2) 186ms
+     → expected 201 to be 409 // Object.is equality
+   × Issue #4: Service Queue Creation & Queue Number Generation > 3b. Lab 7 BR-06: at most 2 active entries across all queues (Issue #52) > rejects a 3rd-queue join with 409 MAX_ACTIVE_ENTRIES_REACHED when holding CALLED + WAITING, with no DB write (QUEUE-009, CR51-AC2) 183ms
+     → expected 201 to be 409 // Object.is equality
+   × Issue #4: Service Queue Creation & Queue Number Generation > 3b. Lab 7 BR-06: at most 2 active entries across all queues (Issue #52) > rejects a 3rd-queue join with 409 MAX_ACTIVE_ENTRIES_REACHED when holding SERVING + CALLED, with no DB write (QUEUE-009, CR51-AC2) 178ms
+     → expected 201 to be 409 // Object.is equality
+   × Issue #4: Service Queue Creation & Queue Number Generation > 3b. Lab 7 BR-06: at most 2 active entries across all queues (Issue #52) > the cap is per customer: another customer can still join while CUSTOMER1 is at the cap (QUEUE-009 boundary) 256ms
+     → expected 201 to be 409 // Object.is equality
+   × Issue #4: Service Queue Creation & Queue Number Generation > 3b. Lab 7 BR-06: at most 2 active entries across all queues (Issue #52) > allows joining a new OPEN queue after one of 2 active entries becomes COMPLETED (QUEUE-010, CR51-AC3) 196ms
+     → expected 201 to be 409 // Object.is equality
+   × Issue #4: Service Queue Creation & Queue Number Generation > 3b. Lab 7 BR-06: at most 2 active entries across all queues (Issue #52) > concurrent joins to 2 distinct queues with 1 active entry: exactly one 201 and one 409, never 3 active (CONCURRENCY-005) 206ms
+     → expected [ 201, 201 ] to deeply equal [ 201, 409 ]
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/queue-registration.test.ts > Issue #4: Service Queue Creation & Queue Number Generation > 3b. Lab 7 BR-06: at most 2 active entries across all queues (Issue #52) > rejects a 3rd-queue join with 409 MAX_ACTIVE_ENTRIES_REACHED when holding WAITING + WAITING, with no DB write (QUEUE-009, CR51-AC2)
+ FAIL  tests/queue-registration.test.ts > Issue #4: Service Queue Creation & Queue Number Generation > 3b. Lab 7 BR-06: at most 2 active entries across all queues (Issue #52) > rejects a 3rd-queue join with 409 MAX_ACTIVE_ENTRIES_REACHED when holding CALLED + WAITING, with no DB write (QUEUE-009, CR51-AC2)
+ FAIL  tests/queue-registration.test.ts > Issue #4: Service Queue Creation & Queue Number Generation > 3b. Lab 7 BR-06: at most 2 active entries across all queues (Issue #52) > rejects a 3rd-queue join with 409 MAX_ACTIVE_ENTRIES_REACHED when holding SERVING + CALLED, with no DB write (QUEUE-009, CR51-AC2)
+AssertionError: expected 201 to be 409 // Object.is equality
+
+- Expected
++ Received
+
+- 409
++ 201
+
+ ❯ tests/queue-registration.test.ts:413:28
+    411|         const res = await join(custAuth, q3.id);
+    412| 
+    413|         expect(res.status).toBe(409);
+       |                            ^
+    414|         expect(res.body.data).toBeUndefined();
+    415|         expect(res.body.error.code).toBe('MAX_ACTIVE_ENTRIES_REACHED');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  tests/queue-registration.test.ts > Issue #4: Service Queue Creation & Queue Number Generation > 3b. Lab 7 BR-06: at most 2 active entries across all queues (Issue #52) > the cap is per customer: another customer can still join while CUSTOMER1 is at the cap (QUEUE-009 boundary)
+AssertionError: expected 201 to be 409 // Object.is equality
+
+- Expected
++ Received
+
+- 409
++ 201
+
+ ❯ tests/queue-registration.test.ts:436:49
+    434|       expect((await join(cust1, OPEN_QUEUE_ID)).status).toBe(201);
+    435|       expect((await join(cust1, q2.id)).status).toBe(201);
+    436|       expect((await join(cust1, q3.id)).status).toBe(409);
+       |                                                 ^
+    437| 
+    438|       const res = await join(cust2, q3.id);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  tests/queue-registration.test.ts > Issue #4: Service Queue Creation & Queue Number Generation > 3b. Lab 7 BR-06: at most 2 active entries across all queues (Issue #52) > allows joining a new OPEN queue after one of 2 active entries becomes COMPLETED (QUEUE-010, CR51-AC3)
+AssertionError: expected 201 to be 409 // Object.is equality
+
+- Expected
++ Received
+
+- 409
++ 201
+
+ ❯ tests/queue-registration.test.ts:453:30
+    451| 
+    452|       const blocked = await join(custAuth, q3.id);
+    453|       expect(blocked.status).toBe(409);
+       |                              ^
+    454|       expect(blocked.body.error.code).toBe('MAX_ACTIVE_ENTRIES_REACHED…
+    455| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  tests/queue-registration.test.ts > Issue #4: Service Queue Creation & Queue Number Generation > 3b. Lab 7 BR-06: at most 2 active entries across all queues (Issue #52) > concurrent joins to 2 distinct queues with 1 active entry: exactly one 201 and one 409, never 3 active (CONCURRENCY-005)
+AssertionError: expected [ 201, 201 ] to deeply equal [ 201, 409 ]
+
+- Expected
++ Received
+
+  Array [
+    201,
+-   409,
++   201,
+  ]
+
+ ❯ tests/queue-registration.test.ts:501:24
+    499| 
+    500|       const statuses = responses.map((r) => r.status).sort();
+    501|       expect(statuses).toEqual([201, 409]);
+       |                        ^
+    502|       const winner = responses.find((r) => r.status === 201)!;
+    503|       const loser = responses.find((r) => r.status === 409)!;
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ Test Files  1 failed (1)
+      Tests  6 failed | 26 passed (32)
+   Start at  12:04:40
+   Duration  6.67s (transform 217ms, setup 0ms, collect 809ms, tests 5.53s, environment 0ms, prepare 130ms)

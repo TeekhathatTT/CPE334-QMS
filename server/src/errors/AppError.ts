@@ -5,6 +5,7 @@ export type ErrorCode =
   | 'RESOURCE_NOT_FOUND'
   | 'QUEUE_NOT_AVAILABLE'
   | 'DUPLICATE_ACTIVE_ENTRY'
+  | 'MAX_ACTIVE_ENTRIES_REACHED'
   | 'INVALID_STATE_TRANSITION'
   | 'CONCURRENT_MODIFICATION'
   /** F-08: a NO_SHOW entry that was already returned to the queue once (BR-16). */

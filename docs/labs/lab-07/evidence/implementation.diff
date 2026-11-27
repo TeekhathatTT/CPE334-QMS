@@ -1,0 +1,107 @@
+diff --git a/client/src/components/customer/AvailableQueues.tsx b/client/src/components/customer/AvailableQueues.tsx
+index 2b302af..604780f 100644
+--- a/client/src/components/customer/AvailableQueues.tsx
++++ b/client/src/components/customer/AvailableQueues.tsx
+@@ -10,6 +10,7 @@ import type { Loadable } from './loadable';
+ /** Issue #5 decision 7: join error codes mapped to safe text. Server messages are never shown. */
+ export const JOIN_ERROR_TEXT = {
+   DUPLICATE_ACTIVE_ENTRY: 'You already have an active entry in this queue.',
++  MAX_ACTIVE_ENTRIES_REACHED: 'You can hold at most 2 active queue entries at the same time.',
+   QUEUE_NOT_AVAILABLE: 'This queue is not available right now.',
+   RESOURCE_NOT_FOUND: 'This queue is no longer available.',
+   FORBIDDEN: "We couldn't verify this request. Please refresh the page or sign in again.",
+@@ -27,6 +28,9 @@ function describeJoinFailure(err: unknown): JoinFailure {
+     if (err.status === 409 && err.code === 'DUPLICATE_ACTIVE_ENTRY') {
+       return { text: JOIN_ERROR_TEXT.DUPLICATE_ACTIVE_ENTRY, refetchQueues: false };
+     }
++    if (err.status === 409 && err.code === 'MAX_ACTIVE_ENTRIES_REACHED') {
++      return { text: JOIN_ERROR_TEXT.MAX_ACTIVE_ENTRIES_REACHED, refetchQueues: false };
++    }
+     if (err.status === 409 && err.code === 'QUEUE_NOT_AVAILABLE') {
+       return { text: JOIN_ERROR_TEXT.QUEUE_NOT_AVAILABLE, refetchQueues: true };
+     }
+diff --git a/client/src/test/customer.test.tsx b/client/src/test/customer.test.tsx
+index 61e48d2..f30805d 100644
+--- a/client/src/test/customer.test.tsx
++++ b/client/src/test/customer.test.tsx
+@@ -158,6 +158,8 @@ describe('Join queue', () => {
+ 
+   it.each([
+     [409, 'DUPLICATE_ACTIVE_ENTRY', 'You already have an active entry in this queue.', false],
++    // UI-002 (Lab 7 BR-06, CR51-AC2): the 2-active-entry cap has its own safe copy.
++    [409, 'MAX_ACTIVE_ENTRIES_REACHED', 'You can hold at most 2 active queue entries at the same time.', false],
+     [409, 'QUEUE_NOT_AVAILABLE', 'This queue is not available right now.', true],
+     [404, 'RESOURCE_NOT_FOUND', 'This queue is no longer available.', true],
+     [403, 'FORBIDDEN', "We couldn't verify this request. Please refresh the page or sign in again.", false],
+diff --git a/server/src/errors/AppError.ts b/server/src/errors/AppError.ts
+index e28fc17..3bc9a64 100644
+--- a/server/src/errors/AppError.ts
++++ b/server/src/errors/AppError.ts
+@@ -5,6 +5,7 @@ export type ErrorCode =
+   | 'RESOURCE_NOT_FOUND'
+   | 'QUEUE_NOT_AVAILABLE'
+   | 'DUPLICATE_ACTIVE_ENTRY'
++  | 'MAX_ACTIVE_ENTRIES_REACHED'
+   | 'INVALID_STATE_TRANSITION'
+   | 'CONCURRENT_MODIFICATION'
+   | 'INTERNAL_ERROR';
+diff --git a/server/src/services/queueService.ts b/server/src/services/queueService.ts
+index 3406801..af3db71 100644
+--- a/server/src/services/queueService.ts
++++ b/server/src/services/queueService.ts
+@@ -78,10 +78,25 @@ export async function listOpenQueues(): Promise<QueueSummary[]> {
+   return queues.map(formatQueueSummary);
+ }
+ 
++/** BR-06 (Lab 7, Issue #51): active entries a customer may hold across all queues. */
++export const MAX_ACTIVE_ENTRIES_PER_CUSTOMER = 2;
++
++const ACTIVE_STATUSES = ['WAITING', 'CALLED', 'SERVING'] as const;
++
+ export async function joinQueue(customerId: string, queueId: string): Promise<SerializedQueueEntry> {
+   try {
+     const entry = await prisma.$transaction(
+       async (tx) => {
++        // BR-06: serialize joins by the same customer across distinct queues so two racing joins
++        // cannot both pass the active-entry count (system-sds §4.1). Lock order is always
++        // User -> ServiceQueue to avoid deadlocks. FOR NO KEY UPDATE does not conflict with the
++        // FOR KEY SHARE locks taken by FK inserts that reference this user (e.g. Session at login).
++        await tx.$queryRaw`
++          SELECT id FROM "User"
++          WHERE id = ${customerId}::uuid
++          FOR NO KEY UPDATE
++        `;
++
+         // Row-level lock on ServiceQueue to guarantee monotonic, non-duplicate queue numbers under concurrent load.
+         // We obtain clock_timestamp() AS "now" after acquiring the FOR UPDATE lock so that
+         // joinedAt reflects the exact lock acquisition order rather than transaction start time.
+@@ -108,14 +123,28 @@ export async function joinQueue(customerId: string, queueId: string): Promise<Se
+           where: {
+             customerId,
+             serviceQueueId: queueId,
+-            status: { in: ['WAITING', 'CALLED', 'SERVING'] },
++            status: { in: [...ACTIVE_STATUSES] },
+           },
+         });
+ 
++        // BR-05 is checked first so a same-queue duplicate keeps its own error (CR51-AC4).
+         if (existingActive) {
+           throw new AppError(409, 'DUPLICATE_ACTIVE_ENTRY', 'Customer already has an active entry in this queue.');
+         }
+ 
++        // BR-06: terminal entries (COMPLETED) do not count toward the cap.
++        const activeCount = await tx.queueEntry.count({
++          where: { customerId, status: { in: [...ACTIVE_STATUSES] } },
++        });
++
++        if (activeCount >= MAX_ACTIVE_ENTRIES_PER_CUSTOMER) {
++          throw new AppError(
++            409,
++            'MAX_ACTIVE_ENTRIES_REACHED',
++            `You may hold at most ${MAX_ACTIVE_ENTRIES_PER_CUSTOMER} active queue entries at the same time.`
++          );
++        }
++
+         const nextNumber = BigInt(queue.lastQueueNumber) + 1n;
+ 
+         await tx.serviceQueue.update({
