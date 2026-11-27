@@ -36,7 +36,7 @@ Out of scope:
 | Functional (unchanged, affected) | FR-07, FR-08, FR-09, FR-12, FR-13 | Own-entry reads return cancelled history; operator list and Call Next ignore `CANCELLED`; error contract reused; timestamps server-generated |
 | Business rules | BR-13 (new), BR-14 (new), BR-05 (rev 2.0), BR-09 (rev 2.0) | See [SRS §5](../srs.md#5-business-rules-and-decisions) |
 | Business rules (unchanged, verified) | BR-01, BR-02, BR-04, BR-07, BR-10, BR-11, BR-12 | |
-| Non-functional | NFR-02, NFR-03, NFR-05, NFR-06, NFR-08 | No new NFR. NFR-04 applies to the new mutation but is not re-measured in F-07 (see §13) |
+| Non-functional | NFR-02, NFR-03, NFR-04, NFR-05, NFR-06, NFR-08 | No new NFR. NFR-04 applies to the cancel mutation and is measured by PERF-S2-001 (rev. 2026-11-27, see §15) |
 | Acceptance criteria | AC-17 – AC-24 | [SRS §10](../srs.md#10-acceptance-criteria-sprint-2-f-07) |
 
 ## 3. Workflow
@@ -222,7 +222,8 @@ Changed:
 - [x] Green run saved (`docs/sprints/sprint-2/evidence/f07-green-run.txt`)
 - [x] Traceability, test spec and completion table updated with actual results and commit SHA
 - [ ] PR into `sprint2-staging` reviewed by @Khwanklao, CI green
-- [ ] Not part of F-07 DoD: NFR-04 p95 measurement of the cancel mutation (PERF-001 is not extended); production migration and release deploy
+- [x] NFR-04 p95 measured for the cancel mutation and the operations F-07 changed: PERF-S2-001 passed (cancel p95 16.4 ms ≤ 1,000 ms; `docs/sprints/sprint-2/evidence/perf-s2-001.txt`)
+- [ ] Not part of F-07 DoD: production migration and release deploy
 
 ## 14. Review notes (decisions to challenge)
 
@@ -236,3 +237,10 @@ Changed:
 | R-6 | DB invariant | No `CHECK` constraint for `CANCELLED` ⇔ `cancelledAt` in this migration (enum value cannot be used in the same transaction). Add it in a second migration? |
 | R-7 | Race contract | The losing Call Next returns `200`/`204`, not `409`. Is that the right reading of "exactly one wins"? |
 | R-8 | Migration order | Apply the migration before deploy; rollback below this release needs care once `CANCELLED` rows exist. |
+
+## 15. Revision history
+
+| Date | Section | Previous text (kept for the record) | New text / reason |
+|---|---|---|---|
+| 2026-11-27 | §2 Non-functional row | "NFR-02, NFR-03, NFR-05, NFR-06, NFR-08 · No new NFR. NFR-04 applies to the new mutation but is not re-measured in F-07 (see §13)" | NFR-04 added to the IDs; measured by PERF-S2-001. Reason: PR #56 review asked for NFR-04 evidence or a reason it does not apply. It does apply: the cancel endpoint is a mutation on the NFR-04 dataset. |
+| 2026-11-27 | §13 DoD | "[ ] Not part of F-07 DoD: NFR-04 p95 measurement of the cancel mutation (PERF-001 is not extended); production migration and release deploy" | Split: NFR-04 measurement done (PERF-S2-001 passed); production migration and release deploy still outside the F-07 DoD. PERF-001 itself is unchanged; PERF-S2-001 is a separate script with the same method. |

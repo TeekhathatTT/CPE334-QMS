@@ -6,6 +6,7 @@
 |---|---|---|---|
 | 1.0 | 2026-11-08 | Team | Sprint 1 baseline (FR-01–FR-13, BR-01–BR-12, NFR-01–NFR-08, AC-01–AC-16) |
 | 2.0 | 2026-11-27 | @TeekhathatTT (review: @Khwanklao, pending) | Sprint 2 F-07 contract v1: adds FR-14, BR-13, BR-14, AC-17–AC-24, §1.1 and §10; revises BR-05, BR-09, the CUSTOMER permission row and the transition table. The old text is kept in §11 Revision history. |
+| 2.0.1 | 2026-11-27 | @TeekhathatTT (review: @Khwanklao, pending) | Verification note only, no requirement changed: NFR-04 is measured for the F-07 cancel mutation and the operations F-07 changed (PERF-S2-001). See §11. |
 
 ## 1. Purpose and Scope
 
@@ -194,3 +195,4 @@ Sprint 1 acceptance criteria AC-01–AC-16 are referenced from §4 and mapped to
 | 2.0 | 2026-11-27 | §4 | — | Adds FR-14. |
 | 2.0 | 2026-11-27 | §5 transition table, §7 | — | Adds the `WAITING → CANCELLED` row and the two cancel error rows. |
 | 2.0 | 2026-11-27 | §1, §1.1, §9, §10 | §1 and §9 text unchanged | Adds the Sprint 2 scope note, §1.1, the Sprint 2 document links and the F-07 acceptance criteria. No NFR is added: NFR-02, NFR-03, NFR-05, NFR-06 and NFR-08 apply to the new behavior as written. NFR-04 also applies but is not re-measured in F-07. |
+| 2.0.1 | 2026-11-27 | §11 (row above), NFR-04 | "NFR-04 also applies but is not re-measured in F-07." | NFR-04 applies to the cancel mutation as written (it is a mutation on the seeded 1,000-entry dataset) and is now measured by PERF-S2-001 (`server/tests/nfr/perf-s2-001-cancel.ts`) with the same method and targets as PERF-001. The NFR-04 text and targets are unchanged. Reason: review of PR #56. |

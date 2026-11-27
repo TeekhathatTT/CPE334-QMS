@@ -17,5 +17,8 @@ Contract `f98c296` · red `477febb` · first fully green `61e9daf` · green evid
 | AC-23 Cancel vs Call Next race; double cancel | Conditional `UPDATE ... WHERE status = 'WAITING'` in one transaction | CANCEL-014 (15 rounds), CANCEL-020 (10 rounds) | passed at `61e9daf` | pending release |
 | AC-24 UI control, confirmation, busy, errors, keyboard, 360/1280 px | `client/src/components/customer/LeaveQueueControl.tsx`, `EntryDetailPage.tsx`, `StatusBadge.tsx`, `EntryTimestamps.tsx` | CANCEL-016 (client, 14 cases); CANCEL-017 – CANCEL-019 (E2E Chromium) | passed at `61e9daf` | pending release |
 | Regression (AC-01 – AC-16) | No Sprint 1 test edited | REG-S2-001: server 140, client 77, E2E 12 Sprint 1 tests inside the full green run | passed at `61e9daf` | pending release |
+| NFR-04 for F-07 (cancel, rejoin, Call Next, operator list and entry detail with cancelled rows) | No performance-specific code; conditional `UPDATE` by primary key in `cancelEntry` | PERF-S2-001 (`npm run test:perf:f07 --workspace=server`, 1,000-entry dataset, 100 timed requests per operation): cancel p95 16.4 ms, worst read p95 47.0 ms, worst mutation p95 17.9 ms ([evidence/perf-s2-001.txt](./evidence/perf-s2-001.txt)) | passed (run 2026-11-27 on the `61e9daf` code) | pending release |
 
-Not verified: Firefox/WebKit E2E for F-07; PERF-001 for the cancel mutation; the Cloud SQL migration and Cloud Run deployment.
+Not verified: Firefox/WebKit E2E for F-07; the Cloud SQL migration and Cloud Run deployment; latency on Cloud Run / Cloud SQL and under concurrent load.
+
+*Rev. 2026-11-27:* the NFR-04 row was added after PR #56 review. The previous "Not verified" line also listed "PERF-001 for the cancel mutation".

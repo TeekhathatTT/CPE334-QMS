@@ -4,6 +4,7 @@
 |---|---|---|
 | 1.0 | 2026-11-27 | F-07 contract v1: planned tests CANCEL-001 – CANCEL-020 and REG-S2-001. Nothing has been run yet. |
 | 1.1 | 2026-11-27 | Red and green runs executed; status column and §6 updated with actual results. Test definitions unchanged. |
+| 1.2 | 2026-11-27 | Adds PERF-S2-001 (NFR-04 for the cancel mutation and the operations F-07 changed) after PR #56 review. §5 first bullet revised (old text kept in §5). CANCEL-001 – CANCEL-020 unchanged. |
 
 This document is the plan for verifying F-07. It is not evidence that anything passed. A test counts as passed only after it has been executed and its raw output saved under `docs/sprints/sprint-2/evidence/`. Requirements: [SRS](../../srs.md) v2.0 §10 (AC-17–AC-24). API: [api-spec.md](./api-spec.md). UI: [ui-spec.md](./ui-spec.md). Design: [F-07 feature SDS](../../features/sprint-2-f07-customer-cancellation.md).
 
@@ -40,6 +41,7 @@ This document is the plan for verifying F-07. It is not evidence that anything p
 | CANCEL-019 | E2E: keyboard only and responsive | E2E | customer1 joined | keyboard-only: Tab to Leave queue, Enter, Escape, Enter, Tab to Yes, Enter; then at 360 × 800 and 1280 × 800 with the confirmation panel open | cancellation completes with the keyboard alone; no page-level horizontal overflow at either width | AC-24 | `e2e/tests/f07-cancellation.spec.ts` | **passed** (61e9daf) |
 | CANCEL-020 | Race: two cancels of the same entry | API+DB concurrency | customer1 `WAITING` entry, 10 rounds | two parallel cancels by customer1 | exactly one `200` and one `409` (`INVALID_STATE_TRANSITION` or `CONCURRENT_MODIFICATION`) per round; one `cancelledAt` value | AC-23 | `server/tests/f07-customer-cancellation.test.ts` | **passed** (61e9daf) |
 | REG-S2-001 | Sprint 1 regression unchanged | All | none | `npm run test`, `npm run test:client`, `npm run test:e2e`, server and client typecheck | all Sprint 1 tests pass with no Sprint 1 test file edited | AC-01–AC-16 | existing `server/tests/*.test.ts`, `client/src/test/*.test.tsx`, `e2e/tests/*.spec.ts` | **passed** (61e9daf) |
+| PERF-S2-001 | NFR-04 for F-07 | Performance (standalone script, not in `npm test`) | 1,000 WAITING entries (1,000 customers) in the OPEN queue; same method as PERF-001 (real app on a local port, real cookies + CSRF, sequential, 5 warm-ups + 100 timed requests per operation) | 1. cancel 105 different own WAITING entries (every 9th); 2. operator entry list; 3. own entry detail with 105 cancelled ahead; 4. rejoin by the 105 cancellers; 5. Call Next with cancelled entries ahead | p95 ≤ 1,000 ms for mutations (1, 4, 5) and ≤ 500 ms for reads (2, 3); functional checks inside the run: every cancel returns `CANCELLED`, list has no `CANCELLED` rows and 895 entries, `aheadCount` = 894, rejoin number > 1,000, first Call Next takes number 2 (number 1 is cancelled), no cancelled entry ever gets `calledAt` | NFR-04 (operations of AC-17, AC-21, AC-22) | `server/tests/nfr/perf-s2-001-cancel.ts` (`npm run test:perf:f07 --workspace=server`) | **passed** (run 2026-11-27, see §6) |
 
 The E2E forbidden paths (non-owner, operator) are covered at the API level in CANCEL-004 and CANCEL-005, not only by the UI hiding the button.
 
@@ -70,7 +72,8 @@ Plus: no two active (`WAITING`/`CALLED`/`SERVING`) rows for one `(customerId, se
 
 ## 5. Not planned in F-07
 
-- PERF-001 is not extended to the cancel mutation (NFR-04 is not re-measured for it).
+- *Rev. 1.2:* NFR-04 is measured for F-07 by the new PERF-S2-001. PERF-001 (`server/tests/nfr/perf-001.ts`) and its Sprint 1 evidence are unchanged. Previous text (v1.0): "PERF-001 is not extended to the cancel mutation (NFR-04 is not re-measured for it)."
+- Concurrent-load or throughput tests are not planned (same limit as PERF-001: sequential latency on one machine).
 - Firefox and WebKit E2E runs are optional (`npm run test:e2e:all-browsers`); the default run is Chromium.
 - Production database migration and release deploy are outside this feature's verification.
 
@@ -103,4 +106,18 @@ Actual test files and names:
 
 CANCEL-014 race outcomes (both are valid): in the first green run, cancel won 14 rounds and Call Next won 1. In the full green run, cancel won 15 and Call Next won 0. Each round asserts that exactly one transition was applied.
 
-Not run: Firefox and WebKit E2E, PERF-001 for the cancel mutation.
+Not run: Firefox and WebKit E2E. (v1.1 also listed "PERF-001 for the cancel mutation"; that is now covered by PERF-S2-001 below.)
+
+### 6.1 PERF-S2-001 / NFR-04 (measured)
+
+**PASSED.** Command: `npm run test:perf:f07 --workspace=server`. Run 2026-11-27 on the F-07 implementation (`61e9daf` code; the script itself added after `3e90e86`). Host: Windows 11, Intel i5-11400H ×12, 16 GiB RAM, Node 22.20.0; PostgreSQL 16.15 in Docker, `qms_test_db`. Raw output: [evidence/perf-s2-001.txt](./evidence/perf-s2-001.txt).
+
+| Operation | Kind | n | p50 ms | p95 ms | max ms | Target p95 | Result |
+|---|---|---|---|---|---|---|---|
+| `POST /api/me/queue-entries/:id/cancel` | mutation | 100 | 10.3 | 16.4 | 21.6 | ≤ 1,000 | PASS |
+| `GET /api/operator/queues/:id/entries` (CANCELLED filtered, 895 rows) | read | 100 | 27.1 | 47.0 | 50.8 | ≤ 500 | PASS |
+| `GET /api/me/queue-entries/:id` (105 CANCELLED ahead) | read | 100 | 4.9 | 6.7 | 8.8 | ≤ 500 | PASS |
+| `POST /api/queues/:id/entries` (rejoin after cancel) | mutation | 100 | 10.6 | 15.3 | 19.4 | ≤ 1,000 | PASS |
+| `POST /api/operator/queues/:id/call-next` (CANCELLED ahead) | mutation | 100 | 13.8 | 17.9 | 28.0 | ≤ 1,000 | PASS |
+
+Limits: one sequential run on one developer machine against a local database, like PERF-001. It says nothing about Cloud Run or Cloud SQL latency, or about concurrent load.
