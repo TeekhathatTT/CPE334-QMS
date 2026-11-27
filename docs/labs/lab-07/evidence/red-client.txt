@@ -1,0 +1,41 @@
+# Lab 7 Part B (#52) RED run - client
+# Tested implementation commit: aa1c0fa (lab7-staging, code identical to Sprint 1 baseline e304cd9 for server/ and client/)
+# Test files: working tree with the new BR-06 tests applied on top of aa1c0fa
+# Command: cd client && npx vitest run src/test/customer.test.tsx
+# Node v22.20.0 | vitest/2.1.9 win32-x64 node-v22.20.0 | PostgreSQL 16.15 | 2026-11-27T05:05:07Z
+
+
+ RUN  v2.1.9 C:/Users/UNS_CT/Desktop/CPE_2569/CPE334/Lab5/QMS/qms/client
+
+ ❯ src/test/customer.test.tsx (27 tests | 1 failed) 2495ms
+   × Join queue > maps 409 MAX_ACTIVE_ENTRIES_REACHED to safe text and keeps the buttons enabled 101ms
+     → expect(element).toHaveTextContent()
+
+Expected element to have text content:
+  You can hold at most 2 active queue entries at the same time.
+Received:
+  ⚠ Something went wrong. Please try again.
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/test/customer.test.tsx > Join queue > maps 409 MAX_ACTIVE_ENTRIES_REACHED to safe text and keeps the buttons enabled
+Error: expect(element).toHaveTextContent()
+
+Expected element to have text content:
+  You can hold at most 2 active queue entries at the same time.
+Received:
+  ⚠ Something went wrong. Please try again.
+ ❯ src/test/customer.test.tsx:175:46
+    173|     await userEvent.setup().click(await screen.findByRole('button', { …
+    174| 
+    175|     expect(await screen.findByRole('alert')).toHaveTextContent(text);
+       |                                              ^
+    176|     expect(screen.queryByText(/internal server detail/)).not.toBeInThe…
+    177|     expect(screen.getByRole('button', { name: `Join queue: ${OPEN_QUEU…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 26 passed (27)
+   Start at  12:04:48
+   Duration  6.12s (transform 223ms, setup 584ms, collect 484ms, tests 2.49s, environment 1.34s, prepare 129ms)
