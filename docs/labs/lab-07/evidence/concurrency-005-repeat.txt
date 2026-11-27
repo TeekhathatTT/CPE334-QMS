@@ -1,0 +1,10 @@
+# Lab 7 Part B (#52) CONCURRENCY-005 repeated 5x
+# Implementation commit: bfa2464 (tests from 2664740)
+# Command: for i in 1..5: cd server && npx vitest run tests/queue-registration.test.ts -t CONCURRENCY-005
+# Node v22.20.0 | vitest/2.1.9 win32-x64 node-v22.20.0 | Version 1.63.0 | PostgreSQL 16.15 | 2026-11-27T05:08:39Z
+
+      Tests  1 passed | 31 skipped (32)
+      Tests  1 passed | 31 skipped (32)
+      Tests  1 passed | 31 skipped (32)
+      Tests  1 passed | 31 skipped (32)
+      Tests  1 passed | 31 skipped (32)

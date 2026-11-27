@@ -1,0 +1,75 @@
+# Lab 7 Part B (#52) REGRESSION - full server suite
+# Implementation commit: bfa2464 (tests from 2664740)
+# Command: cd server && npx vitest run
+# Node v22.20.0 | vitest/2.1.9 win32-x64 node-v22.20.0 | Version 1.63.0 | PostgreSQL 16.15 | 2026-11-27T05:08:39Z
+
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 C:/Users/UNS_CT/Desktop/CPE_2569/CPE334/Lab5/QMS/qms/server
+
+stderr | tests/queue-registration.test.ts > Issue #4: Service Queue Creation & Queue Number Generation > 2. Normal Queue Registration (POST /api/queues/:queueId/entries) > rolls back lastQueueNumber atomically when entry creation fails inside the transaction (NUMBER-002)
+[Unhandled Error] PrismaClientKnownRequestError: 
+Invalid `prisma.queueEntry.create()` invocation:
+
+
+Unique constraint failed on the fields: (`serviceQueueId`,`queueNumber`)
+    at $n.handleRequestError (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at l (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at __vite_ssr_import_1__.prisma.$transaction.maxWait (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\server\src\services\queueService.ts:157:25)
+    at Proxy._transactionWithCallback (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:130:8000)
+    at Module.joinQueue (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\server\src\services\queueService.ts:88:19)
+    at C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\server\src\routes\queues.ts:47:21 {
+  code: 'P2002',
+  clientVersion: '5.22.0',
+  meta: {
+    modelName: 'QueueEntry',
+    target: [ 'serviceQueueId', 'queueNumber' ]
+  }
+}
+
+ ✓ tests/queue-registration.test.ts (32 tests) 5113ms
+ ✓ tests/integration-sprint1.test.ts (9 tests) 4277ms
+   ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 1. Authorization matrix over every protected endpoint (NFR-02, RBAC-001..005, AUTH-005) > rejects every invalid identity with 401 UNAUTHORIZED on every protected endpoint, with no DB change 762ms
+   ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 1. Authorization matrix over every protected endpoint (NFR-02, RBAC-001..005, AUTH-005) > enforces role and assignment rules with the exact status/code per endpoint (customer, other customer, assigned and unassigned operator) 551ms
+   ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 1. Authorization matrix over every protected endpoint (NFR-02, RBAC-001..005, AUTH-005) > allows the assigned operator to perform each mutation that the matrix rejected for everyone else 367ms
+   ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 2. CSRF matrix on every mutation (SEC-002): missing, wrong, and another session's token > rejects each bad token with 403 FORBIDDEN before any mutation (counter, rows and statuses unchanged) 553ms
+   ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 3. Cross-role business flow driven only through the API (FLOW-009/FLOW-010 at API level) > join -> duplicate/closed rejections -> FIFO call -> full lifecycle -> rejoin -> empty call-next, with consistent customer views 378ms
+   ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 4. Mixed concurrency with SQL invariants (NFR-03, CONCURRENCY-001..004 extensions) > joins racing call-next from two assigned operators: contiguous numbers, no double claim, invariants hold 655ms
+   ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 4. Mixed concurrency with SQL invariants (NFR-03, CONCURRENCY-001..004 extensions) > parallel duplicate joins from several customers at once: exactly one 201 each, counter equals customers 379ms
+   ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 4. Mixed concurrency with SQL invariants (NFR-03, CONCURRENCY-001..004 extensions) > start/complete storm across several entries from two operators: each transition happens once, invariants hold 447ms
+ ✓ tests/operator-workflow.test.ts (18 tests) 6314ms
+   ✓ Issue #6: Operator Queue Management Workflow > 1. Operator Assigned Queues (GET /api/operator/queues) > returns only service queues assigned to the authenticated operator 409ms
+   ✓ Issue #6: Operator Queue Management Workflow > 1. Operator Assigned Queues (GET /api/operator/queues) > includes CLOSED queues if assigned to the operator 337ms
+   ✓ Issue #6: Operator Queue Management Workflow > 1. Operator Assigned Queues (GET /api/operator/queues) > rejects CUSTOMER role with 403 FORBIDDEN and anonymous with 401 UNAUTHORIZED 324ms
+   ✓ Issue #6: Operator Queue Management Workflow > 2. FIFO Operator Queue Entries Listing (GET /api/operator/queues/:queueId/entries, QUEUE-007) > returns queue entries in deterministic FIFO order: joinedAt ASC, id ASC (QUEUE-007) 336ms
+   ✓ Issue #6: Operator Queue Management Workflow > 2. FIFO Operator Queue Entries Listing (GET /api/operator/queues/:queueId/entries, QUEUE-007) > returns 404 RESOURCE_NOT_FOUND for a non-existent queue and 400 INVALID_ARGUMENT for malformed UUID 327ms
+   ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > FLOW-001 & FLOW-002: selects oldest WAITING entry in FIFO order, transitions to CALLED, and sets calledAt 373ms
+   ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > FLOW-003: returns 204 No Content with empty body when queue has no WAITING entries 335ms
+   ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > FLOW-004, FLOW-006, FLOW-010: full operator lifecycle WAITING -> CALLED -> SERVING -> COMPLETED 359ms
+   ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > FLOW-005 & FLOW-007: rejects invalid and out-of-order lifecycle transitions with 409 INVALID_STATE_TRANSITION 388ms
+   ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > returns 404 RESOURCE_NOT_FOUND for unknown entryId and 400 INVALID_ARGUMENT for malformed entryId on start and complete 334ms
+   ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > returns 404 RESOURCE_NOT_FOUND for unknown queueId and 400 INVALID_ARGUMENT for malformed queueId on call-next without mutating database state 334ms
+   ✓ Issue #6: Operator Queue Management Workflow > 4. Authorization, RBAC & CSRF Enforcement (RBAC-001 to RBAC-004, SEC-002) > RBAC-001: customer cannot call next (403 FORBIDDEN, no state mutation) 324ms
+   ✓ Issue #6: Operator Queue Management Workflow > 4. Authorization, RBAC & CSRF Enforcement (RBAC-001 to RBAC-004, SEC-002) > RBAC-002: customer cannot start service (403 FORBIDDEN, no state mutation) 324ms
+   ✓ Issue #6: Operator Queue Management Workflow > 4. Authorization, RBAC & CSRF Enforcement (RBAC-001 to RBAC-004, SEC-002) > RBAC-003: customer cannot complete service (403 FORBIDDEN, no state mutation) 326ms
+   ✓ Issue #6: Operator Queue Management Workflow > 4. Authorization, RBAC & CSRF Enforcement (RBAC-001 to RBAC-004, SEC-002) > RBAC-004: operator cannot view entries, call-next, start, or complete on an unassigned queue (403 FORBIDDEN) 360ms
+   ✓ Issue #6: Operator Queue Management Workflow > 4. Authorization, RBAC & CSRF Enforcement (RBAC-001 to RBAC-004, SEC-002) > SEC-002: rejects operator mutations without a valid X-CSRF-Token with 403 FORBIDDEN 328ms
+   ✓ Issue #6: Operator Queue Management Workflow > 5. Concurrency Safety (CONCURRENCY-003, CONCURRENCY-004) > CONCURRENCY-003: concurrent call-next requests claim distinct WAITING entries without duplicates 390ms
+   ✓ Issue #6: Operator Queue Management Workflow > 5. Concurrency Safety (CONCURRENCY-003, CONCURRENCY-004) > CONCURRENCY-004: concurrent start and complete requests on the same entry succeed once and return 409 for stale requests 384ms
+ ✓ tests/foundation.test.ts (16 tests) 257ms
+ ✓ tests/auth.test.ts (18 tests) 1384ms
+ ✓ tests/seed.test.ts (7 tests) 501ms
+ ✓ tests/rbac-middleware.test.ts (9 tests) 1877ms
+ ✓ tests/csrf.test.ts (6 tests) 631ms
+ ✓ tests/join-csrf.test.ts (6 tests) 1091ms
+ ✓ tests/health.test.ts (7 tests) 78ms
+ ✓ tests/static-client.test.ts (10 tests) 98ms
+ ✓ tests/config.test.ts (9 tests) 5ms
+
+ Test Files  12 passed (12)
+      Tests  147 passed (147)
+   Start at  12:06:17
+   Duration  29.95s (transform 288ms, setup 0ms, collect 5.07s, tests 21.63s, environment 2ms, prepare 1.34s)
+

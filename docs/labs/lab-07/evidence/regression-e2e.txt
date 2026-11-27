@@ -1,0 +1,26 @@
+# Lab 7 Part B (#52) REGRESSION - Playwright E2E (chromium)
+# Implementation commit: bfa2464 (tests from 2664740)
+# Command: npm run test:e2e
+# Node v22.20.0 | vitest/2.1.9 win32-x64 node-v22.20.0 | Version 1.63.0 | PostgreSQL 16.15 | 2026-11-27T05:08:39Z
+
+
+> qms-root@1.0.0 test:e2e
+> playwright test --config e2e/playwright.config.ts --project=chromium
+
+
+Running 12 tests using 1 worker
+
+  ✓   1 [chromium] › e2e\tests\authorization.spec.ts:38:7 › Authorization in the browser › S6: a customer cannot reach operator screens, and an operator cannot reach customer screens (2.2s)
+  ✓   2 [chromium] › e2e\tests\authorization.spec.ts:70:7 › Authorization in the browser › S7: protected routes send anonymous visitors to /login; a session invalidated mid-use shows the session-expired banner (1.9s)
+  ✓   3 [chromium] › e2e\tests\authorization.spec.ts:115:7 › Authorization in the browser › S8: customer 2 opening customer 1's entry URL sees the not-found state and none of customer 1's data (769ms)
+  ✓   4 [chromium] › e2e\tests\customer-flow.spec.ts:17:7 › Customer workflow › S1 / FLOW-009: customer logs in, sees available queues, joins, gets a number, and views own WAITING entry (883ms)
+  ✓   5 [chromium] › e2e\tests\customer-flow.spec.ts:59:7 › Customer workflow › S2: joining the same queue again shows the duplicate error and creates no second entry (725ms)
+  ✓   6 [chromium] › e2e\tests\customer-flow.spec.ts:84:7 › Customer workflow › S5: customer detail page shows each operator change through real 10 s polling, without a reload (31.2s)
+  ✓   7 [chromium] › e2e\tests\keyboard.spec.ts:88:7 › Keyboard-only operation › customer: sign in, switch tabs, join, open details and go back using only the keyboard (1.4s)
+  ✓   8 [chromium] › e2e\tests\keyboard.spec.ts:144:7 › Keyboard-only operation › operator: sign in, open the queue, call, start and complete using only the keyboard (1.2s)
+  ✓   9 [chromium] › e2e\tests\operator-flow.spec.ts:33:7 › Operator workflow › S3: operator sees only assigned queues and the FIFO waiting list; an unassigned operator sees none (1.5s)
+  ✓  10 [chromium] › e2e\tests\operator-flow.spec.ts:73:7 › Operator workflow › S4 / FLOW-010: Call Next -> CALLED, Start -> SERVING, Complete -> COMPLETED, with the UI updating after each step (1.2s)
+  ✓  11 [chromium] › e2e\tests\responsive.spec.ts:46:7 › S9 / UI-001 at 360 x 800: login, customer and operator screens have no horizontal overflow and usable primary actions (2.6s)
+  ✓  12 [chromium] › e2e\tests\responsive.spec.ts:46:7 › S9 / UI-001 at 1280 x 800: login, customer and operator screens have no horizontal overflow and usable primary actions (2.4s)
+
+  12 passed (57.9s)
