@@ -49,9 +49,9 @@ Later-sprint note: integrating BR-06 into the Sprint 2 line found that F-08's "r
 
 | Question | @TeekhathatTT | @Khwanklao |
 |---|---|---|
-| What helped | Writing the tests first and running them on the old code (`aa1c0fa`) proved they failed only because the rule was missing. The Part A contract review caught the locking issue (`FOR NO KEY UPDATE`) before any code was written. | _to be written by @Khwanklao_ |
-| What hurt | Production had only one OPEN queue, so the post-deploy check needed extra queues inserted through the Cloud SQL proxy. `deploy.yml` redeploys on every push to `main`, even for docs. | _to be written by @Khwanklao_ |
-| What will change | Prepare a smoke-test queue and account for production in advance. Add `paths-ignore: docs/**` to `deploy.yml` after Lab 7 is submitted. | _to be written by @Khwanklao_ |
+| What helped | Writing the tests first and running them on the old code (`aa1c0fa`) proved they failed only because the rule was missing. The Part A contract review caught the locking issue (`FOR NO KEY UPDATE`) before any code was written. | Writing the Part A impact table and revising SRS/SDS/STS before touching code made the exact BR-06 boundary (`count >= 2` → `409 MAX_ACTIVE_ENTRIES_REACHED`) and the locking scope clear during review. Reviewing Part B against those pre-agreed acceptance criteria also made it fast to verify that Sprint 1 behavior stayed intact. |
+| What hurt | Production had only one OPEN queue, so the post-deploy check needed extra queues inserted through the Cloud SQL proxy. `deploy.yml` redeploys on every push to `main`, even for docs. | Because `deploy.yml` redeploys on every push to `main` (even docs-only commits), we had to freeze `main` while assembling the Lab 7 PDF so the live revision would not drift. The recurring flaky client test in CI also caused extra re-runs during the busy release window. |
+| What will change | Prepare a smoke-test queue and account for production in advance. Add `paths-ignore: docs/**` to `deploy.yml` after Lab 7 is submitted. | Before the Sprint 2 release, I will add a repeatable production smoke script with a dedicated smoke queue, and run `npm run test:e2e:all-browsers` on the Final Delivery candidate instead of Chromium alone. |
 
 ## 4. Contributions, AI use and known limitations
 
@@ -59,9 +59,9 @@ Later-sprint note: integrating BR-06 into the Sprint 2 line found that F-08's "r
 |---|---|---|
 | Part A: change request, impact analysis, contract (#51, PR #57) | @Khwanklao | @TeekhathatTT |
 | Part B: red/green, implementation, regression, release, post-deploy checks (#52, PRs #58, #59) | @TeekhathatTT | @Khwanklao |
-| Parts C and D: metrics, readiness, retrospective (#53) | @TeekhathatTT | @Khwanklao (re-checks M-2 and M-5; writes their retrospective) |
+| Parts C and D: metrics, readiness, retrospective (#53, PR #65) | @TeekhathatTT | @Khwanklao (approved PR #65; re-counted M-2 and M-5; confirmed owners; wrote their retrospective) |
 
-**AI use:** Claude Code (Anthropic) was used in this part to collect the metric source lists with the `gh` CLI, find the cause of each failed CI run from its log, and draft Parts C and D. The students checked every value against the embedded lists, and the reviewer re-counted two metrics (Part C §4). _Students: add any AI use in Parts A and B._
+**AI use:** Gemini (Google) and IDE coding assistants were used in Parts A and B to help draft the impact analysis table, the contract revisions and the test-review checklists. Claude Code (Anthropic) was used in Parts C and D to collect the metric source lists with the `gh` CLI, trace the failed CI run logs, and draft the readiness and metrics documents. Both students reviewed and verified every requirement, code diff, test output and metric value against the repository and the live deployment, and the reviewer re-counted two metrics (Part C §4).
 
 **Known limitations:**
 - E2E runs only on Chromium.

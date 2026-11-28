@@ -118,5 +118,5 @@ Released Sprint 1 results are clean (147/0/0 tests, 0 product defects). CI shows
 
 | Value | Re-counted from | Result | Checked by / date |
 |---|---|---|---|
-| M-2 = 14 merged PRs | §2.2 table and `metrics-m2-prs.txt` | _to be filled by @Khwanklao_ | |
-| M-5 = 27 success / 4 failure of 31 | §2.5 and `metrics-m5-ci-runs.txt` | _to be filled by @Khwanklao_ | |
+| M-2 = 14 merged PRs | §2.2 table and `metrics-m2-prs.txt` | Confirmed: 14 merged (`sprint2-staging` 6, `lab5-staging` 3, `main` 3, `lab7-staging` 2), plus 1 closed unmerged (#33) | @Khwanklao, 2026-11-28 (PR #65 review) |
+| M-5 = 27 success / 4 failure of 31 | §2.5 and `metrics-m5-ci-runs.txt` | Confirmed: 27 success / 4 failure / 0 cancelled of 31 `ci-docker.yml` runs; `deploy.yml` 4/4 success | @Khwanklao, 2026-11-28 (PR #65 review) |
