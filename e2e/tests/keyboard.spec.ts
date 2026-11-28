@@ -158,9 +158,9 @@ test.describe('Keyboard-only operation', () => {
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('waiting-entry-1')).toBeVisible();
 
-    await tabTo(page, key, page.getByRole('button', { name: 'Call Next' }), 'Call Next');
+    await tabTo(page, key, page.getByRole('button', { name: 'Call next customer to Counter 1' }), 'Call Next (Counter 1)');
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('status').filter({ hasText: 'Called queue number 1.' })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: 'Called queue number 1 to Counter 1.' })).toBeVisible();
     notes.push(`after Call Next: focus on ${await focusedDescription(page)}`);
 
     const start = page.getByRole('button', { name: 'Start Service for queue number 1' });

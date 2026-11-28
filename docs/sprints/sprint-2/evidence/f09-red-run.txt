@@ -1,0 +1,124 @@
+# F-09 red run, re-executed on 2026-11-27T15:33:07Z at the TDD red commit 3a63260
+# (the original red run on 2026-11-27 recorded only counts in tests.md §8.5; this re-run reproduces it from the same commit)
+# Note: the local test database already has the F-09 migration; the red commit's code does not use it.
+
+$ npm test   (server, real PostgreSQL)
+ ✓ tests/integration-sprint1.test.ts (9 tests) 11014ms
+ ✓ tests/operator-workflow.test.ts (18 tests) 10337ms
+[Unhandled Error] PrismaClientKnownRequestError: 
+ ✓ tests/queue-registration.test.ts (25 tests) 6424ms
+ ❯ tests/f09-multi-counter.test.ts (12 tests | 12 failed) 7536ms
+   × F-09: multi-counter support > COUNTER-002 (AC-35): assigned operator lists queue counters in deterministic name ASC, id ASC order 688ms
+   × F-09: multi-counter support > COUNTER-003 (AC-36): assigned operator toggles counter status OPEN <-> CLOSED (including CLOSED parent queue) and invalid payloads return 400 635ms
+   × F-09: multi-counter support > COUNTER-004 (AC-37): GET queue counters enforces auth, OPERATOR role, queue assignment, and UUID validation 665ms
+   × F-09: multi-counter support > COUNTER-005 (AC-37): PATCH status and POST counter call-next enforce auth, CSRF, role, assignment, assignedOperatorId, and UUID validation 663ms
+   × F-09: multi-counter support > COUNTER-006 (AC-38): counter-scoped Call Next claims FIFO entries and exposes counterId/counterName across operator and customer reads 549ms
+   × F-09: multi-counter support > COUNTER-007 (AC-39): closed counter rejects Call Next with 409 COUNTER_CLOSED while in-flight entries at that counter can still start, complete, or mark no-show 661ms
+   × F-09: multi-counter support > COUNTER-008 (AC-38, AC-39): empty queue returns 409 NO_WAITING_ENTRIES; CLOSED parent queue still allows counter Call Next 613ms
+   × F-09: multi-counter support > COUNTER-009 (AC-39): legacy queue-level Call Next remains backward compatible, sets counterId = NULL, and returns 204 when empty 518ms
+   × F-09: multi-counter support > COUNTER-010 (AC-40): parallel multi-counter Call Next across C1 and C2 (15 rounds each): zero double-claims and zero lost updates 605ms
+   × F-09: multi-counter support > COUNTER-011 (AC-40): parallel Call Next vs Close Counter on the same counter (15 rounds): serializes cleanly with zero deadlocks 708ms
+   × F-09: multi-counter support > COUNTER-012 (AC-41): F-08 recovery clears counterId and F-07 CANCELLED / NO_SHOW entries are skipped by counter Call Next 660ms
+   × F-09: multi-counter support > COUNTER-013 (AC-41, AC-44): DB enforces unique (serviceQueueId, name), composite FK (counterId, serviceQueueId), MATCH SIMPLE NULL, and idempotent seeding 544ms
+ ✓ tests/f08-no-show-recovery.test.ts (16 tests) 14150ms
+ ✓ tests/f07-customer-cancellation.test.ts (15 tests) 10881ms
+ ✓ tests/foundation.test.ts (16 tests) 430ms
+ ✓ tests/auth.test.ts (18 tests) 2357ms
+ ✓ tests/seed.test.ts (7 tests) 853ms
+ ✓ tests/rbac-middleware.test.ts (9 tests) 3491ms
+ ✓ tests/csrf.test.ts (6 tests) 991ms
+ ✓ tests/join-csrf.test.ts (6 tests) 1672ms
+ ✓ tests/health.test.ts (7 tests) 147ms
+ ✓ tests/static-client.test.ts (10 tests) 150ms
+ ✓ tests/config.test.ts (9 tests) 9ms
+ ❯ tests/f09-counter-rule.test.ts (0 test)
+ ✓ tests/f08-no-show-rule.test.ts (25 tests) 9ms
+ ✓ tests/f07-cancel-rule.test.ts (6 tests) 5ms
+ FAIL  tests/f09-counter-rule.test.ts [ tests/f09-counter-rule.test.ts ]
+Error: Failed to load url ../src/services/counterPolicy (resolved id: ../src/services/counterPolicy) in C:/Users/UNS_CT/Desktop/CPE_2569/CPE334/Lab5/QMS/qms/server/tests/f09-counter-rule.test.ts. Does the file exist?
+⎯⎯⎯⎯⎯⎯ Failed Tests 12 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  tests/f09-multi-counter.test.ts > F-09: multi-counter support > COUNTER-002 (AC-35): assigned operator lists queue counters in deterministic name ASC, id ASC order
+AssertionError: expected 404 to be 200 // Object.is equality
+ ❯ tests/f09-multi-counter.test.ts:202:24
+ FAIL  tests/f09-multi-counter.test.ts > F-09: multi-counter support > COUNTER-003 (AC-36): assigned operator toggles counter status OPEN <-> CLOSED (including CLOSED parent queue) and invalid payloads return 400
+AssertionError: expected 404 to be 200 // Object.is equality
+ ❯ tests/f09-multi-counter.test.ts:228:28
+ FAIL  tests/f09-multi-counter.test.ts > F-09: multi-counter support > COUNTER-004 (AC-37): GET queue counters enforces auth, OPERATOR role, queue assignment, and UUID validation
+AssertionError: anonymous: expected 404 to be 401 // Object.is equality
+ ❯ tests/f09-multi-counter.test.ts:281:32
+ FAIL  tests/f09-multi-counter.test.ts > F-09: multi-counter support > COUNTER-005 (AC-37): PATCH status and POST counter call-next enforce auth, CSRF, role, assignment, assignedOperatorId, and UUID validation
+AssertionError: PATCH anonymous: expected 404 to be 401 // Object.is equality
+ ❯ tests/f09-multi-counter.test.ts:322:32
+ FAIL  tests/f09-multi-counter.test.ts > F-09: multi-counter support > COUNTER-006 (AC-38): counter-scoped Call Next claims FIFO entries and exposes counterId/counterName across operator and customer reads
+AssertionError: expected 404 to be 200 // Object.is equality
+ ❯ tests/f09-multi-counter.test.ts:345:26
+ FAIL  tests/f09-multi-counter.test.ts > F-09: multi-counter support > COUNTER-007 (AC-39): closed counter rejects Call Next with 409 COUNTER_CLOSED while in-flight entries at that counter can still start, complete, or mark no-show
+AssertionError: expected 404 to be 200 // Object.is equality
+ ❯ tests/f09-multi-counter.test.ts:384:69
+ FAIL  tests/f09-multi-counter.test.ts > F-09: multi-counter support > COUNTER-008 (AC-38, AC-39): empty queue returns 409 NO_WAITING_ENTRIES; CLOSED parent queue still allows counter Call Next
+AssertionError: expected 404 to be 409 // Object.is equality
+ ❯ tests/f09-multi-counter.test.ts:413:26
+ FAIL  tests/f09-multi-counter.test.ts > F-09: multi-counter support > COUNTER-009 (AC-39): legacy queue-level Call Next remains backward compatible, sets counterId = NULL, and returns 204 when empty
+AssertionError: expected 404 to be 200 // Object.is equality
+ ❯ tests/f09-multi-counter.test.ts:431:69
+ FAIL  tests/f09-multi-counter.test.ts > F-09: multi-counter support > COUNTER-010 (AC-40): parallel multi-counter Call Next across C1 and C2 (15 rounds each): zero double-claims and zero lost updates
+AssertionError: round 0 (2 entries): expected [ 404, 404 ] to deeply equal [ 200, 200 ]
+ ❯ tests/f09-multi-counter.test.ts:462:68
+ FAIL  tests/f09-multi-counter.test.ts > F-09: multi-counter support > COUNTER-011 (AC-40): parallel Call Next vs Close Counter on the same counter (15 rounds): serializes cleanly with zero deadlocks
+AssertionError: round 0: close: expected 404 to be 200 // Object.is equality
+ ❯ tests/f09-multi-counter.test.ts:505:56
+ FAIL  tests/f09-multi-counter.test.ts > F-09: multi-counter support > COUNTER-012 (AC-41): F-08 recovery clears counterId and F-07 CANCELLED / NO_SHOW entries are skipped by counter Call Next
+AssertionError: expected 404 to be 200 // Object.is equality
+ ❯ tests/f09-multi-counter.test.ts:526:69
+ FAIL  tests/f09-multi-counter.test.ts > F-09: multi-counter support > COUNTER-013 (AC-41, AC-44): DB enforces unique (serviceQueueId, name), composite FK (counterId, serviceQueueId), MATCH SIMPLE NULL, and idempotent seeding
+AssertionError: duplicate counter name per queue must fail: expected undefined to be an instance of PrismaClientKnownRequestError
+ ❯ tests/f09-multi-counter.test.ts:575:66
+ Test Files  2 failed | 16 passed (18)
+      Tests  12 failed | 202 passed (214)
+
+$ npm run test:client
+ ✓ src/test/integration-guards.test.tsx (6 tests) 636ms
+ ✓ src/test/entryDetail.test.tsx (17 tests) 1219ms
+ ✓ src/test/f08-noShow.test.tsx (14 tests) 1826ms
+ ✓ src/test/operator.test.tsx (13 tests) 1939ms
+ ✓ src/test/f07-leaveQueue.test.tsx (14 tests) 2164ms
+ ✓ src/test/customer.test.tsx (26 tests) 3217ms
+ ✓ src/test/auth.test.tsx (15 tests) 3680ms
+ ❯ src/test/f09-multiCounter.test.tsx (15 tests | 13 failed) 10623ms
+   × F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > renders Counters panel with Open/Closed badges, disabled controls for other-operator counters, and strict CALLED/SERVING-only entry badges 1143ms
+   × F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > shows legacy queue-level Call Next fallback when queue has zero counters or when every counter is assigned to another operator 1025ms
+   × F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > toggles counter status with CSRF, busy state, double-click guard, and live announcement 1019ms
+   × F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > calls next for an OPEN counter with busy state, double-click guard, and refreshed active entry badge 1016ms
+   × F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > maps 409 COUNTER_CLOSED on counter Call Next to the ui-spec §12.3 alert and reloads when specified 1027ms
+   × F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > maps 409 NO_WAITING_ENTRIES on counter Call Next to the ui-spec §12.3 alert and reloads when specified 1022ms
+   × F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > maps 400 INVALID_ARGUMENT on counter Call Next to the ui-spec §12.3 alert and reloads when specified 1015ms
+   × F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > maps 404 RESOURCE_NOT_FOUND on counter Call Next to the ui-spec §12.3 alert and reloads when specified 1010ms
+   × F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > maps 403 CSRF on counter Call Next to the ui-spec §12.3 alert and reloads when specified 1014ms
+   × F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > maps 500 INTERNAL_ERROR on counter Call Next to the ui-spec §12.3 alert and reloads when specified 1015ms
+   × F-09 COUNTER-015: customer assigned counter prompt, null fallback, and strict badge rule > CALLED with counterName shows "Please proceed to Counter 1." and counter badge 37ms
+   × F-09 COUNTER-015: customer assigned counter prompt, null fallback, and strict badge rule > SERVING with counterName shows "Your service is in progress at Counter 2." and counter badge 35ms
+   × F-09 COUNTER-015: customer assigned counter prompt, null fallback, and strict badge rule > My Active Tickets renders counter badge on CALLED and SERVING entries only 86ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 13 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/test/f09-multiCounter.test.tsx > F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > renders Counters panel with Open/Closed badges, disabled controls for other-operator counters, and strict CALLED/SERVING-only entry badges
+ ❯ src/test/f09-multiCounter.test.tsx:184:25
+ FAIL  src/test/f09-multiCounter.test.tsx > F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > shows legacy queue-level Call Next fallback when queue has zero counters or when every counter is assigned to another operator
+ ❯ src/test/f09-multiCounter.test.tsx:214:25
+ FAIL  src/test/f09-multiCounter.test.tsx > F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > toggles counter status with CSRF, busy state, double-click guard, and live announcement
+ ❯ src/test/f09-multiCounter.test.tsx:246:36
+ FAIL  src/test/f09-multiCounter.test.tsx > F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > calls next for an OPEN counter with busy state, double-click guard, and refreshed active entry badge
+ ❯ src/test/f09-multiCounter.test.tsx:281:34
+ FAIL  src/test/f09-multiCounter.test.tsx > F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > maps 409 COUNTER_CLOSED on counter Call Next to the ui-spec §12.3 alert and reloads when specified
+ FAIL  src/test/f09-multiCounter.test.tsx > F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > maps 409 NO_WAITING_ENTRIES on counter Call Next to the ui-spec §12.3 alert and reloads when specified
+ FAIL  src/test/f09-multiCounter.test.tsx > F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > maps 400 INVALID_ARGUMENT on counter Call Next to the ui-spec §12.3 alert and reloads when specified
+ FAIL  src/test/f09-multiCounter.test.tsx > F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > maps 404 RESOURCE_NOT_FOUND on counter Call Next to the ui-spec §12.3 alert and reloads when specified
+ FAIL  src/test/f09-multiCounter.test.tsx > F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > maps 403 CSRF on counter Call Next to the ui-spec §12.3 alert and reloads when specified
+ FAIL  src/test/f09-multiCounter.test.tsx > F-09 COUNTER-014: operator Counters panel, ownership states, fallback, and strict entry badges > maps 500 INTERNAL_ERROR on counter Call Next to the ui-spec §12.3 alert and reloads when specified
+ ❯ src/test/f09-multiCounter.test.tsx:309:35
+ FAIL  src/test/f09-multiCounter.test.tsx > F-09 COUNTER-015: customer assigned counter prompt, null fallback, and strict badge rule > CALLED with counterName shows "Please proceed to Counter 1." and counter badge
+ ❯ src/test/f09-multiCounter.test.tsx:331:56
+ FAIL  src/test/f09-multiCounter.test.tsx > F-09 COUNTER-015: customer assigned counter prompt, null fallback, and strict badge rule > SERVING with counterName shows "Your service is in progress at Counter 2." and counter badge
+ ❯ src/test/f09-multiCounter.test.tsx:338:56
+ FAIL  src/test/f09-multiCounter.test.tsx > F-09 COUNTER-015: customer assigned counter prompt, null fallback, and strict badge rule > My Active Tickets renders counter badge on CALLED and SERVING entries only
+ ❯ src/test/f09-multiCounter.test.tsx:391:31
+ Test Files  1 failed | 7 passed (8)
+      Tests  13 failed | 107 passed (120)

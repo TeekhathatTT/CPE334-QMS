@@ -1,0 +1,95 @@
+F-08 green run: 2026-11-27T08:24:33Z
+Commit under test: 37fd6c0 (first fully green commit: migration effd1e8, server 34605a9, E2E selector fix 3714852, client 37fd6c0).
+Database: local PostgreSQL 16 (Docker qms-postgres), isolated qms_test_db, migration 20261127120000_f08_queue_entry_no_show applied.
+
+=== npm run test (server, full suite) ===
+NOSHOW-012 outcomes: no-show won 10, start won 0
+NOSHOW-014 outcomes: return won 0, join won 10
+ ✓ tests/f08-no-show-recovery.test.ts (16 tests) 29700ms
+ ✓ tests/f08-no-show-rule.test.ts (25 tests) 10ms
+ Test Files  16 passed (16)
+      Tests  202 passed (202)
+(all other Sprint 1 and F-07 server files passed; see counts above)
+
+=== npm run test:client (full suite) ===
+ ✓ src/test/integration-guards.test.tsx (6 tests) 1453ms
+   ✓ Session expiry on operator screens (ui-spec §7) > a 401 while loading /operator/queues/:id clears the user, goes to /login, and shows the exact banner 597ms
+   ✓ Session expiry on operator screens (ui-spec §7) > a 401 on Call Next sends the operator to /login with the banner instead of an action error 577ms
+ ✓ src/test/entryDetail.test.tsx (17 tests) 2543ms
+   ✓ Entry detail > shows queue number, queue name, status, joined time, and other set timestamps 848ms
+ ✓ src/test/f08-noShow.test.tsx (14 tests) 3988ms
+   ✓ F-08 NOSHOW-015: operator no-show controls > shows Mark no-show only for CALLED entries, and a No-show section with Return only while noShowCount is 1 1067ms
+   ✓ F-08 NOSHOW-015: operator no-show controls > Mark no-show sends one POST with CSRF, shows the busy text, then moves the entry to the No-show section 505ms
+   ✓ F-08 NOSHOW-015: operator no-show controls > Return to queue shows the busy text, then the entry is back in the Waiting Queue at its FIFO position 359ms
+   ✓ F-08 NOSHOW-015: operator no-show controls > Return to queue on 404 shows the right alert and reloads the list when it should 337ms
+   ✓ F-08 NOSHOW-015: operator no-show controls > Mark no-show on 409 shows the conflict alert and reloads the list 319ms
+ ✓ src/test/operator.test.tsx (13 tests) 4028ms
+   ✓ Operator Dashboard (/operator) > displays assigned OPEN and CLOSED queues and navigates to queue management screen 977ms
+   ✓ Operator Queue Management (/operator/queues/:id) > groups entries into Active Service, Waiting Queue (FIFO), and Completed with proper button states 367ms
+   ✓ Operator Queue Management (/operator/queues/:id) > executes Call Next, Start Service, and Complete Service lifecycle end-to-end with CSRF and UI refresh 635ms
+   ✓ Operator Queue Management (/operator/queues/:id) > disables Call Next with "Calling next..." while in flight and prevents duplicate submissions 330ms
+   ✓ Operator Queue Management (/operator/queues/:id) > handles 409 INVALID_STATE_TRANSITION by showing a safe conflict alert and refreshing queue entries 344ms
+   ✓ Operator Queue Management (/operator/queues/:id) > distinguishes 403 CSRF verification failures from 403 RBAC permission errors on operator actions 376ms
+ ✓ src/test/f07-leaveQueue.test.tsx (14 tests) 4287ms
+   ✓ F-07 CANCEL-016: Leave queue control > shows Leave queue only for a WAITING entry 795ms
+   ✓ F-07 CANCEL-016: Leave queue control > asks for confirmation first; Keep my place and Escape close it without sending a request 529ms
+   ✓ F-07 CANCEL-016: Leave queue control > confirming sends one POST with the CSRF header, shows the busy state, then the Cancelled state 521ms
+   ✓ F-07 CANCEL-016: Leave queue control > 409 INVALID_STATE_TRANSITION shows the status-changed message and re-reads the entry (the control disappears when no longer WAITING) 336ms
+   ✓ F-07 CANCEL-016: Leave queue control > 409 CONCURRENT_MODIFICATION shows the status-changed message and re-reads the entry (the control disappears when no longer WAITING) 395ms
+   ✓ F-07 CANCEL-016: Leave queue control > 403 FORBIDDEN shows its message near the control and re-enables the buttons 402ms
+ ✓ src/test/auth.test.tsx (15 tests) 5076ms
+   ✓ LoginPage > validates required fields before submitting 727ms
+   ✓ LoginPage > shows the generic failure message in an alert and not the session-expired banner 995ms
+   ✓ LoginPage > disables the submit button and shows "Signing in..." while the request is in flight 920ms
+   ✓ LoginPage > sends a signed-in customer to their home page 1086ms
+   ✓ LoginPage > sends a signed-in operator to their home page 704ms
+ ✓ src/test/customer.test.tsx (26 tests) 6181ms
+   ✓ Available Queues > lists OPEN queues with name, description, and a text availability label 817ms
+   ✓ Available Queues > shows a safe error with a retry that re-fetches the list 337ms
+   ✓ Join queue > shows the queue name, number, and Waiting status, sends the CSRF cookie value, and re-fetches both lists 360ms
+   ✓ Join queue > disables only the clicked button with "Joining queue..." and restores it afterwards 339ms
+   ✓ Join queue > maps 409 QUEUE_NOT_AVAILABLE to safe text and keeps the buttons enabled 326ms
+   ✓ Join queue > maps 404 RESOURCE_NOT_FOUND to safe text and keeps the buttons enabled 346ms
+   ✓ Join queue > maps 500 INTERNAL_ERROR to safe text and keeps the buttons enabled 340ms
+   ✓ My Active Tickets > lists entries newest first with mapped queue names, the fallback name, icon+text status, and detail links 312ms
+ Test Files  7 passed (7)
+      Tests  105 passed (105)
+
+=== npm run test:e2e (Chromium, full suite) ===
+  ✓   1 [chromium] › e2e\tests\authorization.spec.ts:38:7 › Authorization in the browser › S6: a customer cannot reach operator screens, and an operator cannot reach customer screens (5.0s)
+  ✓   2 [chromium] › e2e\tests\authorization.spec.ts:70:7 › Authorization in the browser › S7: protected routes send anonymous visitors to /login; a session invalidated mid-use shows the sessi
+  ✓   3 [chromium] › e2e\tests\authorization.spec.ts:115:7 › Authorization in the browser › S8: customer 2 opening customer 1's entry URL sees the not-found state and none of customer 1's data
+  ✓   4 [chromium] › e2e\tests\customer-flow.spec.ts:17:7 › Customer workflow › S1 / FLOW-009: customer logs in, sees available queues, joins, gets a number, and views own WAITING entry (2.6s)
+  ✓   5 [chromium] › e2e\tests\customer-flow.spec.ts:59:7 › Customer workflow › S2: joining the same queue again shows the duplicate error and creates no second entry (2.0s)
+  ✓   6 [chromium] › e2e\tests\customer-flow.spec.ts:84:7 › Customer workflow › S5: customer detail page shows each operator change through real 10 s polling, without a reload (32.8s)
+  ✓   7 [chromium] › e2e\tests\f07-cancellation.spec.ts:41:7 › F-07 customer cancellation › CANCEL-017: customer joins, cancels with confirmation, sees Cancelled after reload, and rejoins with
+  ✓   8 [chromium] › e2e\tests\f07-cancellation.spec.ts:94:7 › F-07 customer cancellation › CANCEL-018: after the operator calls the entry, Leave queue is gone and an API cancel is rejected wi
+  ✓   9 [chromium] › e2e\tests\f07-cancellation.spec.ts:120:7 › F-07 customer cancellation › CANCEL-019: cancel with the keyboard only; no horizontal overflow at 360 px and 1280 px with the co
+  ✓  10 [chromium] › e2e\tests\f08-no-show.spec.ts:44:7 › F-08 no-show handling and recovery › NOSHOW-017: operator marks no-show, returns the entry to its place, then a second no-show is fina
+  ✓  11 [chromium] › e2e\tests\f08-no-show.spec.ts:111:7 › F-08 no-show handling and recovery › NOSHOW-018: the customer sees No-show, then Waiting after the operator returns the entry (2.8s)
+  ✓  12 [chromium] › e2e\tests\f08-no-show.spec.ts:141:7 › F-08 no-show handling and recovery › NOSHOW-019: both actions with the keyboard only; no horizontal overflow at 360 px and 1280 px (4
+  ✓  13 [chromium] › e2e\tests\keyboard.spec.ts:88:7 › Keyboard-only operation › customer: sign in, switch tabs, join, open details and go back using only the keyboard (3.9s)
+  ✓  14 [chromium] › e2e\tests\keyboard.spec.ts:144:7 › Keyboard-only operation › operator: sign in, open the queue, call, start and complete using only the keyboard (4.1s)
+  ✓  15 [chromium] › e2e\tests\operator-flow.spec.ts:33:7 › Operator workflow › S3: operator sees only assigned queues and the FIFO waiting list; an unassigned operator sees none (4.6s)
+  ✓  16 [chromium] › e2e\tests\operator-flow.spec.ts:73:7 › Operator workflow › S4 / FLOW-010: Call Next -> CALLED, Start -> SERVING, Complete -> COMPLETED, with the UI updating after each ste
+  ✓  17 [chromium] › e2e\tests\responsive.spec.ts:46:7 › S9 / UI-001 at 360 x 800: login, customer and operator screens have no horizontal overflow and usable primary actions (8.6s)
+  ✓  18 [chromium] › e2e\tests\responsive.spec.ts:46:7 › S9 / UI-001 at 1280 x 800: login, customer and operator screens have no horizontal overflow and usable primary actions (8.9s)
+  18 passed (2.2m)
+
+=== Static checks ===
+server typecheck: exit 0
+client typecheck: exit 0
+npm run build: exit 0
+prisma migrate diff (test DB -> schema.prisma): empty migration (no drift)
+
+docker build .: exit 0
+
+=== PERF-S2-002 (npm run test:perf:f08 --workspace=server) ===
+See perf-s2-002.txt: all 4 operations PASS (no-show p95 30.4 ms, recover p95 41.7 ms, operator list p95 117.4 ms, entry detail p95 20.9 ms).
+
+Race outcomes in this run (both outcomes are valid; each round asserts that exactly one transition was applied):
+NOSHOW-012 outcomes: no-show won 10, start won 0
+NOSHOW-014 outcomes: return won 0, join won 10
+Note: in NOSHOW-014 the join won all 10 rounds in this run and in the first green run, so the 'return wins' branch was not exercised by these runs; its correctness rests on the queue-row lock (feature SDS §10).
+
+Not run: Firefox and WebKit E2E (npm run test:e2e:all-browsers).

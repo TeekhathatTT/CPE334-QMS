@@ -10,7 +10,10 @@ import {
   type QueueSummary,
 } from '../api/queues';
 import { EntryTimestamps } from '../components/customer/EntryTimestamps';
+import { LEAVE_STATUS_CHANGED_TEXT, LeaveQueueControl } from '../components/customer/LeaveQueueControl';
+import { PriorityBadge } from '../components/customer/PriorityBadge';
 import { STATUS_LABELS, StatusBadge } from '../components/customer/StatusBadge';
+import { isFinalNoShow } from '../api/noShow';
 import {
   ErrorNote,
   LiveAnnouncer,
@@ -22,6 +25,8 @@ import {
 import { REFRESH_INTERVAL_MS, usePolling } from '../hooks/usePolling';
 
 export const ENTRY_NOT_FOUND_TEXT = "We couldn't find that queue entry.";
+export const PRIORITY_POSITION_HELPER_TEXT =
+  'Queue position may adjust when priority customers are accommodated.';
 
 /** Issue #5 decision 5: queue-specific message for the detail page. */
 export function entryMessage(entry: QueueEntry): string {
@@ -33,12 +38,31 @@ export function entryMessage(entry: QueueEntry): string {
       return `Currently waiting. ${ahead} ${ahead === 1 ? 'person' : 'people'} ahead of you.`;
     }
     case 'CALLED':
-      return 'Please go to the service desk.';
+      return entry.counterName ? `Please proceed to ${entry.counterName}.` : 'Please go to the service desk.';
     case 'SERVING':
-      return 'Your service is in progress.';
+      return entry.counterName ? `Your service is in progress at ${entry.counterName}.` : 'Your service is in progress.';
     case 'COMPLETED':
       return 'Service completed.';
+    case 'CANCELLED':
+      return 'You left this queue.';
+    case 'NO_SHOW':
+      // F-08 (Sprint 2 ui-spec §7)
+      return isFinalNoShow(entry)
+        ? 'You missed your turn again, so this entry is closed. You can join the queue again.'
+        : 'You missed your turn. If you are still here, please go to the counter. Staff can return you to the queue once.';
   }
+}
+
+/** Terminal statuses: the entry no longer changes, so polling stops (Issue #5 D-2, F-07, F-08). */
+function isTerminal(entry: QueueEntry): boolean {
+  return entry.status === 'COMPLETED' || entry.status === 'CANCELLED' || isFinalNoShow(entry);
+}
+
+function footerText(entry: QueueEntry): string {
+  if (entry.status === 'COMPLETED') return 'This entry is complete and no longer updates.';
+  if (entry.status === 'CANCELLED') return 'You left this queue. This entry no longer updates.';
+  if (isFinalNoShow(entry)) return 'This entry no longer updates.';
+  return `Status updates automatically every ${REFRESH_INTERVAL_MS / 1000} seconds.`;
 }
 
 type DetailState = { state: 'loading' } | { state: 'notFound' } | { state: 'error' } | { state: 'ready'; entry: QueueEntry };
@@ -56,12 +80,17 @@ export function EntryDetailPage() {
   queuesRef.current = queues;
   const activeId = useRef(id);
   activeId.current = id;
+  const [leaveNotice, setLeaveNotice] = useState<string | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  /** Bumped by the cancel mutation so a poll that started before it cannot overwrite its result. */
+  const mutationSeq = useRef(0);
 
   const loadEntry = useCallback(async () => {
     const requestedId = id;
+    const seq = mutationSeq.current;
     try {
       const entry = await getMyEntry(requestedId);
-      if (activeId.current !== requestedId) return;
+      if (activeId.current !== requestedId || mutationSeq.current !== seq) return;
       const previous = entryRef.current;
       if (previous && previous.id === entry.id && previous.status !== entry.status) {
         setAnnouncement(
@@ -74,7 +103,7 @@ export function EntryDetailPage() {
       setDetail({ state: 'ready', entry });
       setRefreshFailed(false);
     } catch (err) {
-      if (activeId.current !== requestedId || isSessionExpiredError(err)) return;
+      if (activeId.current !== requestedId || mutationSeq.current !== seq || isSessionExpiredError(err)) return;
       if (err instanceof ApiError && (err.status === 404 || err.status === 400)) {
         // Decision 9: missing, cross-owner, and malformed ids look the same. No entry data is kept.
         entryRef.current = null;
@@ -100,15 +129,40 @@ export function EntryDetailPage() {
     setDetail({ state: 'loading' });
     setRefreshFailed(false);
     setAnnouncement('');
+    setLeaveNotice(null);
     void loadEntry();
     void loadQueueNames();
   }, [loadEntry, loadQueueNames]);
 
-  // Decision 2: poll every 10 s while visible, and stop once the entry is COMPLETED.
-  usePolling(loadEntry, detail.state === 'ready' && detail.entry.status !== 'COMPLETED');
+  // Decision 2: poll every 10 s while visible, and stop once the entry is COMPLETED, CANCELLED or a final NO_SHOW.
+  usePolling(loadEntry, detail.state === 'ready' && !isTerminal(detail.entry));
+
+  // F-07: the cancel mutation succeeded; show the server's CANCELLED entry without a reload.
+  const handleCancelled = (entry: QueueEntry) => {
+    mutationSeq.current += 1;
+    entryRef.current = entry;
+    setDetail({ state: 'ready', entry });
+    setRefreshFailed(false);
+    setLeaveNotice(null);
+    setAnnouncement(`You left the queue. Queue number ${entry.queueNumber} is now ${STATUS_LABELS[entry.status]}.`);
+    headingRef.current?.focus();
+  };
+
+  // F-07: 409 (status changed) or 404 — re-read so the page shows the real state.
+  const handleLeaveConflict = () => {
+    mutationSeq.current += 1;
+    setLeaveNotice(LEAVE_STATUS_CHANGED_TEXT);
+    void loadEntry();
+  };
+  const handleLeaveNotFound = () => {
+    mutationSeq.current += 1;
+    setLeaveNotice(null);
+    void loadEntry();
+  };
 
   const refresh = async () => {
     if (refreshing) return;
+    setLeaveNotice(null);
     setRefreshing(true);
     await Promise.all([loadEntry(), loadQueueNames()]);
     setRefreshing(false);
@@ -128,7 +182,9 @@ export function EntryDetailPage() {
   return (
     <div className="space-y-4">
       {backLink}
-      <h1 className="text-2xl font-bold text-slate-900">Queue entry</h1>
+      <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-bold text-slate-900 focus:outline-none">
+        Queue entry
+      </h1>
       <LiveAnnouncer message={announcement} />
 
       {detail.state === 'loading' && <LoadingNote>Loading queue entry...</LoadingNote>}
@@ -157,23 +213,50 @@ export function EntryDetailPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-slate-700">Status:</span>
                 <StatusBadge status={detail.entry.status} />
+                <PriorityBadge priority={detail.entry.priority} />
+                {(detail.entry.status === 'CALLED' || detail.entry.status === 'SERVING') && detail.entry.counterName && (
+                  <span
+                    data-testid="entry-counter-badge"
+                    className="inline-flex items-center rounded-full border border-indigo-300 bg-indigo-50 px-2.5 py-0.5 text-sm font-semibold text-indigo-900"
+                  >
+                    {detail.entry.counterName}
+                  </span>
+                )}
               </div>
               <p className="text-lg font-medium text-slate-900" data-testid="entry-message">
                 {entryMessage(detail.entry)}
               </p>
+              {detail.entry.status === 'WAITING' && (
+                <p className="text-sm text-slate-600" data-testid="priority-position-note">
+                  {PRIORITY_POSITION_HELPER_TEXT}
+                </p>
+              )}
             </div>
           </div>
 
           <EntryTimestamps entry={detail.entry} />
 
           <div className="flex flex-col gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-slate-600">
-              {detail.entry.status === 'COMPLETED'
-                ? 'This entry is complete and no longer updates.'
-                : `Status updates automatically every ${REFRESH_INTERVAL_MS / 1000} seconds.`}
-            </p>
+            <p className="text-sm text-slate-600">{footerText(detail.entry)}</p>
             <RefreshButton pending={refreshing} onClick={() => void refresh()} />
           </div>
+          {detail.entry.status === 'WAITING' && (
+            <LeaveQueueControl
+              key={detail.entry.id}
+              entry={detail.entry}
+              queueName={queueNameFor(queues, detail.entry.serviceQueueId)}
+              onCancelled={handleCancelled}
+              onConflict={handleLeaveConflict}
+              onNotFound={handleLeaveNotFound}
+              onOpen={() => setLeaveNotice(null)}
+            />
+          )}
+          {leaveNotice && (
+            <p role="alert" className="text-sm font-medium text-red-900">
+              <span aria-hidden="true">⚠ </span>
+              {leaveNotice}
+            </p>
+          )}
           {refreshFailed && (
             <p role="status" className="text-sm text-amber-900">
               <span aria-hidden="true">⚠ </span>

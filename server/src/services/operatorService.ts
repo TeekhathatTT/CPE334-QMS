@@ -1,12 +1,48 @@
-import { QueueStatus } from '@prisma/client';
+import { CounterStatus, Prisma, QueuePriority, QueueStatus } from '@prisma/client';
 import { prisma } from '../db';
 import { AppError } from '../errors/AppError';
+import { canCallNextOnCounter, canOperatorUseCounter } from './counterPolicy';
+import { canMarkNoShow, recoveryDecision } from './noShowPolicy';
+import { canUpdateEntryPriority } from './priorityPolicy';
 import {
+  MAX_ACTIVE_ENTRIES_PER_CUSTOMER,
   formatQueueEntry,
   formatQueueSummary,
   type QueueSummary,
   type SerializedQueueEntry,
 } from './queueService';
+
+export interface SerializedCounter {
+  id: string;
+  serviceQueueId: string;
+  name: string;
+  status: CounterStatus;
+  assignedOperatorId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function formatCounter(counter: {
+  id: string;
+  serviceQueueId: string;
+  name: string;
+  status: CounterStatus;
+  assignedOperatorId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): SerializedCounter {
+  return {
+    id: counter.id,
+    serviceQueueId: counter.serviceQueueId,
+    name: counter.name,
+    status: counter.status,
+    assignedOperatorId: counter.assignedOperatorId ?? null,
+    createdAt: counter.createdAt.toISOString(),
+    updatedAt: counter.updatedAt.toISOString(),
+  };
+}
+
+const INCLUDE_COUNTER_NAME = { counter: { select: { name: true } } } as const;
 
 /**
  * Lists all service queues assigned to the given operator (api-spec §8.1).
@@ -35,26 +71,40 @@ export async function listAssignedQueues(operatorId: string): Promise<QueueSumma
 }
 
 /**
- * Lists all queue entries for an assigned queue in deterministic FIFO order:
- * `joinedAt ASC, id ASC` (api-spec §8.2, QUEUE-007).
+ * Lists all queue entries for an assigned queue (api-spec §8.2, QUEUE-007; F-10 api-spec §20.3):
+ * - F-07 (BR-14, feature SDS D-7): `CANCELLED` entries are excluded; they stay in the database.
+ * - F-10 (BR-01 rev. 5.0): priority rank applies ONLY to `WAITING` entries (`PRIORITY` before `NORMAL`,
+ *   ties by `joinedAt ASC, id ASC`); non-`WAITING` entries keep chronological `joinedAt ASC, id ASC` order.
  */
 export async function listOperatorQueueEntries(queueId: string): Promise<SerializedQueueEntry[]> {
   const entries = await prisma.queueEntry.findMany({
-    where: { serviceQueueId: queueId },
+    where: { serviceQueueId: queueId, status: { not: QueueStatus.CANCELLED } },
+    include: INCLUDE_COUNTER_NAME,
     orderBy: [
       { joinedAt: 'asc' },
       { id: 'asc' },
     ],
   });
 
-  return entries.map((entry) => formatQueueEntry(entry));
+  const waitingPriority: typeof entries = [];
+  const rest: typeof entries = [];
+  for (const entry of entries) {
+    if (entry.status === QueueStatus.WAITING && entry.priority === QueuePriority.PRIORITY) {
+      waitingPriority.push(entry);
+    } else {
+      rest.push(entry);
+    }
+  }
+
+  return [...waitingPriority, ...rest].map((entry) => formatQueueEntry(entry));
 }
 
 /**
- * Selects the oldest eligible WAITING entry in FIFO order (`joinedAt ASC, id ASC`)
+ * Selects the next eligible WAITING entry in priority-aware FIFO order
+ * (`PRIORITY` before `NORMAL`, ties by `joinedAt ASC, id ASC`)
  * and transitions it to `CALLED` atomically inside a row-locked transaction
  * (`FOR UPDATE SKIP LOCKED`) so concurrent call-next requests never claim the same entry
- * (api-spec §8.3, FLOW-001, FLOW-002, FLOW-003, CONCURRENCY-003).
+ * (api-spec §8.3, §20.1, FLOW-001, FLOW-002, FLOW-003, CONCURRENCY-003, PRIO-003).
  *
  * Returns `null` when no eligible WAITING entry exists (caller responds with 204 No Content).
  */
@@ -66,7 +116,9 @@ export async function callNextEntry(queueId: string): Promise<SerializedQueueEnt
         FROM "QueueEntry"
         WHERE "serviceQueueId" = ${queueId}::uuid
           AND "status" = 'WAITING'::"QueueStatus"
-        ORDER BY "joinedAt" ASC, "id" ASC
+        ORDER BY (CASE WHEN "priority" = 'PRIORITY'::"QueuePriority" THEN 0 ELSE 1 END) ASC,
+                 "joinedAt" ASC,
+                 "id" ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       `;
@@ -83,7 +135,11 @@ export async function callNextEntry(queueId: string): Promise<SerializedQueueEnt
         data: {
           status: QueueStatus.CALLED,
           calledAt,
+          // F-09 (Blocking #4): legacy queue-level Call Next explicitly clears counterId
+          // so it never leaves a stale counter assignment on a newly CALLED entry.
+          counterId: null,
         },
+        include: INCLUDE_COUNTER_NAME,
       });
 
       return formatQueueEntry(updated);
@@ -154,6 +210,7 @@ export async function startServiceEntry(
           status: QueueStatus.SERVING,
           serviceStartedAt,
         },
+        include: INCLUDE_COUNTER_NAME,
       });
 
       return formatQueueEntry(updated);
@@ -224,6 +281,7 @@ export async function completeServiceEntry(
           status: QueueStatus.COMPLETED,
           completedAt,
         },
+        include: INCLUDE_COUNTER_NAME,
       });
 
       return formatQueueEntry(updated);
@@ -235,3 +293,362 @@ export async function completeServiceEntry(
   );
 }
 
+/**
+ * F-08: the assigned operator marks a `CALLED` entry `NO_SHOW` (FR-15, BR-15, BR-17;
+ * Sprint 2 api-spec §9.1; feature SDS §10). Same locking pattern as Start/Complete:
+ * the row lock serializes it with a concurrent Start on the same entry.
+ *
+ * - Missing entry: 404 RESOURCE_NOT_FOUND
+ * - Operator not assigned to the entry's queue: 403 FORBIDDEN
+ * - Entry status is not CALLED: 409 INVALID_STATE_TRANSITION
+ */
+export async function markNoShowEntry(operatorId: string, entryId: string): Promise<SerializedQueueEntry> {
+  return await prisma.$transaction(
+    async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ serviceQueueId: string; status: QueueStatus; now: Date }>>`
+        SELECT "serviceQueueId", "status", clock_timestamp() AS "now"
+        FROM "QueueEntry"
+        WHERE "id" = ${entryId}::uuid
+        FOR UPDATE
+      `;
+      if (!rows || rows.length === 0) {
+        throw new AppError(404, 'RESOURCE_NOT_FOUND', 'Queue entry not found.');
+      }
+      const entry = rows[0];
+      await assertAssigned(tx, operatorId, entry.serviceQueueId);
+
+      if (!canMarkNoShow(entry.status)) {
+        throw new AppError(409, 'INVALID_STATE_TRANSITION', 'Only a CALLED queue entry may be marked as a no-show.');
+      }
+
+      const updated = await tx.queueEntry.update({
+        where: { id: entryId },
+        data: {
+          status: QueueStatus.NO_SHOW,
+          noShowAt: entry.now instanceof Date ? entry.now : new Date(entry.now),
+          noShowCount: { increment: 1 },
+        },
+        include: INCLUDE_COUNTER_NAME,
+      });
+      return formatQueueEntry(updated);
+    },
+    { maxWait: 15000, timeout: 15000 }
+  );
+}
+
+/**
+ * F-08: the assigned operator returns a `NO_SHOW` entry to the queue once (FR-16, BR-16, BR-05 rev. 3.0;
+ * Sprint 2 api-spec §9.2; feature SDS §10). The entry keeps its `joinedAt` and queue number, so it is
+ * back at its original FIFO position; `calledAt` is cleared and `recoveredAt` recorded.
+ *
+ * Locks the customer's user row, then the queue row, then the entry: the same order `joinQueue` uses
+ * since BR-06 (Lab 7), so a return and a join by the same customer are serialized. A return to the same
+ * queue cannot leave two active entries there (BR-05), and a return cannot push the customer past the
+ * cross-queue cap (BR-06, F-08 contract v1.1 D-13).
+ *
+ * - Missing entry: 404 RESOURCE_NOT_FOUND
+ * - Operator not assigned: 403 FORBIDDEN
+ * - Status is not NO_SHOW: 409 INVALID_STATE_TRANSITION
+ * - Already returned once (noShowCount 2): 409 RECOVERY_LIMIT_REACHED
+ * - Customer has another active entry in the queue: 409 DUPLICATE_ACTIVE_ENTRY
+ * - Customer already holds MAX_ACTIVE_ENTRIES_PER_CUSTOMER active entries: 409 MAX_ACTIVE_ENTRIES_REACHED
+ */
+export async function recoverNoShowEntry(operatorId: string, entryId: string): Promise<SerializedQueueEntry> {
+  try {
+    return await prisma.$transaction(
+      async (tx) => {
+        const found = await tx.queueEntry.findUnique({
+          where: { id: entryId },
+          select: { serviceQueueId: true, customerId: true },
+        });
+        if (!found) {
+          throw new AppError(404, 'RESOURCE_NOT_FOUND', 'Queue entry not found.');
+        }
+
+        // BR-06: lock the customer first, exactly as joinQueue does, so the cap count below cannot race a join.
+        await tx.$queryRaw`
+          SELECT id FROM "User" WHERE id = ${found.customerId}::uuid FOR NO KEY UPDATE
+        `;
+        await tx.$queryRaw`
+          SELECT "id" FROM "ServiceQueue" WHERE "id" = ${found.serviceQueueId}::uuid FOR UPDATE
+        `;
+        const rows = await tx.$queryRaw<
+          Array<{ customerId: string; serviceQueueId: string; status: QueueStatus; noShowCount: number; now: Date }>
+        >`
+          SELECT "customerId", "serviceQueueId", "status", "noShowCount", clock_timestamp() AS "now"
+          FROM "QueueEntry"
+          WHERE "id" = ${entryId}::uuid
+          FOR UPDATE
+        `;
+        const entry = rows[0];
+        await assertAssigned(tx, operatorId, entry.serviceQueueId);
+
+        const decision = recoveryDecision({ status: entry.status, noShowCount: Number(entry.noShowCount) });
+        if (decision === 'invalid_state') {
+          throw new AppError(409, 'INVALID_STATE_TRANSITION', 'Only a NO_SHOW queue entry may be returned to the queue.');
+        }
+        if (decision === 'limit') {
+          throw new AppError(409, 'RECOVERY_LIMIT_REACHED', 'This queue entry was already returned to the queue once.');
+        }
+
+        const otherActive = await tx.queueEntry.findFirst({
+          where: {
+            customerId: entry.customerId,
+            serviceQueueId: entry.serviceQueueId,
+            status: { in: [QueueStatus.WAITING, QueueStatus.CALLED, QueueStatus.SERVING] },
+            id: { not: entryId },
+          },
+          select: { id: true },
+        });
+        if (otherActive) {
+          throw new AppError(409, 'DUPLICATE_ACTIVE_ENTRY', 'The customer already has another active entry in this queue.');
+        }
+
+        // BR-06 after BR-05, as on join. The entry itself is NO_SHOW, so it is not counted.
+        const activeCount = await tx.queueEntry.count({
+          where: {
+            customerId: entry.customerId,
+            status: { in: [QueueStatus.WAITING, QueueStatus.CALLED, QueueStatus.SERVING] },
+          },
+        });
+        if (activeCount >= MAX_ACTIVE_ENTRIES_PER_CUSTOMER) {
+          throw new AppError(
+            409,
+            'MAX_ACTIVE_ENTRIES_REACHED',
+            `The customer already holds ${MAX_ACTIVE_ENTRIES_PER_CUSTOMER} active queue entries, so this entry cannot be returned now.`
+          );
+        }
+
+        const updated = await tx.queueEntry.update({
+          where: { id: entryId },
+          data: {
+            status: QueueStatus.WAITING,
+            calledAt: null,
+            // F-09 (BR-16 rev. 4.0, BR-20): clear counterId alongside calledAt on recovery.
+            counterId: null,
+            recoveredAt: entry.now instanceof Date ? entry.now : new Date(entry.now),
+          },
+          include: INCLUDE_COUNTER_NAME,
+        });
+        return formatQueueEntry(updated);
+      },
+      { maxWait: 15000, timeout: 15000 }
+    );
+  } catch (error) {
+    // Database backstop (partial unique index on active entries); the check above should make it unreachable.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      throw new AppError(409, 'DUPLICATE_ACTIVE_ENTRY', 'The customer already has another active entry in this queue.');
+    }
+    throw error;
+  }
+}
+
+async function assertAssigned(tx: Prisma.TransactionClient, operatorId: string, serviceQueueId: string): Promise<void> {
+  const assignment = await tx.operatorAssignment.findUnique({
+    where: { operatorId_serviceQueueId: { operatorId, serviceQueueId } },
+    select: { operatorId: true },
+  });
+  if (!assignment) {
+    throw new AppError(403, 'FORBIDDEN', 'You are not assigned to this queue.');
+  }
+}
+
+/**
+ * F-09: lists all counters belonging to an assigned queue in deterministic `name ASC, id ASC` order
+ * (Sprint 2 api-spec §14.1, FR-17, BR-18).
+ */
+export async function listQueueCounters(queueId: string): Promise<SerializedCounter[]> {
+  const counters = await prisma.counter.findMany({
+    where: { serviceQueueId: queueId },
+    orderBy: [{ name: 'asc' }, { id: 'asc' }],
+  });
+
+  return counters.map((counter) => formatCounter(counter));
+}
+
+/**
+ * F-09: toggles a counter's status between OPEN and CLOSED inside a row-locked transaction
+ * (Sprint 2 api-spec §14.2, FR-17, BR-18). Idempotent when setting the current status.
+ */
+export async function updateCounterStatus(
+  counterId: string,
+  operatorId: string,
+  status: CounterStatus
+): Promise<SerializedCounter> {
+  return await prisma.$transaction(
+    async (tx) => {
+      const rows = await tx.$queryRaw<
+        Array<{ id: string; serviceQueueId: string; status: string; assignedOperatorId: string | null }>
+      >`
+        SELECT "id", "serviceQueueId", "status"::text AS status, "assignedOperatorId"
+        FROM "Counter"
+        WHERE "id" = ${counterId}::uuid
+        FOR UPDATE
+      `;
+
+      if (!rows || rows.length === 0) {
+        throw new AppError(404, 'RESOURCE_NOT_FOUND', 'Counter not found.');
+      }
+
+      const counter = rows[0];
+      const assignment = await tx.operatorAssignment.findUnique({
+        where: {
+          operatorId_serviceQueueId: {
+            operatorId,
+            serviceQueueId: counter.serviceQueueId,
+          },
+        },
+        select: { operatorId: true },
+      });
+
+      if (!canOperatorUseCounter(Boolean(assignment), counter.assignedOperatorId, operatorId)) {
+        throw new AppError(403, 'FORBIDDEN', 'You are not authorized to manage this counter.');
+      }
+
+      const updated = await tx.counter.update({
+        where: { id: counterId },
+        data: { status },
+      });
+
+      return formatCounter(updated);
+    },
+    { maxWait: 15000, timeout: 15000 }
+  );
+}
+
+/**
+ * F-09: atomically calls the oldest unlocked WAITING entry in the counter's queue and assigns it
+ * to that OPEN counter (Sprint 2 api-spec §14.3, FR-18, BR-19).
+ *
+ * Lock order (deadlock-free, Feature SDS §10.2):
+ * 1. Counter row (`FOR UPDATE`) -> 404 if missing, 403 if unauthorized, 409 COUNTER_CLOSED if CLOSED.
+ * 2. Oldest unlocked WAITING QueueEntry (`FOR UPDATE SKIP LOCKED`) -> 409 NO_WAITING_ENTRIES if none.
+ */
+export async function callNextAtCounter(
+  counterId: string,
+  operatorId: string
+): Promise<SerializedQueueEntry> {
+  return await prisma.$transaction(
+    async (tx) => {
+      const counterRows = await tx.$queryRaw<
+        Array<{ id: string; serviceQueueId: string; name: string; status: string; assignedOperatorId: string | null }>
+      >`
+        SELECT "id", "serviceQueueId", "name", "status"::text AS status, "assignedOperatorId"
+        FROM "Counter"
+        WHERE "id" = ${counterId}::uuid
+        FOR UPDATE
+      `;
+
+      if (!counterRows || counterRows.length === 0) {
+        throw new AppError(404, 'RESOURCE_NOT_FOUND', 'Counter not found.');
+      }
+
+      const counter = counterRows[0];
+      const assignment = await tx.operatorAssignment.findUnique({
+        where: {
+          operatorId_serviceQueueId: {
+            operatorId,
+            serviceQueueId: counter.serviceQueueId,
+          },
+        },
+        select: { operatorId: true },
+      });
+
+      if (!canOperatorUseCounter(Boolean(assignment), counter.assignedOperatorId, operatorId)) {
+        throw new AppError(403, 'FORBIDDEN', 'You are not authorized to operate this counter.');
+      }
+
+      if (!canCallNextOnCounter(counter.status)) {
+        throw new AppError(409, 'COUNTER_CLOSED', 'This counter is currently closed.');
+      }
+
+      const candidates = await tx.$queryRaw<Array<{ id: string; now: Date }>>`
+        SELECT "id", clock_timestamp() AS "now"
+        FROM "QueueEntry"
+        WHERE "serviceQueueId" = ${counter.serviceQueueId}::uuid
+          AND "status" = 'WAITING'::"QueueStatus"
+        ORDER BY (CASE WHEN "priority" = 'PRIORITY'::"QueuePriority" THEN 0 ELSE 1 END) ASC,
+                 "joinedAt" ASC,
+                 "id" ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+      `;
+
+      if (!candidates || candidates.length === 0) {
+        throw new AppError(409, 'NO_WAITING_ENTRIES', 'There are no waiting entries in this queue.');
+      }
+
+      const candidate = candidates[0];
+      const calledAt = candidate.now instanceof Date ? candidate.now : new Date(candidate.now);
+
+      const updated = await tx.queueEntry.update({
+        where: { id: candidate.id },
+        data: {
+          status: QueueStatus.CALLED,
+          calledAt,
+          counterId: counter.id,
+        },
+        include: INCLUDE_COUNTER_NAME,
+      });
+
+      return formatQueueEntry(updated);
+    },
+    { maxWait: 15000, timeout: 15000 }
+  );
+}
+
+/**
+ * F-10: sets a WAITING queue entry's priority to `NORMAL` or `PRIORITY` inside a row-locked
+ * transaction (FR-21, BR-21, BR-22; Sprint 2 api-spec §19; feature SDS §7).
+ *
+ * Lock order (deadlock-free): locks only the target `QueueEntry` row `FOR UPDATE`, matching
+ * `startServiceEntry`, `completeServiceEntry`, and `markNoShowEntry`.
+ *
+ * - Missing entry: 404 RESOURCE_NOT_FOUND
+ * - Operator not assigned to the entry's queue: 403 FORBIDDEN
+ * - Entry status is not WAITING: 409 INVALID_STATE_TRANSITION
+ * - Setting the same priority again is idempotent (200 OK).
+ * - Allowed even when parent ServiceQueue is CLOSED (AD-05).
+ */
+export async function updateEntryPriority(
+  operatorId: string,
+  entryId: string,
+  priority: QueuePriority
+): Promise<SerializedQueueEntry> {
+  return await prisma.$transaction(
+    async (tx) => {
+      const rows = await tx.$queryRaw<
+        Array<{ id: string; serviceQueueId: string; status: QueueStatus; priority: QueuePriority }>
+      >`
+        SELECT "id", "serviceQueueId", "status", "priority"
+        FROM "QueueEntry"
+        WHERE "id" = ${entryId}::uuid
+        FOR UPDATE
+      `;
+
+      if (!rows || rows.length === 0) {
+        throw new AppError(404, 'RESOURCE_NOT_FOUND', 'Queue entry not found.');
+      }
+
+      const entry = rows[0];
+      await assertAssigned(tx, operatorId, entry.serviceQueueId);
+
+      if (!canUpdateEntryPriority(entry.status)) {
+        throw new AppError(
+          409,
+          'INVALID_STATE_TRANSITION',
+          'Only a WAITING queue entry may have its priority updated.'
+        );
+      }
+
+      const updated = await tx.queueEntry.update({
+        where: { id: entryId },
+        data: { priority },
+        include: INCLUDE_COUNTER_NAME,
+      });
+
+      return formatQueueEntry(updated);
+    },
+    { maxWait: 15000, timeout: 15000 }
+  );
+}

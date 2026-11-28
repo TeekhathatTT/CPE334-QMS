@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
-import { Role } from '@prisma/client';
+import { QueuePriority, Role } from '@prisma/client';
+import { AppError } from '../errors/AppError';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { requireCsrf } from '../middleware/csrf';
 import { validateUuidParam } from '../middleware/validateUuid';
@@ -44,6 +45,24 @@ queuesRouter.post(
   requireCsrf,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      // F-10 (FR-20, BR-21, api-spec §18): reject customer self-elevation (403) and malformed
+      // priority (400) strictly before any DB lookup. Empty/omitted body or literal "NORMAL" proceeds.
+      if (
+        req.body !== undefined &&
+        req.body !== null &&
+        typeof req.body === 'object' &&
+        Object.prototype.hasOwnProperty.call(req.body, 'priority') &&
+        (req.body as Record<string, unknown>).priority !== undefined
+      ) {
+        const requestedPriority = (req.body as Record<string, unknown>).priority;
+        if (requestedPriority === QueuePriority.PRIORITY) {
+          return next(new AppError(403, 'FORBIDDEN', 'Customers cannot set queue priority.'));
+        }
+        if (requestedPriority !== QueuePriority.NORMAL) {
+          return next(new AppError(400, 'INVALID_ARGUMENT', 'Invalid priority value.'));
+        }
+      }
+
       const entry = await joinQueue(req.user!.id, req.params.queueId);
       res.status(201).json({
         data: {

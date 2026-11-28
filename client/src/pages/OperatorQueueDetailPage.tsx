@@ -2,11 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, CSRF_COOKIE, readCookie } from '../api/client';
 import {
+  callNextAtCounter,
   callNextQueueEntry,
   completeQueueEntry,
   listAssignedQueues,
   listOperatorQueueEntries,
+  listQueueCounters,
+  markNoShowQueueEntry,
+  recoverQueueEntry,
   startQueueEntry,
+  updateCounterStatus,
+  updateEntryPriority,
+  type Counter,
 } from '../api/operator';
 import {
   UNKNOWN_QUEUE_NAME,
@@ -14,7 +21,9 @@ import {
   type QueueEntry,
   type QueueSummary,
 } from '../api/queues';
+import { useAuth } from '../auth/AuthContext';
 import { EntryTimestamps } from '../components/customer/EntryTimestamps';
+import { PriorityBadge } from '../components/customer/PriorityBadge';
 import { STATUS_LABELS, StatusBadge } from '../components/customer/StatusBadge';
 import {
   EmptyNote,
@@ -27,7 +36,9 @@ import {
   linkClass,
   primaryButtonClass,
 } from '../components/customer/ui';
+import { CounterPanel, isCounterOwnedByOther } from '../components/operator/CounterPanel';
 import { Spinner } from '../components/Spinner';
+import { canReturnToQueue } from '../api/noShow';
 import { usePolling } from '../hooks/usePolling';
 
 export const OPERATOR_QUEUE_FORBIDDEN_TEXT = 'You do not have permission to manage this queue.';
@@ -41,11 +52,29 @@ export const OPERATOR_ACTION_ERROR_TEXT = {
   NOT_FOUND: "We couldn't find that queue entry.",
   CSRF: "We couldn't verify this request. Please refresh the page or sign in again.",
   GENERIC: 'Something went wrong. Please try again.',
+  /** F-08 (Sprint 2 ui-spec §8.3). */
+  RECOVERY_LIMIT: 'This entry was already returned to the queue once and cannot be returned again.',
+  /** F-08: the customer rejoined while the entry was NO_SHOW. */
+  REJOINED: 'This customer has already joined the queue again, so this entry cannot be returned.',
+  /** F-08 v1.1 (ui-spec §8.3 rev. 3.3): the return would exceed the BR-06 active-entry cap. */
+  MAX_ACTIVE: 'This customer already has 2 active queue entries, so this entry cannot be returned right now.',
+  /** F-09 (Sprint 2 ui-spec §12.3). */
+  COUNTER_CLOSED: 'This counter is closed. Open the counter before calling the next customer.',
+  NO_WAITING_ENTRIES: 'There are no waiting customers in this queue right now.',
+  COUNTER_INVALID: 'Invalid counter request. Please refresh and try again.',
+  COUNTER_NOT_FOUND: "We couldn't find that counter.",
+  /** F-10 (Sprint 2 ui-spec §16.3). */
+  PRIORITY_NOT_WAITING: 'This entry is no longer waiting, so its priority cannot be changed.',
+  PRIORITY_INVALID: 'Invalid priority request. Please refresh and try again.',
 } as const;
+
+/** F-08 (Sprint 2 ui-spec §8.4). */
+export const OPERATOR_NO_SHOW_LIMIT_TEXT = 'Already returned once. This entry cannot be returned again.';
 
 interface ActionFailure {
   text: string;
   refetchEntries: boolean;
+  refetchCounters?: boolean;
 }
 
 function isCsrfForbidden(err: ApiError): boolean {
@@ -55,12 +84,41 @@ function isCsrfForbidden(err: ApiError): boolean {
   return false;
 }
 
-function describeActionFailure(err: unknown, target: 'queue' | 'entry'): ActionFailure {
+function describeActionFailure(err: unknown, target: 'queue' | 'entry' | 'counter' | 'priority'): ActionFailure {
   if (err instanceof ApiError) {
     if (err.status === 409) {
+      if (target === 'priority') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.PRIORITY_NOT_WAITING, refetchEntries: true };
+      }
+      if (err.code === 'COUNTER_CLOSED') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.COUNTER_CLOSED, refetchEntries: true, refetchCounters: true };
+      }
+      if (err.code === 'NO_WAITING_ENTRIES') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.NO_WAITING_ENTRIES, refetchEntries: true, refetchCounters: true };
+      }
+      if (err.code === 'RECOVERY_LIMIT_REACHED') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.RECOVERY_LIMIT, refetchEntries: true };
+      }
+      if (err.code === 'DUPLICATE_ACTIVE_ENTRY') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.REJOINED, refetchEntries: true };
+      }
+      if (err.code === 'MAX_ACTIVE_ENTRIES_REACHED') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.MAX_ACTIVE, refetchEntries: true };
+      }
       return { text: OPERATOR_ACTION_ERROR_TEXT.CONFLICT, refetchEntries: true };
     }
+    if (err.status === 400) {
+      if (target === 'priority') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.PRIORITY_INVALID, refetchEntries: false };
+      }
+      if (target === 'counter') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.COUNTER_INVALID, refetchEntries: false };
+      }
+    }
     if (err.status === 404) {
+      if (target === 'counter') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.COUNTER_NOT_FOUND, refetchEntries: false, refetchCounters: true };
+      }
       if (target === 'queue') {
         return { text: OPERATOR_ACTION_ERROR_TEXT.QUEUE_NOT_FOUND, refetchEntries: false };
       }
@@ -70,7 +128,11 @@ function describeActionFailure(err: unknown, target: 'queue' | 'entry'): ActionF
       if (isCsrfForbidden(err)) {
         return { text: OPERATOR_ACTION_ERROR_TEXT.CSRF, refetchEntries: false };
       }
-      return { text: OPERATOR_ACTION_ERROR_TEXT.FORBIDDEN, refetchEntries: false };
+      return {
+        text: OPERATOR_ACTION_ERROR_TEXT.FORBIDDEN,
+        refetchEntries: false,
+        refetchCounters: target === 'counter',
+      };
     }
   }
   return { text: OPERATOR_ACTION_ERROR_TEXT.GENERIC, refetchEntries: false };
@@ -88,21 +150,38 @@ interface FeedbackBanner {
   text: string;
 }
 
+type CountersStatus = 'loading' | 'loaded' | 'error';
+
+export const OPERATOR_COUNTERS_LOAD_ERROR_TEXT = "We couldn't load counters for this queue. Please try again.";
+export const OPERATOR_COUNTERS_POLL_ERROR_TEXT =
+  'Could not refresh counters. Counter actions are paused until counters are reloaded.';
+
 /** `/operator/queues/:id` — manage queue lifecycle actions: call next, start, complete (ui-spec §3, §5.2). */
 export function OperatorQueueDetailPage() {
   const { id = '' } = useParams();
+  const { user } = useAuth();
   const [view, setView] = useState<ViewState>({ state: 'loading' });
   const [queues, setQueues] = useState<QueueSummary[] | undefined>(undefined);
+  const [counters, setCounters] = useState<Counter[]>([]);
+  const [countersStatus, setCountersStatus] = useState<CountersStatus>('loading');
+  const [countersPollError, setCountersPollError] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [callingNext, setCallingNext] = useState(false);
+  const [togglingCounterIds, setTogglingCounterIds] = useState<ReadonlySet<string>>(new Set());
+  const [callingCounterIds, setCallingCounterIds] = useState<ReadonlySet<string>>(new Set());
   const [startingIds, setStartingIds] = useState<ReadonlySet<string>>(new Set());
   const [completingIds, setCompletingIds] = useState<ReadonlySet<string>>(new Set());
+  const [noShowingIds, setNoShowingIds] = useState<ReadonlySet<string>>(new Set());
+  const [recoveringIds, setRecoveringIds] = useState<ReadonlySet<string>>(new Set());
+  const [updatingPriorityIds, setUpdatingPriorityIds] = useState<ReadonlySet<string>>(new Set());
   const [feedback, setFeedback] = useState<FeedbackBanner | null>(null);
   const [announcement, setAnnouncement] = useState('');
 
   const callingNextRef = useRef(false);
   const entryActionInFlightRef = useRef(new Set<string>());
+  const counterActionInFlightRef = useRef(new Set<string>());
+  const countersLoadedRef = useRef(false);
   const entriesRef = useRef<QueueEntry[] | null>(null);
   const activeQueueIdRef = useRef(id);
   activeQueueIdRef.current = id;
@@ -123,6 +202,29 @@ export function OperatorQueueDetailPage() {
       // Queue metadata falls back gracefully; 401 is handled globally.
     }
   }, []);
+
+  const loadCounters = useCallback(async () => {
+    const requestedQueueId = id;
+    try {
+      const data = await listQueueCounters(requestedQueueId);
+      if (!mounted.current || activeQueueIdRef.current !== requestedQueueId) return;
+      countersLoadedRef.current = true;
+      setCounters(data);
+      setCountersStatus('loaded');
+      setCountersPollError(false);
+    } catch (err) {
+      if (!mounted.current || activeQueueIdRef.current !== requestedQueueId || isSessionExpiredError(err)) {
+        return;
+      }
+      if (countersLoadedRef.current) {
+        // Subsequent poll/refresh failed: keep visible counters disabled and surface a Retry banner.
+        setCountersPollError(true);
+      } else {
+        // Initial load failed: never fall back to legacy Call Next; show explicit error with Retry.
+        setCountersStatus('error');
+      }
+    }
+  }, [id]);
 
   const loadEntries = useCallback(async () => {
     const requestedQueueId = id;
@@ -169,20 +271,30 @@ export function OperatorQueueDetailPage() {
 
   useEffect(() => {
     entriesRef.current = null;
+    countersLoadedRef.current = false;
     setView({ state: 'loading' });
+    setCounters([]);
+    setCountersStatus('loading');
+    setCountersPollError(false);
     setRefreshFailed(false);
     setFeedback(null);
     setAnnouncement('');
     void loadEntries();
     void loadAssignedQueueMeta();
-  }, [loadEntries, loadAssignedQueueMeta]);
+    void loadCounters();
+  }, [loadEntries, loadAssignedQueueMeta, loadCounters]);
 
-  usePolling(loadEntries, view.state === 'ready');
+  const pollQueue = useCallback(
+    () => Promise.all([loadEntries(), loadCounters()]),
+    [loadEntries, loadCounters]
+  );
+
+  usePolling(pollQueue, view.state === 'ready');
 
   const handleRefresh = async () => {
     if (refreshing) return;
     setRefreshing(true);
-    await Promise.all([loadEntries(), loadAssignedQueueMeta()]);
+    await Promise.all([loadEntries(), loadAssignedQueueMeta(), loadCounters()]);
     if (mounted.current) {
       setRefreshing(false);
     }
@@ -191,6 +303,14 @@ export function OperatorQueueDetailPage() {
   const handleRetry = () => {
     setView({ state: 'loading' });
     void loadEntries();
+    void loadCounters();
+  };
+
+  const handleRetryCounters = () => {
+    if (!countersLoadedRef.current) {
+      setCountersStatus('loading');
+    }
+    void loadCounters();
   };
 
   const handleCallNext = async () => {
@@ -294,6 +414,150 @@ export function OperatorQueueDetailPage() {
     }
   };
 
+  const toggleIn = (setter: typeof setNoShowingIds, entryId: string, pending: boolean) => {
+    setter((current) => {
+      const next = new Set(current);
+      if (pending) next.add(entryId);
+      else next.delete(entryId);
+      return next;
+    });
+  };
+
+  /**
+   * F-08: Mark no-show (CALLED -> NO_SHOW) and Return to queue (NO_SHOW -> WAITING). Same flow as
+   * Start/Complete: per-entry in-flight guard, busy state, success message, then reload the list;
+   * on 409/404 the list is reloaded as well (Sprint 2 ui-spec §8.2).
+   */
+  const runNoShowAction = async (
+    entry: QueueEntry,
+    action: (entryId: string) => Promise<QueueEntry>,
+    setter: typeof setNoShowingIds,
+    success: (updated: QueueEntry) => string
+  ) => {
+    if (entryActionInFlightRef.current.has(entry.id)) return;
+    entryActionInFlightRef.current.add(entry.id);
+    toggleIn(setter, entry.id, true);
+    setFeedback(null);
+
+    try {
+      const updated = await action(entry.id);
+      if (!mounted.current) return;
+      const msg = success(updated);
+      setFeedback({ kind: 'success', text: msg });
+      setAnnouncement(msg);
+      await loadEntries();
+    } catch (err) {
+      if (!mounted.current || isSessionExpiredError(err)) return;
+      const { text, refetchEntries } = describeActionFailure(err, 'entry');
+      setFeedback({ kind: 'error', text });
+      setAnnouncement(text);
+      if (refetchEntries) void loadEntries();
+    } finally {
+      entryActionInFlightRef.current.delete(entry.id);
+      if (mounted.current) toggleIn(setter, entry.id, false);
+    }
+  };
+
+  const handleMarkNoShow = (entry: QueueEntry) => {
+    if (entry.status !== 'CALLED') return;
+    void runNoShowAction(entry, markNoShowQueueEntry, setNoShowingIds, (u) => `Marked queue number ${u.queueNumber} as no-show.`);
+  };
+
+  const handleReturnToQueue = (entry: QueueEntry) => {
+    if (!canReturnToQueue(entry)) return;
+    void runNoShowAction(entry, recoverQueueEntry, setRecoveringIds, (u) => `Returned queue number ${u.queueNumber} to the queue.`);
+  };
+
+  const handleTogglePriority = async (entry: QueueEntry) => {
+    if (entry.status !== 'WAITING') return;
+    if (entryActionInFlightRef.current.has(entry.id)) return;
+    entryActionInFlightRef.current.add(entry.id);
+    toggleIn(setUpdatingPriorityIds, entry.id, true);
+    setFeedback(null);
+
+    const nextPriority = entry.priority === 'PRIORITY' ? 'NORMAL' : 'PRIORITY';
+    try {
+      const updated = await updateEntryPriority(entry.id, nextPriority);
+      if (!mounted.current) return;
+      const label = updated.priority === 'PRIORITY' ? 'Priority' : 'Normal';
+      const msg = `Queue number ${updated.queueNumber} priority set to ${label}.`;
+      setFeedback({ kind: 'success', text: msg });
+      setAnnouncement(msg);
+      await loadEntries();
+    } catch (err) {
+      if (!mounted.current || isSessionExpiredError(err)) return;
+      const { text, refetchEntries } = describeActionFailure(err, 'priority');
+      setFeedback({ kind: 'error', text });
+      setAnnouncement(text);
+      if (refetchEntries) void loadEntries();
+    } finally {
+      entryActionInFlightRef.current.delete(entry.id);
+      if (mounted.current) toggleIn(setUpdatingPriorityIds, entry.id, false);
+    }
+  };
+
+  const handleToggleCounterStatus = async (counter: Counter) => {
+    if (isCounterOwnedByOther(counter, user?.id ?? null)) return;
+    if (counterActionInFlightRef.current.has(counter.id)) return;
+    counterActionInFlightRef.current.add(counter.id);
+    toggleIn(setTogglingCounterIds, counter.id, true);
+    setFeedback(null);
+
+    const nextStatus = counter.status === 'OPEN' ? 'CLOSED' : 'OPEN';
+    try {
+      const updated = await updateCounterStatus(counter.id, nextStatus);
+      if (!mounted.current) return;
+      const statusLabel = updated.status === 'OPEN' ? 'Open' : 'Closed';
+      const msg = `${updated.name} is now ${statusLabel}.`;
+      setFeedback({ kind: 'success', text: msg });
+      setAnnouncement(msg);
+      await loadCounters();
+    } catch (err) {
+      if (!mounted.current || isSessionExpiredError(err)) return;
+      const { text, refetchEntries, refetchCounters } = describeActionFailure(err, 'counter');
+      setFeedback({ kind: 'error', text });
+      setAnnouncement(text);
+      if (refetchCounters) void loadCounters();
+      if (refetchEntries) void loadEntries();
+    } finally {
+      counterActionInFlightRef.current.delete(counter.id);
+      if (mounted.current) toggleIn(setTogglingCounterIds, counter.id, false);
+    }
+  };
+
+  const handleCounterCallNext = async (counter: Counter) => {
+    if (counter.status !== 'OPEN' || isCounterOwnedByOther(counter, user?.id ?? null)) return;
+    if (counterActionInFlightRef.current.has(counter.id)) return;
+    counterActionInFlightRef.current.add(counter.id);
+    toggleIn(setCallingCounterIds, counter.id, true);
+    setFeedback(null);
+
+    try {
+      const calledEntry = await callNextAtCounter(counter.id);
+      if (!mounted.current) return;
+      const counterLabel = calledEntry.counterName ?? counter.name;
+      const msg = `Called queue number ${calledEntry.queueNumber} to ${counterLabel}.`;
+      setFeedback({ kind: 'success', text: msg });
+      setAnnouncement(msg);
+      await Promise.all([loadEntries(), loadCounters()]);
+    } catch (err) {
+      if (!mounted.current || isSessionExpiredError(err)) return;
+      const { text, refetchEntries, refetchCounters } = describeActionFailure(err, 'counter');
+      setFeedback({ kind: 'error', text });
+      setAnnouncement(text);
+      if (refetchCounters) void loadCounters();
+      if (refetchEntries) void loadEntries();
+    } finally {
+      counterActionInFlightRef.current.delete(counter.id);
+      if (mounted.current) toggleIn(setCallingCounterIds, counter.id, false);
+    }
+  };
+
+  const currentUserId = user?.id ?? null;
+  const hasUsableCounter = counters.some((c) => !isCounterOwnedByOther(c, currentUserId));
+  // Blocking #2: only render legacy queue-level Call Next once `/counters` has succeeded with zero usable counters.
+  const showLegacyCallNext = countersStatus === 'loaded' && !countersPollError && !hasUsableCounter;
+
   const queueMeta = queues?.find((q) => q.id === id);
   const queueTitle = queueMeta?.name ?? UNKNOWN_QUEUE_NAME;
 
@@ -305,6 +569,8 @@ export function OperatorQueueDetailPage() {
     view.state === 'ready' ? view.entries.filter((e) => e.status === 'WAITING') : [];
   const completedEntries =
     view.state === 'ready' ? view.entries.filter((e) => e.status === 'COMPLETED') : [];
+  const noShowEntries =
+    view.state === 'ready' ? view.entries.filter((e) => e.status === 'NO_SHOW') : [];
 
   return (
     <div className="space-y-6">
@@ -367,27 +633,30 @@ export function OperatorQueueDetailPage() {
               )}
               <p className="text-sm font-medium text-slate-700">
                 Waiting: <span data-testid="waiting-count">{waitingEntries.length}</span> · Active:{' '}
-                <span data-testid="active-count">{activeEntries.length}</span> · Completed:{' '}
+                <span data-testid="active-count">{activeEntries.length}</span> · No-show:{' '}
+                <span data-testid="no-show-count">{noShowEntries.length}</span> · Completed:{' '}
                 <span data-testid="completed-count">{completedEntries.length}</span>
               </p>
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <button
-                type="button"
-                onClick={handleCallNext}
-                disabled={callingNext}
-                className={primaryButtonClass}
-              >
-                {callingNext ? (
-                  <>
-                    <Spinner />
-                    Calling next...
-                  </>
-                ) : (
-                  'Call Next'
-                )}
-              </button>
+              {showLegacyCallNext && (
+                <button
+                  type="button"
+                  onClick={handleCallNext}
+                  disabled={callingNext}
+                  className={primaryButtonClass}
+                >
+                  {callingNext ? (
+                    <>
+                      <Spinner />
+                      Calling next...
+                    </>
+                  ) : (
+                    'Call Next'
+                  )}
+                </button>
+              )}
               <RefreshButton pending={refreshing} onClick={handleRefresh} />
             </div>
           </section>
@@ -417,6 +686,29 @@ export function OperatorQueueDetailPage() {
             </div>
           )}
 
+          {countersStatus === 'loading' && <LoadingNote>Loading counters...</LoadingNote>}
+
+          {countersStatus === 'error' && (
+            <ErrorNote onRetry={handleRetryCounters}>{OPERATOR_COUNTERS_LOAD_ERROR_TEXT}</ErrorNote>
+          )}
+
+          {countersStatus === 'loaded' && (
+            <>
+              {countersPollError && (
+                <ErrorNote onRetry={handleRetryCounters}>{OPERATOR_COUNTERS_POLL_ERROR_TEXT}</ErrorNote>
+              )}
+              <CounterPanel
+                counters={counters}
+                currentUserId={currentUserId}
+                disabled={countersPollError}
+                togglingIds={togglingCounterIds}
+                callingIds={callingCounterIds}
+                onToggleStatus={(counter) => void handleToggleCounterStatus(counter)}
+                onCallNext={(counter) => void handleCounterCallNext(counter)}
+              />
+            </>
+          )}
+
           {/* Section 1: Active Entries (CALLED / SERVING) */}
           <section aria-labelledby="active-entries-heading" className="space-y-3">
             <h2 id="active-entries-heading" className="text-lg font-bold text-slate-900">
@@ -429,7 +721,9 @@ export function OperatorQueueDetailPage() {
                 {activeEntries.map((entry) => {
                   const isStarting = startingIds.has(entry.id);
                   const isCompleting = completingIds.has(entry.id);
-                  const canStart = entry.status === 'CALLED' && !isStarting && !isCompleting;
+                  const isNoShowing = noShowingIds.has(entry.id);
+                  const canStart = entry.status === 'CALLED' && !isStarting && !isCompleting && !isNoShowing;
+                  const canMarkNoShow = entry.status === 'CALLED' && !isStarting && !isNoShowing;
                   const canComplete = entry.status === 'SERVING' && !isCompleting && !isStarting;
 
                   return (
@@ -452,6 +746,15 @@ export function OperatorQueueDetailPage() {
                           <div className="min-w-0 space-y-1.5">
                             <div className="flex flex-wrap items-center gap-2">
                               <StatusBadge status={entry.status} />
+                              <PriorityBadge priority={entry.priority} />
+                              {(entry.status === 'CALLED' || entry.status === 'SERVING') && entry.counterName && (
+                                <span
+                                  data-testid={`active-entry-counter-${entry.queueNumber}`}
+                                  className="inline-flex items-center rounded-full border border-indigo-300 bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-indigo-900"
+                                >
+                                  {entry.counterName}
+                                </span>
+                              )}
                             </div>
                             <p className="break-all text-xs text-slate-600">
                               <span className="font-medium text-slate-700">Customer ID: </span>
@@ -495,6 +798,25 @@ export function OperatorQueueDetailPage() {
                               'Complete Service'
                             )}
                           </button>
+
+                          {entry.status === 'CALLED' && (
+                            <button
+                              type="button"
+                              onClick={() => handleMarkNoShow(entry)}
+                              disabled={!canMarkNoShow}
+                              aria-label={`Mark queue number ${entry.queueNumber} as no-show`}
+                              className={`flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-orange-400 bg-white px-4 py-2 font-semibold text-orange-900 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50 ${focusRing}`}
+                            >
+                              {isNoShowing ? (
+                                <>
+                                  <Spinner />
+                                  Marking no-show...
+                                </>
+                              ) : (
+                                'Mark no-show'
+                              )}
+                            </button>
+                          )}
                         </div>
                       </div>
                     </li>
@@ -513,37 +835,133 @@ export function OperatorQueueDetailPage() {
               <EmptyNote>No customers are currently waiting in this queue.</EmptyNote>
             ) : (
               <ol className="space-y-2.5" aria-label="Waiting queue entries">
-                {waitingEntries.map((entry, index) => (
-                  <li
-                    key={entry.id}
-                    data-testid={`waiting-entry-${entry.queueNumber}`}
-                    className="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span
-                        aria-label={`Position ${index + 1}`}
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-900"
-                      >
-                        #{index + 1}
-                      </span>
-                      <div className="flex shrink-0 flex-col items-center justify-center rounded-lg bg-slate-800 px-4 py-1.5 text-white">
-                        <span className="text-[10px] uppercase tracking-wide">Queue #</span>
-                        <span className="text-xl font-bold">{entry.queueNumber}</span>
+                {waitingEntries.map((entry, index) => {
+                  const isPriority = entry.priority === 'PRIORITY';
+                  const isUpdatingPriority = updatingPriorityIds.has(entry.id);
+                  return (
+                    <li
+                      key={entry.id}
+                      data-testid={`waiting-entry-${entry.queueNumber}`}
+                      className="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span
+                          aria-label={`Position ${index + 1}`}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-900"
+                        >
+                          #{index + 1}
+                        </span>
+                        <div className="flex shrink-0 flex-col items-center justify-center rounded-lg bg-slate-800 px-4 py-1.5 text-white">
+                          <span className="text-[10px] uppercase tracking-wide">Queue #</span>
+                          <span className="text-xl font-bold">{entry.queueNumber}</span>
+                        </div>
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge status={entry.status} />
+                            <PriorityBadge priority={entry.priority} />
+                          </div>
+                          <p className="break-all text-xs text-slate-600">
+                            <span className="font-medium text-slate-700">Customer ID: </span>
+                            {entry.customerId}
+                          </p>
+                        </div>
                       </div>
-                      <div className="min-w-0 space-y-1">
-                        <StatusBadge status={entry.status} />
-                        <p className="break-all text-xs text-slate-600">
-                          <span className="font-medium text-slate-700">Customer ID: </span>
-                          {entry.customerId}
-                        </p>
+                      <div className="flex min-w-0 flex-col gap-2 sm:items-end">
+                        <button
+                          type="button"
+                          onClick={() => void handleTogglePriority(entry)}
+                          disabled={isUpdatingPriority}
+                          aria-label={
+                            isPriority
+                              ? `Set queue number ${entry.queueNumber} to normal priority`
+                              : `Set queue number ${entry.queueNumber} as priority`
+                          }
+                          className={`flex min-h-[44px] items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
+                            isPriority
+                              ? 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
+                              : 'border-amber-400 bg-amber-50 text-amber-950 hover:bg-amber-100'
+                          } ${focusRing}`}
+                        >
+                          {isUpdatingPriority ? (
+                            <>
+                              <Spinner />
+                              Updating priority...
+                            </>
+                          ) : isPriority ? (
+                            'Set Normal'
+                          ) : (
+                            'Set Priority'
+                          )}
+                        </button>
+                        <EntryTimestamps entry={entry} />
                       </div>
-                    </div>
-                    <div className="min-w-0">
-                      <EntryTimestamps entry={entry} />
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ol>
+            )}
+          </section>
+
+          {/* F-08: No-show entries (Sprint 2 ui-spec §8.4) */}
+          <section aria-labelledby="no-show-entries-heading" className="space-y-3">
+            <h2 id="no-show-entries-heading" className="text-lg font-bold text-slate-900">
+              No-show ({noShowEntries.length})
+            </h2>
+            {noShowEntries.length === 0 ? (
+              <EmptyNote>No missed entries.</EmptyNote>
+            ) : (
+              <ul className="space-y-2.5" aria-label="No-show queue entries">
+                {noShowEntries.map((entry) => {
+                  const isRecovering = recoveringIds.has(entry.id);
+                  return (
+                    <li
+                      key={entry.id}
+                      data-testid={`no-show-entry-${entry.queueNumber}`}
+                      className="flex min-w-0 flex-col gap-3 rounded-xl border border-orange-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex shrink-0 flex-col items-center justify-center rounded-lg bg-slate-800 px-4 py-1.5 text-white">
+                          <span className="text-[10px] uppercase tracking-wide">Queue #</span>
+                          <span className="text-xl font-bold">{entry.queueNumber}</span>
+                        </div>
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge status={entry.status} />
+                            <PriorityBadge priority={entry.priority} />
+                          </div>
+                          <p className="break-all text-xs text-slate-600">
+                            <span className="font-medium text-slate-700">Customer ID: </span>
+                            {entry.customerId}
+                          </p>
+                          <EntryTimestamps entry={entry} />
+                        </div>
+                      </div>
+                      <div className="flex min-w-0 flex-col gap-2 sm:items-end">
+                        {canReturnToQueue(entry) ? (
+                          <button
+                            type="button"
+                            onClick={() => handleReturnToQueue(entry)}
+                            disabled={isRecovering}
+                            aria-label={`Return queue number ${entry.queueNumber} to the queue`}
+                            className={`flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-amber-700 px-4 py-2 font-semibold text-white hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50 ${focusRing}`}
+                          >
+                            {isRecovering ? (
+                              <>
+                                <Spinner />
+                                Returning to queue...
+                              </>
+                            ) : (
+                              'Return to queue'
+                            )}
+                          </button>
+                        ) : (
+                          <p className="text-sm font-medium text-slate-700">{OPERATOR_NO_SHOW_LIMIT_TEXT}</p>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </section>
 
@@ -568,7 +986,10 @@ export function OperatorQueueDetailPage() {
                         <span className="text-lg font-bold">{entry.queueNumber}</span>
                       </div>
                       <div className="min-w-0 space-y-1">
-                        <StatusBadge status={entry.status} />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusBadge status={entry.status} />
+                          <PriorityBadge priority={entry.priority} />
+                        </div>
                         <p className="break-all text-xs text-slate-600">
                           <span className="font-medium text-slate-700">Customer ID: </span>
                           {entry.customerId}

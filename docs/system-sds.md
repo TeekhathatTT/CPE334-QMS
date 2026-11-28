@@ -45,14 +45,20 @@ Authorization and ownership checks are server-side. UI control visibility is not
 | `POST /api/queues/{queueId}/entries` | `401 UNAUTHORIZED` | May join an OPEN queue | `403 FORBIDDEN` | Closed queue returns `409 QUEUE_NOT_AVAILABLE`; same-queue duplicate returns `409 DUPLICATE_ACTIVE_ENTRY`; holding 2 active entries across queues returns `409 MAX_ACTIVE_ENTRIES_REACHED` (`BR-06`). |
 | `GET /api/me/queue-entries` | `401 UNAUTHORIZED` | May list own entries | `403 FORBIDDEN` | Results are scoped to the authenticated customer. |
 | `GET /api/me/queue-entries/{entryId}` | `401 UNAUTHORIZED` | May read own entry | `403 FORBIDDEN` | Another customer's or missing entry returns `404 RESOURCE_NOT_FOUND`; resource existence is not disclosed. |
+| `POST /api/me/queue-entries/{entryId}/cancel` (Sprint 2, F-07) | `401 UNAUTHORIZED` | May cancel own `WAITING` entry | `403 FORBIDDEN` | Another customer's or missing entry returns `404 RESOURCE_NOT_FOUND`; a non-`WAITING` entry returns `409 INVALID_STATE_TRANSITION`; a change during the request returns `409 CONCURRENT_MODIFICATION`. Queue availability is not checked. |
 | `GET /api/operator/queues` | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May list assigned queues | Assignment scope is enforced by the API. |
 | `GET /api/operator/queues/{queueId}/entries` | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May list assigned queue entries | Unassigned queue access returns `403 FORBIDDEN`; queue order is deterministic FIFO. |
 | `POST /api/operator/queues/{queueId}/call-next` | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May call next in an assigned queue | Unassigned access returns `403 FORBIDDEN`; invalid transitions return `409 INVALID_STATE_TRANSITION`; empty queue returns `204` with no body. |
 | `POST /api/operator/queue-entries/{entryId}/start` | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May start an entry in an assigned queue | Unassigned access returns `403 FORBIDDEN`; missing resource returns `404 RESOURCE_NOT_FOUND`; invalid transition returns `409 INVALID_STATE_TRANSITION`. |
 | `POST /api/operator/queue-entries/{entryId}/complete` | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May complete an entry in an assigned queue | Unassigned access returns `403 FORBIDDEN`; missing resource returns `404 RESOURCE_NOT_FOUND`; invalid transition returns `409 INVALID_STATE_TRANSITION`. |
 | Customer queue position calculation | Not available | Not specified by the Sprint 1 API | Not specified by the Sprint 1 API | Sprint 1 exposes entry status and FIFO-ordered operator entries; a customer-facing position endpoint is not defined. |
-| Customer cancellation or withdrawal | Not available | Planned for Sprint 2 (F-07) | — | Not part of Sprint 1. |
-| No-show handling | Not available | — | Planned for Sprint 2 (F-08) | Not part of Sprint 1. |
+| Customer cancellation or withdrawal | Not available | Planned for Sprint 2 (F-07) | — | Not part of Sprint 1. *Rev. 2026-11-27:* specified as `POST /api/me/queue-entries/{entryId}/cancel`, see §13. |
+| No-show handling | Not available | — | Planned for Sprint 2 (F-08) | Not part of Sprint 1. *Rev. 2026-11-27:* specified as the two rows below, see §14. |
+| `POST /api/operator/queue-entries/{entryId}/no-show` (Sprint 2, F-08) | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May mark a `CALLED` entry in an assigned queue no-show | Unassigned access returns `403 FORBIDDEN`; a missing entry `404`; any other status `409 INVALID_STATE_TRANSITION`. Queue availability is not checked. |
+| `POST /api/operator/queue-entries/{entryId}/recover` (Sprint 2, F-08) | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May return a `NO_SHOW` entry in an assigned queue to the queue once | Unassigned `403`; missing `404`; not `NO_SHOW` `409 INVALID_STATE_TRANSITION`; already returned once `409 RECOVERY_LIMIT_REACHED`; customer has another active entry in the queue `409 DUPLICATE_ACTIVE_ENTRY`. |
+| `GET /api/operator/queues/{queueId}/counters` (Sprint 2, F-09) | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May list counters in an assigned queue | Missing queue returns `404 RESOURCE_NOT_FOUND`; unassigned returns `403 FORBIDDEN`; deterministic order `name ASC, id ASC`. |
+| `PATCH /api/operator/counters/{counterId}/status` (Sprint 2, F-09) | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May open or close a counter in an assigned queue | Unassigned or mismatched `assignedOperatorId` returns `403 FORBIDDEN`; missing counter `404`; invalid body `400 INVALID_ARGUMENT`. Queue availability is not checked. |
+| `POST /api/operator/counters/{counterId}/call-next` (Sprint 2, F-09) | `401 UNAUTHORIZED` | `403 FORBIDDEN` | May call next in an assigned queue for an `OPEN` counter | Unassigned or mismatched `assignedOperatorId` returns `403 FORBIDDEN`; missing counter `404`; closed counter `409 COUNTER_CLOSED`; empty queue `409 NO_WAITING_ENTRIES`. |
 
 ### 2.1 Authorization rules
 
@@ -116,8 +122,16 @@ The composite primary key is `(operatorId, serviceQueueId)`. Only OPERATOR users
 | `calledAt` | `timestamptz` | Nullable |
 | `serviceStartedAt` | `timestamptz` | Nullable |
 | `completedAt` | `timestamptz` | Nullable |
+| `cancelledAt` (Sprint 2, F-07) | `timestamptz` | Nullable; set only together with `status = CANCELLED` |
+| `noShowAt` (Sprint 2, F-08) | `timestamptz` | Nullable; time of the latest no-show |
+| `recoveredAt` (Sprint 2, F-08) | `timestamptz` | Nullable; time the entry was returned to the queue |
+| `noShowCount` (Sprint 2, F-08) | `INTEGER` | Required, default 0, `CHECK ("noShowCount" >= 0 AND "noShowCount" <= 2)` |
+| `counterId` (Sprint 2, F-09) | UUID | Nullable; composite FK `("counterId", "serviceQueueId") -> Counter("id", "serviceQueueId")` (`MATCH SIMPLE`, `ON DELETE RESTRICT ON UPDATE RESTRICT`); `NULL` for `WAITING`/`CANCELLED` and legacy calls |
+| `priority` (Sprint 2, F-10) | enum `QueuePriority` (`NORMAL`, `PRIORITY`) | Required, default `'NORMAL'`; mutable only while `status = WAITING` by an assigned `OPERATOR`; preserved on F-08 `NO_SHOW` recovery |
 
 The lifecycle and active-state definitions match the SRS: active states are `WAITING`, `CALLED`, and `SERVING`; `COMPLETED` is terminal. Completed entries remain for historical review.
+
+*Rev. 2026-11-27 (F-07):* the `status` enum gains `CANCELLED` (`WAITING`, `CALLED`, `SERVING`, `COMPLETED`, `CANCELLED`). `CANCELLED` is terminal and not active; cancelled entries also remain for history. The active states, and therefore the partial unique index below, are unchanged. See §13.
 
 #### Required database constraints and indexes
 
@@ -174,6 +188,8 @@ The counter increment and entry insert are atomic: any validation failure (inclu
 ### 4.2 Entry lifecycle and call-next
 
 Allowed transitions are `WAITING -> CALLED -> SERVING -> COMPLETED`. Lifecycle status and corresponding server-generated UTC timestamp are committed atomically. Call-next selects the oldest eligible WAITING entry by `joinedAt ASC, id ASC` and claims it in a transaction so concurrent operators cannot claim the same entry. If no eligible entry exists, the API returns `204 No Content` without changing state. Stale or conflicting mutations use the API's `409` conflict contract.
+
+*Rev. 2026-11-27 (F-07):* one more transition, `WAITING -> CANCELLED`, performed by the owning customer with a conditional update (`... WHERE id = ? AND customerId = ? AND status = 'WAITING'`). It is mutually exclusive with Call Next on the same row; see §13 and the [F-07 feature SDS §10](./features/sprint-2-f07-customer-cancellation.md#10-concurrency-design).
 
 ## 5. API Conventions
 
@@ -358,10 +374,67 @@ These record choices the specification left open for the operator workflow and e
 | 3 | Operator Queue Management layout | `/operator` lists the operator's assigned queues (`OPEN` and `CLOSED`) with availability badges and links to `/operator/queues/:id`. `/operator/queues/:id` groups entries into three sections: **Active Service** (`CALLED` and `SERVING`), **Waiting Queue — FIFO** (`WAITING` in `joinedAt ASC, id ASC` order), and **Completed** (`COMPLETED`), with a top-level **Call Next** action and per-entry **Start Service** (enabled only for `CALLED`) and **Complete Service** (enabled only for `SERVING`) controls. |
 | 4 | Refreshing, conflict recovery & error mapping | Every operator mutation (`call-next`, `start`, `complete`) immediately re-fetches `GET /api/operator/queues/:queueId/entries` upon completion. If a concurrent operator action causes `409 INVALID_STATE_TRANSITION`, the UI shows a user-safe conflict banner and automatically refreshes the entry list so stale buttons are updated immediately. Action-level `403` errors distinguish CSRF verification failures (`"We couldn't verify this request. Please refresh the page or sign in again."`) from RBAC permission errors (`"You do not have permission to perform this action."`), and action-level `404` errors distinguish queue-level `call-next` (`"We couldn't find that service queue."`) from entry-level `start`/`complete` (`"We couldn't find that queue entry."`). Both `/operator` and `/operator/queues/:id` also poll every 10 seconds while visible (`usePolling`). |
 
-## 13. Revision History
+
+*Rev. 2026-11-27 (F-08):* the `status` enum gains `NO_SHOW`. `NO_SHOW` is not active; it can return to `WAITING` once (`noShowCount` 1), and is final at `noShowCount` 2. The active states and the partial unique index are unchanged. See §14.
+
+## 13. Sprint 2 design changes (F-07 Customer cancellation, rev. 2026-11-27)
+
+Contract v1, pending review. The full design is in [features/sprint-2-f07-customer-cancellation.md](./features/sprint-2-f07-customer-cancellation.md); this section records only what F-07 changes in this system design.
+
+| # | Area | Change |
+|---|---|---|
+| 1 | Status model | `QueueStatus` gains the terminal value `CANCELLED`. The only new transition is `WAITING -> CANCELLED`, by the owning customer. Active states stay `WAITING`, `CALLED`, `SERVING`. |
+| 2 | Data model | `QueueEntry.cancelledAt timestamptz NULL`. Migration `20261127090000_f07_queue_entry_cancelled` (`ALTER TYPE "QueueStatus" ADD VALUE 'CANCELLED'`; `ALTER TABLE "QueueEntry" ADD COLUMN "cancelledAt" TIMESTAMPTZ`). The partial unique index `QueueEntry_active_customer_queue_uidx` and all other constraints and indexes are unchanged. No `CHECK` constraint is added for the new value (it cannot be used in the transaction that adds it). |
+| 3 | API list | New `POST /api/me/queue-entries/{entryId}/cancel` (CUSTOMER, session + CSRF, no body, `200` with the updated entry). `cancelledAt` is added to every `QueueEntry` payload. `GET /api/operator/queues/{queueId}/entries` excludes `CANCELLED` entries. Details: [sprints/sprint-2/api-spec.md](./sprints/sprint-2/api-spec.md). |
+| 4 | Concurrency | One transaction: read and check owner and status, then a conditional `UPDATE ... WHERE status = 'WAITING'`, with `cancelledAt = clock_timestamp()`. Zero rows updated → `409 CONCURRENT_MODIFICATION`. Call Next is unchanged and never claims a cancelled or cancel-locked row (`FOR UPDATE SKIP LOCKED`). |
+| 5 | Unchanged | Queue catalog, queue-number allocation and join, authentication, session and CSRF middleware, operator Start and Complete, seed data, Docker image. |
+| 6 | Deployment | The migration is additive and must be applied to the deployed database before the new revision serves traffic. Rolling back below this release after `CANCELLED` rows exist requires handling those rows first. |
+
+
+## 14. Sprint 2 design changes (F-08 No-show handling and recovery, rev. 2026-11-27)
+
+Contract v1, pending review. The full design is in [features/sprint-2-f08-no-show-recovery.md](./features/sprint-2-f08-no-show-recovery.md); this section records only what F-08 changes in this system design.
+
+| # | Area | Change |
+|---|---|---|
+| 1 | Status model | `QueueStatus` gains `NO_SHOW`. New transitions `CALLED -> NO_SHOW` and `NO_SHOW -> WAITING` (once), both by an operator assigned to the entry's queue. Active states stay `WAITING`, `CALLED`, `SERVING`. |
+| 2 | Data model | `QueueEntry.noShowAt timestamptz NULL`, `recoveredAt timestamptz NULL`, `noShowCount integer NOT NULL DEFAULT 0` with `CHECK` 0–2 (`QueueEntry_noShowCount_range_check`). Migration `20261127120000_f08_queue_entry_no_show`. The partial unique index and the other constraints are unchanged. |
+| 3 | API list | New `POST /api/operator/queue-entries/{entryId}/no-show` and `/recover` (OPERATOR, session + CSRF, no body, `200` with the updated entry). The three fields are added to every `QueueEntry` payload. New error code `RECOVERY_LIMIT_REACHED` (409). Details: [sprints/sprint-2/api-spec.md](./sprints/sprint-2/api-spec.md) §7–§11. |
+| 4 | Concurrency | No-show: lock the entry `FOR UPDATE`, check assignment and `CALLED`, update (same as Start, §4.2). Recover: lock the queue row (the lock join uses, §4.1), then the entry, then check assignment, state, limit and other active entries, then update. Lock order is queue row before entry row. |
+| 5 | Unchanged | Join and queue-number allocation, Call Next, Start, Complete, `aheadCount`, the operator list filter, F-07 cancel, authentication, session, CSRF and RBAC middleware, seed data, Docker image. |
+| 6 | Deployment | The migration is additive and must be applied to the deployed database before the new revision serves traffic. Rolling back below this release after `NO_SHOW` rows exist requires handling those rows first. |
+
+## 15. Sprint 2 design changes (F-09 Multi-counter support, rev. 2026-11-27)
+
+Contract v1.3 (2026-11-27), implemented and verified locally on `feature/sprint2/42-multi-counter-impl` (pending PR re-review by @TeekhathatTT). (*Rev. 2026-11-27 v1.1:* updated from Contract v1 to address PR review — composite FK, legacy Call Next explicit `counterId = NULL` & backwards-compatibility trade-off, honest rollback/roll-forward cleanup SQL, and counter-only Cloud SQL provisioning. *Rev. 2026-11-27 v1.2/v1.3:* aligned `GET .../counters` unknown `queueId` to `404 RESOURCE_NOT_FOUND`, upgraded composite FK to `ON DELETE RESTRICT ON UPDATE RESTRICT`, updated `seed.ts` to upsert counters by `(serviceQueueId, name)`, gated legacy UI fallback on loaded/non-error counter state, and added `COUNTER-019` legacy fallback E2E coverage.) The full design is in [features/sprint-2-f09-multi-counter.md](./features/sprint-2-f09-multi-counter.md); this section records only what F-09 changes in this system design.
+
+| # | Area | Change |
+|---|---|---|
+| 1 | Status model | `QueueStatus` is unchanged. Adds `CounterStatus` enum (`OPEN`, `CLOSED`) on the new `Counter` entity (`OPEN` ↔ `CLOSED`). |
+| 2 | Data model | New table `Counter` (`id`, `serviceQueueId` FK → `ServiceQueue`, `name` unique per queue `Counter_serviceQueueId_name_key`, `UNIQUE ("id", "serviceQueueId")` `Counter_id_serviceQueueId_key`, `status` default `OPEN`, optional `assignedOperatorId` FK → `User`, `createdAt`, `updatedAt`) and nullable `QueueEntry.counterId` with PostgreSQL composite FK `FOREIGN KEY ("counterId", "serviceQueueId") REFERENCES "Counter"("id", "serviceQueueId") ON DELETE RESTRICT ON UPDATE RESTRICT` (`MATCH SIMPLE`, default: allows `counterId IS NULL` while rejecting any non-null cross-queue `counterId` and blocking `Counter.serviceQueueId` updates while referenced). Migration `20261127150000_f09_multi_counter_support`. Existing indexes and constraints (including `QueueEntry_active_customer_queue_uidx` and `QueueEntry_noShowCount_range_check`) are unchanged. |
+| 3 | API list | New `GET /api/operator/queues/{queueId}/counters`, `PATCH /api/operator/counters/{counterId}/status` (CSRF + JSON body `{ "status": "OPEN" \| "CLOSED" }`), and `POST /api/operator/counters/{counterId}/call-next` (CSRF, no body). Additive `counterId` and `counterName` added to every `QueueEntry` payload. New `409` error codes: `COUNTER_CLOSED` and `NO_WAITING_ENTRIES`. Legacy `POST /api/operator/queues/{queueId}/call-next` is preserved without counter `OPEN`/`assignedOperatorId` checks as an explicit backwards-compatibility trade-off for unmodified Sprint 1 / F-07 / F-08 server and client regression suites plus the zero-usable-counter UI fallback (`COUNTER-019`), and its `UPDATE` explicitly sets `"counterId" = NULL` (keeping `204` when empty). `recoverNoShowEntry` (F-08) clears `counterId = NULL` alongside `calledAt = NULL`. Details: [sprints/sprint-2/api-spec.md](./sprints/sprint-2/api-spec.md) §12–§16. |
+| 4 | Concurrency | Counter status toggle locks `Counter` `FOR UPDATE`. Counter-scoped Call Next locks `Counter` `FOR UPDATE` (checking existence, assignment, `assignedOperatorId`, and `OPEN` status), then selects the oldest `WAITING` entry in `counter.serviceQueueId` with `FOR UPDATE SKIP LOCKED`. Lock order is strictly `Counter` → `QueueEntry` (and `ServiceQueue` → `QueueEntry` elsewhere), forming an acyclic lock graph with zero deadlock cycles. |
+| 5 | Provisioning & seed | `server/prisma/seed.ts` (**local dev/test only**) idempotently upserts `Counter 1` and `Counter 2` (`OPEN`, `assignedOperatorId: null`) for each seeded queue by `(serviceQueueId, name)` (`update: {}`) using deterministic UUIDv4s on `create`, so re-seeding preserves existing IDs and operational counter state and running `provision:counters` followed by `seed` never throws `P2002`. Production / Cloud SQL uses `server/prisma/provision-counters.ts`, a dedicated idempotent **counter-only** provisioning script that inserts missing default counters without touching users, passwords, queues, or assignments. |
+| 6 | Unchanged | Queue catalog, customer join and queue-number allocation, `aheadCount`, Start/Complete/No-show transitions, F-07 cancel, authentication/session/CSRF middleware, Docker build. (Legacy `callNextEntry` has a one-line `UPDATE` addition setting `"counterId" = NULL`, keeping `204`/`200`, FIFO, and locking unchanged.) |
+| 7 | Deployment & rollback | Additive schema migration applied before serving the new revision, followed by the dedicated idempotent counter-only Cloud SQL provisioning step (never run demo `seed.ts` in production). **Rollback/roll-forward risk:** a pre-F-09 revision's `recoverNoShowEntry` does not clear `counterId`, which can leave `WAITING` rows with stale non-null `counterId`; run `UPDATE "QueueEntry" SET "counterId" = NULL WHERE "status" = 'WAITING' AND "counterId" IS NOT NULL;` after any rollback and before rolling forward again. |
+
+### 15.1 Sprint 2 design changes (F-10 Priority queue policy, rev. 2026-11-28)
+
+Contract v1.1 (2026-11-28, issue #43), pending final re-review by `@TeekhathatTT`. The full design is in [features/sprint-2-f10-priority-queue-policy.md](./features/sprint-2-f10-priority-queue-policy.md); this subsection records only what F-10 changes in this system design.
+
+| # | Area | Change |
+|---|---|---|
+| 1 | Status & priority model | `QueueStatus` is unchanged. Adds `QueuePriority` enum (`NORMAL`, `PRIORITY`) on `QueueEntry` (`NOT NULL DEFAULT 'NORMAL'`). Priority is mutable only while `status = WAITING` by an assigned `OPERATOR` (no `ADMIN` role exists). |
+| 2 | Data model & indexing | Adds `QueueEntry.priority "QueuePriority" NOT NULL DEFAULT 'NORMAL'` and partial expression index `QueueEntry_waiting_priority_fifo_idx` on `("serviceQueueId", (CASE WHEN "priority" = 'PRIORITY'::"QueuePriority" THEN 0 ELSE 1 END) ASC, "joinedAt" ASC, "id" ASC) WHERE "status" = 'WAITING'::"QueueStatus"`. Existing constraints and indexes are unchanged. |
+| 3 | API list & ordering | New `PATCH /api/operator/queue-entries/{entryId}/priority` (assigned `OPERATOR`, CSRF, `{ "priority": "NORMAL" \| "PRIORITY" }`, `409 INVALID_STATE_TRANSITION` if not `WAITING`). `POST /api/queues/{queueId}/entries` validates `priority` **before** DB `404`/`409` lookups (empty/`"NORMAL"` allowed, `"PRIORITY"` → `403 FORBIDDEN`, malformed → `400 INVALID_ARGUMENT`). Both counter-scoped (F-09) and legacy (F-05) Call Next order `WAITING` rows by `(CASE WHEN "priority" = 'PRIORITY' THEN 0 ELSE 1 END) ASC, "joinedAt" ASC, "id" ASC`. `GET /api/operator/queues/{queueId}/entries` applies priority ranking **only to `WAITING` entries** (non-`WAITING` sections retain chronological `joinedAt ASC, id ASC`). `computeAheadCount` reflects priority-aware ordering (non-monotonic for `NORMAL` customers). `recoverNoShowEntry` (F-08) preserves `priority`. Additive `priority` field included on every serialized `QueueEntry`. Details: [sprints/sprint-2/api-spec.md](./sprints/sprint-2/api-spec.md) §17–§21. |
+| 4 | Concurrency & known limitations | `updateEntryPriority` acquires a single `QueueEntry` `FOR UPDATE` row lock (acyclic lock order preserved, zero deadlocks). Under `FOR UPDATE SKIP LOCKED`, a concurrent Call Next skips a row locked by `PATCH .../priority` (returning `409 NO_WAITING_ENTRIES` or `204` if it is the sole `WAITING` entry). Anti-starvation is manual operator adjustment only in Sprint 2 (starvation risk for `NORMAL` entries documented as a known limitation; automatic aging deferred to Sprint 3+). |
+| 5 | Unchanged | Authentication, sessions, CSRF, queue catalog, queue-number allocation, BR-05/BR-06 caps, F-07 cancel logic, F-08 recovery limits, F-09 counter management & provisioning, seed data, Docker build. |
+
+## 16. Revision History
 
 | Version | Date | Ref | Summary of Changes |
 |---|---|---|---|
 | 1.0 | 2026-11-11 | Sprint 1 Baseline | Initial System-Level SDS and verified Sprint 1 implementation decisions §§10–12 (accepted at `main` commit `e304cd9`, Cloud Run revision `qms-00005-5kz`). |
 | 1.1 | 2026-11-27 | Issue #51 (Lab 7 Part A) | Updated §2 Role Matrix, §4.1 transaction locking & active-entry cap enforcement (`User` `FOR NO KEY UPDATE` → `ServiceQueue` `FOR UPDATE` lock order, `BR-05` precedence before `BR-06`, max 2 active entries across all queues; `CR51-AC1`–`CR51-AC4`), and §§5.3–5.4 error contract (`409 MAX_ACTIVE_ENTRIES_REACHED`). Confirmed no DB migration is required. |
+| 1.2 | 2026-11-28 | Issue #43 (Sprint 2 F-10 Contract v1.1) | Added `QueueEntry.priority` to §3.4 and added §15.1 documenting F-10 priority queue policy changes (`QueuePriority`, partial expression index, `PATCH /api/operator/queue-entries/{entryId}/priority`, body-before-DB join validation, `WAITING`-only operator list priority sort, concurrency, and known limitations). |
 

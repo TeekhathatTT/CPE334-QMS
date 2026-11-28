@@ -5,7 +5,8 @@
 import { ApiError, apiRequest } from './client';
 
 export type QueueAvailability = 'OPEN' | 'CLOSED';
-export type QueueEntryStatus = 'WAITING' | 'CALLED' | 'SERVING' | 'COMPLETED';
+export type QueueEntryStatus = 'WAITING' | 'CALLED' | 'SERVING' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+export type QueuePriority = 'NORMAL' | 'PRIORITY';
 
 /** api-spec §3.2 */
 export interface QueueSummary {
@@ -26,6 +27,19 @@ export interface QueueEntry {
   calledAt: string | null;
   serviceStartedAt: string | null;
   completedAt: string | null;
+  /** F-07 (Sprint 2 api-spec §1.1). The server always sends it; optional so older fixtures stay valid. */
+  cancelledAt?: string | null;
+  /** F-08 (Sprint 2 api-spec §7.1): latest no-show time. Optional so older fixtures stay valid. */
+  noShowAt?: string | null;
+  /** F-08: time the entry was returned to the queue. */
+  recoveredAt?: string | null;
+  /** F-08: number of no-shows, 0-2. */
+  noShowCount?: number;
+  /** F-09 (Sprint 2 api-spec §12.2): assigned counter id/name, or null. Optional so older fixtures stay valid. */
+  counterId?: string | null;
+  counterName?: string | null;
+  /** F-10 (Sprint 2 api-spec §17.2): queue priority tier. Optional so older fixtures stay valid. */
+  priority?: QueuePriority;
   aheadCount?: number;
 }
 
@@ -59,6 +73,17 @@ export async function listMyEntries(): Promise<QueueEntry[]> {
 /** `GET /api/me/queue-entries/{entryId}` — one own entry including `aheadCount`. */
 export async function getMyEntry(entryId: string): Promise<QueueEntry> {
   const data = await apiRequest<{ entry: QueueEntry }>(`/api/me/queue-entries/${encodeURIComponent(entryId)}`);
+  return required(data?.entry);
+}
+
+/**
+ * `POST /api/me/queue-entries/{entryId}/cancel` — F-07: cancel an own `WAITING` entry
+ * (Sprint 2 api-spec §3.1). No body; CSRF header added by `apiRequest`.
+ */
+export async function cancelMyEntry(entryId: string): Promise<QueueEntry> {
+  const data = await apiRequest<{ entry: QueueEntry }>(`/api/me/queue-entries/${encodeURIComponent(entryId)}/cancel`, {
+    method: 'POST',
+  });
   return required(data?.entry);
 }
 

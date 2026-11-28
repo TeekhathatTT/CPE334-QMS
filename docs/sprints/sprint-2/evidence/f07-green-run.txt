@@ -1,0 +1,212 @@
+F-07 TDD GREEN RUN (raw output, ANSI colour codes removed)
+Date: 2026-11-27T03:15:46Z
+Commit under test: 61e9daf (feat(f07): client leave-queue control) - first fully green commit
+Red commit: 477febb. Contract commit: f98c296. Base (sprint2-staging): e304cd9.
+Environment: local PostgreSQL 16 (docker qms-postgres), isolated qms_test_db migrated with
+  20261127090000_f07_queue_entry_cancelled, Node v22.20.0, Playwright Chromium, Docker Desktop.
+
+SUMMARY (pass / fail / skip)
+  1 npm run typecheck --workspace=server                 exit 0
+  2 npx tsc --noEmit --project client/tsconfig.json        exit 0
+  3 npm run build (server tsc + client vite build)         exit 0
+  4 npm run test (server, real PostgreSQL)                 14 files, 161 passed / 0 failed / 0 skipped
+      Sprint 1 files unchanged: 140 tests; F-07: f07-cancel-rule (6) + f07-customer-cancellation (15) = 21
+  5 npm run test:client                                    6 files, 91 passed / 0 failed / 0 skipped
+      Sprint 1: 77; F-07: f07-leaveQueue (14)
+  6 npm run test:e2e (Chromium)                            15 passed / 0 failed / 0 skipped
+      Sprint 1: 12 (S1-S9, keyboard, responsive); F-07: CANCEL-017, CANCEL-018, CANCEL-019
+  7 docker build -t qms-f07-check .                        exit 0
+Not run: Firefox/WebKit E2E (npm run test:e2e:all-browsers), PERF-001 for the cancel mutation.
+No Sprint 1 test file was edited (git diff e304cd9..61e9daf -- server/tests client/src/test e2e/tests shows only new f07 files).
+
+================================================================ 1-tc-server
+
+> qms-server@1.0.0 typecheck
+> tsc --noEmit && tsc --project tsconfig.test.json --noEmit
+
+
+================================================================ 2-tc-client
+
+================================================================ 4-server
+
+> qms-root@1.0.0 test
+> npm run test --workspace=server
+
+
+> qms-server@1.0.0 test
+> vitest run
+
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 C:/Users/UNS_CT/Desktop/CPE_2569/CPE334/Lab5/QMS/qms/server
+
+ ✓ tests/integration-sprint1.test.ts (9 tests) 4575ms
+   ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 1. Authorization matrix over every protected endpoint (NFR-02, RBAC-001..005, AUTH-005) > rejects every invalid identity with 401 UNAUTHORIZED on every protected endpoint, with no DB change 813ms
+   ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 1. Authorization matrix over every protected endpoint (NFR-02, RBAC-001..005, AUTH-005) > enforces role and assignment rules with the exact status/code per endpoint (customer, other customer, assigned and unassigned operator) 556ms
+   ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 1. Authorization matrix over every protected endpoint (NFR-02, RBAC-001..005, AUTH-005) > allows the assigned operator to perform each mutation that the matrix rejected for everyone else 368ms
+   ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 2. CSRF matrix on every mutation (SEC-002): missing, wrong, and another session's token > rejects each bad token with 403 FORBIDDEN before any mutation (counter, rows and statuses unchanged) 610ms
+   ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 3. Cross-role business flow driven only through the API (FLOW-009/FLOW-010 at API level) > join -> duplicate/closed rejections -> FIFO call -> full lifecycle -> rejoin -> empty call-next, with consistent customer views 410ms
+   ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 4. Mixed concurrency with SQL invariants (NFR-03, CONCURRENCY-001..004 extensions) > joins racing call-next from two assigned operators: contiguous numbers, no double claim, invariants hold 695ms
+   ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 4. Mixed concurrency with SQL invariants (NFR-03, CONCURRENCY-001..004 extensions) > parallel duplicate joins from several customers at once: exactly one 201 each, counter equals customers 403ms
+   ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 4. Mixed concurrency with SQL invariants (NFR-03, CONCURRENCY-001..004 extensions) > start/complete storm across several entries from two operators: each transition happens once, invariants hold 515ms
+ ✓ tests/operator-workflow.test.ts (18 tests) 6859ms
+   ✓ Issue #6: Operator Queue Management Workflow > 1. Operator Assigned Queues (GET /api/operator/queues) > returns only service queues assigned to the authenticated operator 433ms
+   ✓ Issue #6: Operator Queue Management Workflow > 1. Operator Assigned Queues (GET /api/operator/queues) > includes CLOSED queues if assigned to the operator 366ms
+   ✓ Issue #6: Operator Queue Management Workflow > 1. Operator Assigned Queues (GET /api/operator/queues) > rejects CUSTOMER role with 403 FORBIDDEN and anonymous with 401 UNAUTHORIZED 359ms
+   ✓ Issue #6: Operator Queue Management Workflow > 2. FIFO Operator Queue Entries Listing (GET /api/operator/queues/:queueId/entries, QUEUE-007) > returns queue entries in deterministic FIFO order: joinedAt ASC, id ASC (QUEUE-007) 367ms
+   ✓ Issue #6: Operator Queue Management Workflow > 2. FIFO Operator Queue Entries Listing (GET /api/operator/queues/:queueId/entries, QUEUE-007) > returns 404 RESOURCE_NOT_FOUND for a non-existent queue and 400 INVALID_ARGUMENT for malformed UUID 352ms
+   ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > FLOW-001 & FLOW-002: selects oldest WAITING entry in FIFO order, transitions to CALLED, and sets calledAt 388ms
+   ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > FLOW-003: returns 204 No Content with empty body when queue has no WAITING entries 357ms
+   ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > FLOW-004, FLOW-006, FLOW-010: full operator lifecycle WAITING -> CALLED -> SERVING -> COMPLETED 420ms
+   ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > FLOW-005 & FLOW-007: rejects invalid and out-of-order lifecycle transitions with 409 INVALID_STATE_TRANSITION 428ms
+   ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > returns 404 RESOURCE_NOT_FOUND for unknown entryId and 400 INVALID_ARGUMENT for malformed entryId on start and complete 374ms
+   ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > returns 404 RESOURCE_NOT_FOUND for unknown queueId and 400 INVALID_ARGUMENT for malformed queueId on call-next without mutating database state 353ms
+   ✓ Issue #6: Operator Queue Management Workflow > 4. Authorization, RBAC & CSRF Enforcement (RBAC-001 to RBAC-004, SEC-002) > RBAC-001: customer cannot call next (403 FORBIDDEN, no state mutation) 347ms
+   ✓ Issue #6: Operator Queue Management Workflow > 4. Authorization, RBAC & CSRF Enforcement (RBAC-001 to RBAC-004, SEC-002) > RBAC-002: customer cannot start service (403 FORBIDDEN, no state mutation) 364ms
+   ✓ Issue #6: Operator Queue Management Workflow > 4. Authorization, RBAC & CSRF Enforcement (RBAC-001 to RBAC-004, SEC-002) > RBAC-003: customer cannot complete service (403 FORBIDDEN, no state mutation) 360ms
+   ✓ Issue #6: Operator Queue Management Workflow > 4. Authorization, RBAC & CSRF Enforcement (RBAC-001 to RBAC-004, SEC-002) > RBAC-004: operator cannot view entries, call-next, start, or complete on an unassigned queue (403 FORBIDDEN) 378ms
+   ✓ Issue #6: Operator Queue Management Workflow > 4. Authorization, RBAC & CSRF Enforcement (RBAC-001 to RBAC-004, SEC-002) > SEC-002: rejects operator mutations without a valid X-CSRF-Token with 403 FORBIDDEN 354ms
+   ✓ Issue #6: Operator Queue Management Workflow > 5. Concurrency Safety (CONCURRENCY-003, CONCURRENCY-004) > CONCURRENCY-003: concurrent call-next requests claim distinct WAITING entries without duplicates 410ms
+   ✓ Issue #6: Operator Queue Management Workflow > 5. Concurrency Safety (CONCURRENCY-003, CONCURRENCY-004) > CONCURRENCY-004: concurrent start and complete requests on the same entry succeed once and return 409 for stale requests 418ms
+stderr | tests/queue-registration.test.ts > Issue #4: Service Queue Creation & Queue Number Generation > 2. Normal Queue Registration (POST /api/queues/:queueId/entries) > rolls back lastQueueNumber atomically when entry creation fails inside the transaction (NUMBER-002)
+[Unhandled Error] PrismaClientKnownRequestError: 
+Invalid `prisma.queueEntry.create()` invocation:
+
+
+Unique constraint failed on the fields: (`serviceQueueId`,`queueNumber`)
+    at $n.handleRequestError (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at l (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at __vite_ssr_import_1__.prisma.$transaction.maxWait (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\server\src\services\queueService.ts:133:25)
+    at Proxy._transactionWithCallback (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\node_modules\@prisma\client\runtime\library.js:130:8000)
+    at Module.joinQueue (C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\server\src\services\queueService.ts:88:19)
+    at C:\Users\UNS_CT\Desktop\CPE_2569\CPE334\Lab5\QMS\qms\server\src\routes\queues.ts:47:21 {
+  code: 'P2002',
+  clientVersion: '5.22.0',
+  meta: {
+    modelName: 'QueueEntry',
+    target: [ 'serviceQueueId', 'queueNumber' ]
+  }
+}
+
+ ✓ tests/queue-registration.test.ts (25 tests) 4100ms
+stdout | tests/f07-customer-cancellation.test.ts > F-07: customer cancellation (POST /api/me/queue-entries/:entryId/cancel) > CANCEL-014 (AC-23): cancel vs Call Next on the same entry; exactly one transition is applied (15 rounds)
+[CANCEL-014] cancel won 15, call-next won 0 of 15 rounds
+
+ ✓ tests/f07-customer-cancellation.test.ts (15 tests) 6708ms
+   ✓ F-07: customer cancellation (POST /api/me/queue-entries/:entryId/cancel) > CANCEL-002 (AC-17): the owner cancels a WAITING entry; CANCELLED + UTC cancelledAt, persisted, row kept 454ms
+   ✓ F-07: customer cancellation (POST /api/me/queue-entries/:entryId/cancel) > CANCEL-003 (AC-18): cancelling a CALLED, SERVING, COMPLETED or CANCELLED entry is 409 INVALID_STATE_TRANSITION and changes nothing 447ms
+   ✓ F-07: customer cancellation (POST /api/me/queue-entries/:entryId/cancel) > CANCEL-004 (AC-19): a non-owner customer gets the same 404 as an unknown id, and the entry is unchanged 372ms
+   ✓ F-07: customer cancellation (POST /api/me/queue-entries/:entryId/cancel) > CANCEL-005 (AC-19): an operator (assigned or not) gets 403 FORBIDDEN, and the entry is unchanged 353ms
+   ✓ F-07: customer cancellation (POST /api/me/queue-entries/:entryId/cancel) > CANCEL-006 (AC-19): no session or a logged-out session gets 401, and the entry is unchanged 362ms
+   ✓ F-07: customer cancellation (POST /api/me/queue-entries/:entryId/cancel) > CANCEL-007 (AC-19): a missing or wrong CSRF token gets 403 FORBIDDEN, and the entry is unchanged 377ms
+   ✓ F-07: customer cancellation (POST /api/me/queue-entries/:entryId/cancel) > CANCEL-008 (AC-19): malformed ids are 400 INVALID_ARGUMENT; an unknown UUIDv4 is 404 RESOURCE_NOT_FOUND 388ms
+   ✓ F-07: customer cancellation (POST /api/me/queue-entries/:entryId/cancel) > CANCEL-009 (AC-20): an entry in a queue that is now CLOSED can still be cancelled 369ms
+   ✓ F-07: customer cancellation (POST /api/me/queue-entries/:entryId/cancel) > CANCEL-010 (AC-21): after cancelling, the customer rejoins the same queue with a new, larger number 381ms
+   ✓ F-07: customer cancellation (POST /api/me/queue-entries/:entryId/cancel) > CANCEL-011 (AC-21): the active-entry guard still holds, and the partial unique index definition is unchanged 411ms
+   ✓ F-07: customer cancellation (POST /api/me/queue-entries/:entryId/cancel) > CANCEL-012 (AC-22): a cancelled entry is skipped by Call Next, hidden from the operator list, and FIFO is kept 503ms
+   ✓ F-07: customer cancellation (POST /api/me/queue-entries/:entryId/cancel) > CANCEL-013 (AC-22): Call Next on a queue whose only entry was cancelled returns 204 and changes nothing 372ms
+   ✓ F-07: customer cancellation (POST /api/me/queue-entries/:entryId/cancel) > CANCEL-014 (AC-23): cancel vs Call Next on the same entry; exactly one transition is applied (15 rounds) 808ms
+   ✓ F-07: customer cancellation (POST /api/me/queue-entries/:entryId/cancel) > CANCEL-015 (AC-17): own-entry reads still return the cancelled entry and its history 394ms
+   ✓ F-07: customer cancellation (POST /api/me/queue-entries/:entryId/cancel) > CANCEL-020 (AC-23): two parallel cancels of one entry give exactly one 200 and one 409 (10 rounds) 684ms
+ ✓ tests/foundation.test.ts (16 tests) 275ms
+ ✓ tests/auth.test.ts (18 tests) 1446ms
+ ✓ tests/seed.test.ts (7 tests) 532ms
+ ✓ tests/rbac-middleware.test.ts (9 tests) 1962ms
+ ✓ tests/csrf.test.ts (6 tests) 655ms
+ ✓ tests/join-csrf.test.ts (6 tests) 1192ms
+ ✓ tests/health.test.ts (7 tests) 91ms
+ ✓ tests/static-client.test.ts (10 tests) 111ms
+ ✓ tests/config.test.ts (9 tests) 5ms
+ ✓ tests/f07-cancel-rule.test.ts (6 tests) 4ms
+
+ Test Files  14 passed (14)
+      Tests  161 passed (161)
+   Start at  10:13:18
+   Duration  39.13s (transform 390ms, setup 0ms, collect 6.28s, tests 28.51s, environment 3ms, prepare 1.79s)
+
+
+================================================================ 5-client
+
+> qms-root@1.0.0 test:client
+> npm run test --workspace=client
+
+
+> qms-client@1.0.0 test
+> vitest run
+
+
+ RUN  v2.1.9 C:/Users/UNS_CT/Desktop/CPE_2569/CPE334/Lab5/QMS/qms/client
+
+ ✓ src/test/integration-guards.test.tsx (6 tests) 473ms
+ ✓ src/test/entryDetail.test.tsx (17 tests) 925ms
+ ✓ src/test/operator.test.tsx (13 tests) 1494ms
+   ✓ Operator Dashboard (/operator) > displays assigned OPEN and CLOSED queues and navigates to queue management screen 306ms
+ ✓ src/test/f07-leaveQueue.test.tsx (14 tests) 1769ms
+ ✓ src/test/customer.test.tsx (26 tests) 2615ms
+ ✓ src/test/auth.test.tsx (15 tests) 3373ms
+   ✓ LoginPage > shows the generic failure message in an alert and not the session-expired banner 726ms
+   ✓ LoginPage > disables the submit button and shows "Signing in..." while the request is in flight 784ms
+   ✓ LoginPage > sends a signed-in customer to their home page 688ms
+   ✓ LoginPage > sends a signed-in operator to their home page 654ms
+
+ Test Files  6 passed (6)
+      Tests  91 passed (91)
+   Start at  10:13:59
+   Duration  7.17s (transform 632ms, setup 3.78s, collect 4.15s, tests 10.65s, environment 8.06s, prepare 1.09s)
+
+
+================================================================ 6-e2e
+
+> qms-root@1.0.0 test:e2e
+> playwright test --config e2e/playwright.config.ts --project=chromium
+
+
+Running 15 tests using 1 worker
+
+  ✓   1 [chromium] › e2e\tests\authorization.spec.ts:38:7 › Authorization in the browser › S6: a customer cannot reach operator screens, and an operator cannot reach customer screens (2.2s)
+  ✓   2 [chromium] › e2e\tests\authorization.spec.ts:70:7 › Authorization in the browser › S7: protected routes send anonymous visitors to /login; a session invalidated mid-use shows the session-expired banner (2.0s)
+  ✓   3 [chromium] › e2e\tests\authorization.spec.ts:115:7 › Authorization in the browser › S8: customer 2 opening customer 1's entry URL sees the not-found state and none of customer 1's data (830ms)
+  ✓   4 [chromium] › e2e\tests\customer-flow.spec.ts:17:7 › Customer workflow › S1 / FLOW-009: customer logs in, sees available queues, joins, gets a number, and views own WAITING entry (894ms)
+  ✓   5 [chromium] › e2e\tests\customer-flow.spec.ts:59:7 › Customer workflow › S2: joining the same queue again shows the duplicate error and creates no second entry (739ms)
+  ✓   6 [chromium] › e2e\tests\customer-flow.spec.ts:84:7 › Customer workflow › S5: customer detail page shows each operator change through real 10 s polling, without a reload (31.4s)
+  ✓   7 [chromium] › e2e\tests\f07-cancellation.spec.ts:41:7 › F-07 customer cancellation › CANCEL-017: customer joins, cancels with confirmation, sees Cancelled after reload, and rejoins with a new number (1.5s)
+  ✓   8 [chromium] › e2e\tests\f07-cancellation.spec.ts:94:7 › F-07 customer cancellation › CANCEL-018: after the operator calls the entry, Leave queue is gone and an API cancel is rejected with 409 (1.0s)
+  ✓   9 [chromium] › e2e\tests\f07-cancellation.spec.ts:120:7 › F-07 customer cancellation › CANCEL-019: cancel with the keyboard only; no horizontal overflow at 360 px and 1280 px with the confirmation open (1.5s)
+  ✓  10 [chromium] › e2e\tests\keyboard.spec.ts:88:7 › Keyboard-only operation › customer: sign in, switch tabs, join, open details and go back using only the keyboard (1.5s)
+  ✓  11 [chromium] › e2e\tests\keyboard.spec.ts:144:7 › Keyboard-only operation › operator: sign in, open the queue, call, start and complete using only the keyboard (1.4s)
+  ✓  12 [chromium] › e2e\tests\operator-flow.spec.ts:33:7 › Operator workflow › S3: operator sees only assigned queues and the FIFO waiting list; an unassigned operator sees none (1.7s)
+  ✓  13 [chromium] › e2e\tests\operator-flow.spec.ts:73:7 › Operator workflow › S4 / FLOW-010: Call Next -> CALLED, Start -> SERVING, Complete -> COMPLETED, with the UI updating after each step (1.3s)
+  ✓  14 [chromium] › e2e\tests\responsive.spec.ts:46:7 › S9 / UI-001 at 360 x 800: login, customer and operator screens have no horizontal overflow and usable primary actions (2.8s)
+  ✓  15 [chromium] › e2e\tests\responsive.spec.ts:46:7 › S9 / UI-001 at 1280 x 800: login, customer and operator screens have no horizontal overflow and usable primary actions (2.7s)
+
+  15 passed (1.1m)
+
+================================================================ 3-build (last 15 lines)
+> tsc
+
+
+> qms-client@1.0.0 build
+> tsc && vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 57 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.55 kB │ gzip:  0.36 kB
+dist/assets/index-HD9Z9iwr.css   16.46 kB │ gzip:  3.76 kB
+dist/assets/index-CK0-rcr5.js   211.58 kB │ gzip: 64.38 kB
+✓ built in 1.73s
+================================================================ 7-docker (last 10 lines)
+#35 DONE 0.0s
+
+#36 exporting to image
+#36 exporting layers
+#36 exporting layers 0.4s done
+#36 writing image sha256:6bd03dbaeb6a10c41fe0f02a5700a23d9c4a06bb5237f45886e30d2ae4e28257 done
+#36 naming to docker.io/library/qms-f07-check done
+#36 DONE 0.4s
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/8pzexwszdgw1aghw68m3b5ict

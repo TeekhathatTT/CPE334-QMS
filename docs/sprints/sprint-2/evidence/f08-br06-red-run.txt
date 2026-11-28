@@ -1,0 +1,97 @@
+# F-08 + BR-06 red run (NOSHOW-021 - NOSHOW-023)
+# New tests run against the unchanged implementation (contract commit b65fb57; tests not yet committed)
+# Date: 2026-11-27T15:18:04Z
+
+$ (server/) npx vitest run tests/f08-no-show-recovery.test.ts -t "NOSHOW-02[12]"
+
+ RUN  v2.1.9 C:/Users/UNS_CT/Desktop/CPE_2569/CPE334/Lab5/QMS/qms/server
+
+ ❯ tests/f08-no-show-recovery.test.ts (18 tests | 2 failed | 16 skipped) 1787ms
+   × F-08: no-show handling and recovery > NOSHOW-021 (AC-45): a return is rejected at the BR-06 cap and allowed once a slot is free 974ms
+     → expected 200 to be 409 // Object.is equality
+   × F-08: no-show handling and recovery > NOSHOW-022 (AC-45): a return and a join of a third queue in parallel, 10 rounds: never 3 active entries 745ms
+     → round 1: join after the return: expected 201 to be 409 // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-021 (AC-45): a return is rejected at the BR-06 cap and allowed once a slot is free
+AssertionError: expected 200 to be 409 // Object.is equality
+
+- Expected
++ Received
+
+- 409
++ 200
+
+ ❯ tests/f08-no-show-recovery.test.ts:541:28
+    539|     const before = await row(a.id);
+    540|     const blocked = await recover(operator1, a.id);
+    541|     expect(blocked.status).toBe(409);
+       |                            ^
+    542|     expect(blocked.body.error.code).toBe('MAX_ACTIVE_ENTRIES_REACHED');
+    543|     expect(await row(a.id), 'A unchanged').toEqual(before);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/f08-no-show-recovery.test.ts > F-08: no-show handling and recovery > NOSHOW-022 (AC-45): a return and a join of a third queue in parallel, 10 rounds: never 3 active entries
+AssertionError: round 1: join after the return: expected 201 to be 409 // Object.is equality
+
+- Expected
++ Received
+
+- 409
++ 201
+
+ ❯ tests/f08-no-show-recovery.test.ts:567:67
+    565|       if (r.status === 200) {
+    566|         outcomes.recover += 1;
+    567|         expect(j.status, `round ${round}: join after the return`).toBe…
+       |                                                                   ^
+    568|         expect(j.body.error.code).toBe('MAX_ACTIVE_ENTRIES_REACHED');
+    569|       } else {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 16 skipped (18)
+   Start at  22:18:07
+   Duration  3.48s (transform 287ms, setup 0ms, collect 1.13s, tests 1.79s, environment 0ms, prepare 209ms)
+
+
+$ (client/) npx vitest run src/test/f08-noShow.test.tsx -t "NOSHOW-023"
+
+ RUN  v2.1.9 C:/Users/UNS_CT/Desktop/CPE_2569/CPE334/Lab5/QMS/qms/client
+
+ ❯ src/test/f08-noShow.test.tsx (15 tests | 1 failed | 14 skipped) 385ms
+   × F-08 NOSHOW-023: return blocked by the BR-06 cap (AC-45) > Return to queue on 409 MAX_ACTIVE_ENTRIES_REACHED shows the cap message and reloads the list 383ms
+     → expect(element).toHaveTextContent()
+
+Expected element to have text content:
+  This customer already has 2 active queue entries, so this entry cannot be returned right now.
+Received:
+  ⚠ This queue entry's status has changed. The queue has been refreshed.
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/test/f08-noShow.test.tsx > F-08 NOSHOW-023: return blocked by the BR-06 cap (AC-45) > Return to queue on 409 MAX_ACTIVE_ENTRIES_REACHED shows the cap message and reloads the list
+Error: expect(element).toHaveTextContent()
+
+Expected element to have text content:
+  This customer already has 2 active queue entries, so this entry cannot be returned right now.
+Received:
+  ⚠ This queue entry's status has changed. The queue has been refreshed.
+ ❯ src/test/f08-noShow.test.tsx:288:46
+    286| 
+    287|     await user.click(await screen.findByRole('button', { name: 'Return…
+    288|     expect(await screen.findByRole('alert')).toHaveTextContent(
+       |                                              ^
+    289|       'This customer already has 2 active queue entries, so this entry…
+    290|     );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 14 skipped (15)
+   Start at  22:18:15
+   Duration  5.32s (transform 349ms, setup 698ms, collect 685ms, tests 385ms, environment 1.80s, prepare 261ms)
+

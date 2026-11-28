@@ -79,8 +79,8 @@ test.describe('Operator workflow', () => {
     await expect(page.getByText('No entries are currently called or in service.')).toBeVisible();
 
     // Call Next
-    await page.getByRole('button', { name: 'Call Next' }).click();
-    await expect(page.getByRole('status').filter({ hasText: 'Called queue number 1.' })).toBeVisible();
+    await page.getByRole('button', { name: 'Call next customer to Counter 1' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Called queue number 1 to Counter 1.' })).toBeVisible();
     const active = page.getByTestId('active-entry-1');
     await expect(active.locator('[data-status="CALLED"]')).toHaveText('Called');
     await expect(page.getByTestId('waiting-entry-1')).toHaveCount(0);
@@ -106,9 +106,9 @@ test.describe('Operator workflow', () => {
     await expect(page.getByTestId('completed-count')).toHaveText('1');
     await shot(page, 'operator-05-completed');
 
-    // Empty Call Next: neutral message, nothing changes.
-    await page.getByRole('button', { name: 'Call Next' }).click();
-    await expect(page.getByRole('status').filter({ hasText: 'No waiting entries to call right now.' })).toBeVisible();
+    // Empty Call Next: safe empty-queue message, nothing changes (F-09 counter Call Next -> 409 NO_WAITING_ENTRIES).
+    await page.getByRole('button', { name: 'Call next customer to Counter 1' }).click();
+    await expect(page.getByRole('alert')).toContainText('There are no waiting customers in this queue right now.');
     await expect(page.getByTestId('completed-entry-1')).toBeVisible();
     await shot(page, 'operator-06-empty-call-next');
 

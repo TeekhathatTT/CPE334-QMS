@@ -11,11 +11,16 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed": "tsx prisma/seed.ts",
+    "provision:counters": "tsx prisma/provision-counters.ts",
     "migrate": "prisma migrate deploy",
     "migrate:test": "tsx scripts/migrate-test.ts",
     "migrate:dev": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "test:perf": "tsx tests/nfr/perf-001.ts",
+    "test:perf:f07": "tsx tests/nfr/perf-s2-001-cancel.ts",
+    "test:perf:f08": "tsx tests/nfr/perf-s2-002-no-show.ts",
+    "test:perf:f09": "tsx tests/nfr/perf-s2-003-multi-counter.ts",
+    "test:perf:f10": "tsx tests/nfr/perf-s2-004-priority.ts",
     "test:rel": "npm run build && tsx tests/nfr/rel-001.ts"
   },
   "prisma": {

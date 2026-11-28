@@ -48,7 +48,7 @@ F-06 is the cross-cutting verification responsibility for this entire baseline; 
 | NFR-01 | Store passwords only as salted adaptive hashes; do not return or log credentials, hashes, or session secrets. | F-02; F-06 verifies | 1 | SEC-001, AUTH-001, AUTH-002, AUTH-004 | Inspect configured hash method, API responses, and logs during login and invalid-credential tests. |
 | NFR-02 | Enforce authorization server-side and require CSRF protection for cookie-authenticated mutations. | F-02, F-05; F-06 verifies | 1 | SEC-002, AUTH-003, AUTH-005, RBAC-001–RBAC-004 | Exercise protected endpoints with missing/expired sessions, unauthorized roles/assignments, and missing/invalid CSRF tokens. Automated (#7): `server/tests/integration-sprint1.test.ts` §1–§2, `client/src/test/integration-guards.test.tsx`, `e2e/tests/authorization.spec.ts`. |
 | NFR-03 | Prevent duplicate queue numbers, active entries, and double-claims under concurrent load. | F-01, F-03, F-05; F-06 verifies | 1 | CONCURRENCY-001–CONCURRENCY-004 | Run database-backed parallel joins, duplicate joins, call-next operations, and stale mutations; assert uniqueness and valid state. Automated (#7): `server/tests/integration-sprint1.test.ts` §4 (mixed races + SQL invariants). |
-| NFR-04 | Meet local performance targets on a seeded 1,000-entry dataset. | F-03–F-05; F-06 verifies | 1 | PERF-001 | Execute 100 requests per operation against the local database and measure p95: reads <= 500 ms, mutations <= 1,000 ms. Automated (#7): `server/tests/nfr/perf-001.ts` (`npm run test:perf --workspace=server`). |
+| NFR-04 | Meet local performance targets on a seeded 1,000-entry dataset. | F-03–F-05; F-06 verifies | 1 | PERF-001 | Execute 100 requests per operation against the local database and measure p95: reads <= 500 ms, mutations <= 1,000 ms. Automated (#7): `server/tests/nfr/perf-001.ts` (`npm run test:perf --workspace=server`). *Rev. 2026-11-27:* Sprint 2 F-07 cancel mutation measured by PERF-S2-001 (`server/tests/nfr/perf-s2-001-cancel.ts`, see Sprint 2 section). |
 | NFR-05 | Return mutation success only after the database commit is durable. | F-01, F-05; F-06 verifies | 1 | REL-001 | Verify mutation responses follow commit and that committed records remain after application/database restart validation. Automated (#7): `server/tests/nfr/rel-001.ts` (`npm run test:rel --workspace=server`). |
 | NFR-06 | Keep customer and operator flows usable without horizontal overflow at 360 px and 1280 px. | F-04, F-05; F-06 verifies | 1 | UI-001 | Run browser E2E checks for the core flows at both viewport widths and assert no page-level horizontal overflow. Automated (#7): `e2e/tests/responsive.spec.ts`. |
 | NFR-07 | Reproduce local setup and seed required test accounts and queues from a clean checkout. | F-01; F-06 verifies | 1 | SETUP-001 | Follow documented setup from a clean checkout and confirm required seeded records are created without manual intervention. |
@@ -85,10 +85,10 @@ F-06 is the cross-cutting verification responsibility for this entire baseline; 
 | F-04 | Customer queue join and own-state retrieval | 1 |
 | F-05 | Operator lifecycle management | 1 |
 | F-06 | Integration and regression verification | 1 |
-| F-07 | Customer cancellation and queue withdrawal | 2 |
-| F-08 | No-show handling and recovery | 2 |
-| F-09 | Multi-counter support | 2 |
-| F-10 | Priority queue policy | 2 |
+| F-07 | Customer cancellation and queue withdrawal | 2 (specified, contract v1) |
+| F-08 | No-show handling and recovery | 2 (specified, contract v1) |
+| F-09 | Multi-counter support | 2 (implemented and verified locally; pending review) |
+| F-10 | Priority queue policy | 2 (implemented and verified locally at `a286f9b`; pending PR review and release) |
 | F-11 | Operational analytics | 3 |
 | F-12 | Advance appointment booking | 3 |
 | F-13 | Product hardening and launch readiness | 3 |
@@ -106,8 +106,177 @@ Every baseline functional requirement (FR-01–FR-13), business rule (BR-01–BR
 
 These features are intentionally deferred from Sprint 1. Their future-specific requirements have not yet been defined in the current SRS; this is planned future scope, not an uncovered Sprint 1 baseline.
 
+*Rev. 2026-11-27:* F-07 now has requirements (FR-14, BR-13, BR-14, AC-17–AC-24 in SRS v2.0); see the Sprint 2 section below. F-08–F-13 are still unspecified. *Rev. 2026-11-27 (F-08):* F-08 now has requirements (FR-15, FR-16, BR-15–BR-17, AC-25–AC-34 in SRS v3.0); see the F-08 section below. F-09–F-13 are still unspecified. *Rev. 2026-11-27 (F-09):* F-09 now has requirements (FR-17–FR-19, BR-18–BR-20, AC-35–AC-44 in SRS v4.0); see the F-09 section below. F-10–F-13 are still unspecified. *Rev. 2026-11-28 (F-10):* F-10 now has requirements (FR-20–FR-22, BR-01 rev. 5.0, BR-21–BR-23, AC-46–AC-55 in SRS v5.1); see the F-10 section below. F-11–F-13 remain unspecified.
+
 ### Approved Changes
 
 | Date | Issue / CR | Baseline Ref | Summary | Updated Contracts & Tests |
 |---|---|---|---|---|
 | 2026-11-27 | Issue #51 (Lab 7 Part A — BR-06) | Commit `e304cd9` (`main`), Cloud Run revision `qms-00005-5kz` | Updated `BR-06` from unlimited simultaneous queues to at most 2 active entries (`WAITING`, `CALLED`, `SERVING`) per customer across all queues (`409 MAX_ACTIVE_ENTRIES_REACHED`); preserved `BR-05` (`409 DUPLICATE_ACTIVE_ENTRY`). | [srs.md](./srs.md) (v1.1), [features/sprint-1-core-queue.md](./features/sprint-1-core-queue.md) (v1.1), [system-sds.md](./system-sds.md) (v1.1), [api-spec.md](./sprints/sprint-1/api-spec.md) (v1.1), [ui-spec.md](./sprints/sprint-1/ui-spec.md) (v1.1), [tests.md](./sprints/sprint-1/tests.md) (v1.1: `QUEUE-009`–`QUEUE-011`, `CONCURRENCY-005`, `UI-002`), [labs/lab-07/impact-analysis.md](./labs/lab-07/impact-analysis.md) |
+
+*Rev. 2026-11-27:* the F-07 change below is proposed in contract v1 and is **pending review** by @Khwanklao. It is not yet an approved change.
+
+| Change | Date | Affected IDs | Status |
+|---|---|---|---|
+| F-07 customer cancellation (SRS v2.0) | 2026-11-27 | adds FR-14, BR-13, BR-14, AC-17–AC-24; revises BR-05, BR-09 | proposed, review pending |
+| F-08 no-show handling and recovery (SRS v3.0) | 2026-11-27 | adds FR-15, FR-16, BR-15–BR-17, AC-25–AC-34, error code `RECOVERY_LIMIT_REACHED`; revises BR-05, BR-09 | proposed, review pending |
+| F-09 multi-counter support (SRS v4.0) | 2026-11-27 | adds FR-17–FR-19, BR-18–BR-20, AC-35–AC-44, error codes `COUNTER_CLOSED` and `NO_WAITING_ENTRIES`; updates BR-10 and BR-16 notes | superseded by v4.1 (review fixes) |
+| F-09 multi-counter support (SRS v4.1, contract v1.1) | 2026-11-27 | refines BR-19 (legacy Call Next trade-off), BR-20 & AC-41(c) (composite FK `MATCH SIMPLE`), AC-40(a) (parallel `SKIP LOCKED` wording), AC-42 & AC-43 (disabled non-owned counters, 0-usable-counter fallback, `CALLED`/`SERVING`-only badges) | approved and merged to `sprint2-staging` (@TeekhathatTT) |
+| F-09 multi-counter support (SRS v4.2, contract v1.2) | 2026-11-27 | aligns AC-37 / COUNTER-004 unknown `queueId` to `404 RESOURCE_NOT_FOUND` (matching existing `requireQueueAssignment` middleware) | superseded by v4.3 (implementation PR review fixes) |
+| F-09 multi-counter support (SRS v4.3, contract v1.3) | 2026-11-27 | adds `ON UPDATE RESTRICT` to BR-20/AC-41(c), strict counter loading/error/poll-error fallback gate + `403`/`409` refetch to AC-42, `(serviceQueueId, name)` seed upsert + honest E2E regression wording + `COUNTER-019` legacy fallback E2E to AC-44 | implemented locally, PR re-review pending (@TeekhathatTT) |
+| F-10 priority queue policy (SRS v5.0, contract v1.0) | 2026-11-28 | extends BR-01 (priority-aware FIFO), adds FR-20–FR-22, BR-21–BR-23, AC-46–AC-55, updates BR-16 & BR-19 notes | superseded by v5.1 (review fixes) |
+| F-10 priority queue policy (SRS v5.1, contract v1.1) | 2026-11-28 | aligns AC-51(b)/PRIO-011 on `SKIP LOCKED` race outcome (c), mandates body-before-DB join validation (BR-21/AC-50), scopes operator list priority sort to `WAITING`-only (BR-23/AC-47), documents starvation risk & non-monotonic `aheadCount` UI note, syncs all Sprint 2 docs with canonical STS in `tests.md` §9 | approved and merged to `sprint2-staging` (PR #67, `4b93e72`, `@TeekhathatTT`); implemented and verified locally (RED `c99236b`, GREEN `a286f9b`; PR review & release pending) |
+
+## Sprint 2 — F-07 Customer Cancellation Traceability
+
+*Rev. 2026-11-27 (results):* every test below was executed. Result = outcome of the green run at commit `61e9daf` (see [sprints/sprint-2/tests.md §6](./sprints/sprint-2/tests.md#6-execution-results) and the raw output in `docs/sprints/sprint-2/evidence/f07-green-run.txt`). Release status: pending release (not yet on `main` or deployed). Test specification: [sprints/sprint-2/tests.md](./sprints/sprint-2/tests.md).
+
+### Requirements to tests
+
+| Requirement | Feature | Sprint | AC | Test ID(s) | Test file | Result (commit) | Contract version |
+|---|---|---|---|---|---|---|---|
+| FR-14 | F-07 | 2 | AC-17–AC-24 | CANCEL-001–CANCEL-020 | `server/tests/f07-cancel-rule.test.ts`, `server/tests/f07-customer-cancellation.test.ts`, `client/src/test/f07-leaveQueue.test.tsx`, `e2e/tests/f07-cancellation.spec.ts` | passed (61e9daf) | v1 |
+| BR-13 | F-07 | 2 | AC-18, AC-19, AC-20 | CANCEL-001, CANCEL-003–CANCEL-009 | `server/tests/f07-cancel-rule.test.ts`, `server/tests/f07-customer-cancellation.test.ts` | passed (61e9daf) | v1 |
+| BR-14 | F-07 | 2 | AC-17, AC-22, AC-23 | CANCEL-002, CANCEL-012–CANCEL-015, CANCEL-020 | `server/tests/f07-customer-cancellation.test.ts` | passed (61e9daf) | v1 |
+| BR-05 (rev. 2.0) | F-04, F-07 | 2 | AC-21 | CANCEL-010, CANCEL-011, CANCEL-017 | `server/tests/f07-customer-cancellation.test.ts`, `e2e/tests/f07-cancellation.spec.ts` | passed (61e9daf) | v1 |
+| BR-09 (rev. 2.0) | F-05, F-07 | 2 | AC-18 | CANCEL-001, CANCEL-003 | `server/tests/f07-cancel-rule.test.ts`, `server/tests/f07-customer-cancellation.test.ts` | passed (61e9daf) | v1 |
+| BR-01, BR-10 (F-05 cross-feature) | F-05, F-07 | 2 | AC-22 | CANCEL-012, CANCEL-013 | `server/tests/f07-customer-cancellation.test.ts` | passed (61e9daf) | v1 |
+| BR-07, NFR-02, NFR-08 | F-02, F-07 | 2 | AC-19 | CANCEL-004–CANCEL-008 | `server/tests/f07-customer-cancellation.test.ts` | passed (61e9daf) | v1 |
+| BR-12, NFR-03, NFR-05 | F-07 | 2 | AC-23 | CANCEL-014, CANCEL-020 | `server/tests/f07-customer-cancellation.test.ts` | passed (61e9daf) | v1 |
+| FR-07, FR-13 | F-04, F-07 | 2 | AC-17 | CANCEL-002, CANCEL-015 | `server/tests/f07-customer-cancellation.test.ts` | passed (61e9daf) | v1 |
+| NFR-06 | F-07 | 2 | AC-24 | CANCEL-016, CANCEL-019 | `client/src/test/f07-leaveQueue.test.tsx`, `e2e/tests/f07-cancellation.spec.ts` | passed (61e9daf) | v1 |
+| NFR-04 | F-07 | 2 | operations of AC-17, AC-21, AC-22 | PERF-S2-001 | `server/tests/nfr/perf-s2-001-cancel.ts` | passed (run 2026-11-27 on the `61e9daf` code; cancel p95 16.4 ms ≤ 1,000 ms; `docs/sprints/sprint-2/evidence/perf-s2-001.txt`) | v1 (*rev. 2026-11-27:* row added after PR #56 review; before it, NFR-04 was listed as applying but not measured) |
+| FR-01–FR-13 (regression) | F-06 | 2 | AC-01–AC-16 | REG-S2-001 | existing Sprint 1 suites | passed (61e9daf) | v1 |
+
+### Acceptance criteria to tests
+
+| Acceptance Criteria | Test ID(s) | Result |
+|---|---|---|
+| AC-17 | CANCEL-002, CANCEL-015, CANCEL-017 | passed (61e9daf) |
+| AC-18 | CANCEL-001, CANCEL-003, CANCEL-018 | passed (61e9daf) |
+| AC-19 | CANCEL-004, CANCEL-005, CANCEL-006, CANCEL-007, CANCEL-008 | passed (61e9daf) |
+| AC-20 | CANCEL-009 | passed (61e9daf) |
+| AC-21 | CANCEL-010, CANCEL-011, CANCEL-017 | passed (61e9daf) |
+| AC-22 | CANCEL-012, CANCEL-013 | passed (61e9daf) |
+| AC-23 | CANCEL-014, CANCEL-020 | passed (61e9daf) |
+| AC-24 | CANCEL-016, CANCEL-017, CANCEL-018, CANCEL-019 | passed (61e9daf) |
+
+
+## Sprint 2 — F-08 No-show Handling and Recovery Traceability
+
+Contract v1 (2026-11-27, issue #41). Every result below is `planned` until the test has been executed. *Rev. 2026-11-27 (results):* every test below was executed; Result = outcome of the green run at commit `37fd6c0` (see [sprints/sprint-2/tests.md §7.5](./sprints/sprint-2/tests.md#75-execution-results-f-08) and `docs/sprints/sprint-2/evidence/f08-green-run.txt`). Release status: pending release. Test specification: [sprints/sprint-2/tests.md §7](./sprints/sprint-2/tests.md#7-f-08-no-show-handling-and-recovery).
+
+### Requirements to tests
+
+| Requirement | Feature | Sprint | AC | Test ID(s) | Test file | Result (commit) | Contract version |
+|---|---|---|---|---|---|---|---|
+| FR-15 | F-08 | 2 | AC-25, AC-26, AC-27, AC-31, AC-32, AC-33 | NOSHOW-001–NOSHOW-004, NOSHOW-011, NOSHOW-012, NOSHOW-015, NOSHOW-017, NOSHOW-019, NOSHOW-020 | `server/tests/f08-no-show-rule.test.ts`, `server/tests/f08-no-show-recovery.test.ts`, `client/src/test/f08-noShow.test.tsx`, `e2e/tests/f08-no-show.spec.ts` | passed (37fd6c0) | v1 |
+| FR-16 | F-08 | 2 | AC-27–AC-30, AC-32, AC-33 | NOSHOW-001, NOSHOW-005–NOSHOW-010, NOSHOW-013, NOSHOW-014, NOSHOW-015, NOSHOW-017, NOSHOW-019 | same four files | passed (37fd6c0) | v1 |
+| BR-15 | F-08 | 2 | AC-25, AC-26, AC-27 | NOSHOW-001–NOSHOW-004, NOSHOW-020 | `server/tests/f08-no-show-rule.test.ts`, `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-16 | F-08 | 2 | AC-27–AC-30 | NOSHOW-001, NOSHOW-005–NOSHOW-009 | same | passed (37fd6c0) | v1 |
+| BR-17 | F-08 | 2 | AC-25, AC-28, AC-29, AC-31 | NOSHOW-002, NOSHOW-006, NOSHOW-007, NOSHOW-008, NOSHOW-011 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-05 (rev. 3.0) | F-04, F-08 | 2 | AC-30, AC-32 | NOSHOW-009, NOSHOW-014 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-16 (rev. 4.5), BR-06 | F-08, Lab 7 | 2 | AC-45 | NOSHOW-021, NOSHOW-022, NOSHOW-023 | `server/tests/f08-no-show-recovery.test.ts`, `client/src/test/f08-noShow.test.tsx` | passed (4c6c7a7) | v1.1 |
+| BR-09 (rev. 3.0) | F-05, F-08 | 2 | AC-26, AC-29 | NOSHOW-001, NOSHOW-003, NOSHOW-007, NOSHOW-020 | `server/tests/f08-no-show-rule.test.ts`, `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-01, BR-10 (F-05 cross-feature) | F-05, F-08 | 2 | AC-28, AC-31 | NOSHOW-006, NOSHOW-011 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-13 (F-07 cross-feature) | F-07, F-08 | 2 | AC-30 | NOSHOW-010 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-07, FR-03, NFR-02, NFR-08 | F-02, F-08 | 2 | AC-27 | NOSHOW-004, NOSHOW-005 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| BR-12, NFR-03, NFR-05 | F-08 | 2 | AC-32 | NOSHOW-012, NOSHOW-013, NOSHOW-014 | `server/tests/f08-no-show-recovery.test.ts` | passed (37fd6c0) | v1 |
+| FR-07, FR-13 | F-04, F-08 | 2 | AC-25, AC-34 | NOSHOW-002, NOSHOW-016, NOSHOW-018 | `server/tests/f08-no-show-recovery.test.ts`, `client/src/test/f08-noShow.test.tsx`, `e2e/tests/f08-no-show.spec.ts` | passed (37fd6c0) | v1 |
+| NFR-06 | F-08 | 2 | AC-33 | NOSHOW-015, NOSHOW-019 | `client/src/test/f08-noShow.test.tsx`, `e2e/tests/f08-no-show.spec.ts` | passed (37fd6c0) | v1 |
+| NFR-04 | F-08 | 2 | operations of AC-25, AC-28, AC-31 | PERF-S2-002 | `server/tests/nfr/perf-s2-002-no-show.ts` | passed (37fd6c0) | v1 |
+| FR-01–FR-14 (regression) | F-06 | 2 | AC-01–AC-24 | REG-S2-002 | existing suites | passed (37fd6c0) | v1 |
+
+### Acceptance criteria to tests
+
+| Acceptance Criteria | Test ID(s) | Result |
+|---|---|---|
+| AC-25 | NOSHOW-002, NOSHOW-017 | passed (37fd6c0) |
+| AC-26 | NOSHOW-001, NOSHOW-003, NOSHOW-020 | passed (37fd6c0) |
+| AC-27 | NOSHOW-004, NOSHOW-005 | passed (37fd6c0) |
+| AC-28 | NOSHOW-006, NOSHOW-017 | passed (37fd6c0) |
+| AC-29 | NOSHOW-001, NOSHOW-007, NOSHOW-008, NOSHOW-017 | passed (37fd6c0) |
+| AC-30 | NOSHOW-009, NOSHOW-010 | passed (37fd6c0) |
+| AC-31 | NOSHOW-011 | passed (37fd6c0) |
+| AC-32 | NOSHOW-012, NOSHOW-013, NOSHOW-014 | passed (37fd6c0) |
+| AC-33 | NOSHOW-015, NOSHOW-017, NOSHOW-019 | passed (37fd6c0) |
+| AC-34 | NOSHOW-016, NOSHOW-018 | passed (37fd6c0) |
+| AC-45 | NOSHOW-021, NOSHOW-022, NOSHOW-023 | passed (4c6c7a7) |
+
+## Sprint 2 — F-09 Multi-counter Support Traceability
+
+Contract v1.3 (2026-11-27, issue #42, SRS v4.3, author @Khwanklao). *Rev. 2026-11-27 (results):* every test below was executed locally on `feature/sprint2/42-multi-counter-impl` (see [sprints/sprint-2/tests.md §8.5](./sprints/sprint-2/tests.md#85-execution-results-f-09) and [evidence/perf-s2-003.txt](./sprints/sprint-2/evidence/perf-s2-003.txt)). Release status: pending PR re-review and release. Test specification: [sprints/sprint-2/tests.md §8](./sprints/sprint-2/tests.md#8-f-09-multi-counter-support).
+
+### Requirements to tests
+
+| Requirement | Feature | Sprint | AC | Test ID(s) | Test file | Result | Contract version |
+|---|---|---|---|---|---|---|---|
+| FR-17 | F-09 | 2 | AC-35, AC-36, AC-37, AC-42 | COUNTER-001–COUNTER-005, COUNTER-014, COUNTER-016, COUNTER-018, COUNTER-019 | `server/tests/f09-counter-rule.test.ts`, `server/tests/f09-multi-counter.test.ts`, `client/src/test/f09-multiCounter.test.tsx`, `e2e/tests/f09-multi-counter.spec.ts` | passed (local, 2026-11-27) | v1.3 |
+| FR-18 | F-09 | 2 | AC-37–AC-42 | COUNTER-001, COUNTER-005–COUNTER-012, COUNTER-014, COUNTER-016–COUNTER-019 | same four files | passed (local, 2026-11-27) | v1.3 |
+| FR-19 | F-09 | 2 | AC-38, AC-42, AC-43, AC-44 | COUNTER-006, COUNTER-014–COUNTER-019 | `server/tests/f09-multi-counter.test.ts`, `client/src/test/f09-multiCounter.test.tsx`, `e2e/tests/f09-multi-counter.spec.ts` | passed (local, 2026-11-27) | v1.3 |
+| BR-18 | F-09 | 2 | AC-35, AC-36, AC-37 | COUNTER-001–COUNTER-005, COUNTER-013 | `server/tests/f09-counter-rule.test.ts`, `server/tests/f09-multi-counter.test.ts` | passed (local, 2026-11-27) | v1.3 |
+| BR-19 (rev. 4.1) | F-09 | 2 | AC-38, AC-39, AC-40 | COUNTER-001, COUNTER-006–COUNTER-011 | same | passed (local, 2026-11-27) | v1.3 |
+| BR-20 (rev. 4.3) | F-09 | 2 | AC-38, AC-41 | COUNTER-006, COUNTER-009, COUNTER-012, COUNTER-013 | `server/tests/f09-multi-counter.test.ts` | passed (local, 2026-11-27) | v1.3 |
+| BR-10 (rev. 4.0 note) | F-05, F-09 | 2 | AC-39 | COUNTER-008, COUNTER-009, COUNTER-019 | `server/tests/f09-multi-counter.test.ts`, `e2e/tests/f09-multi-counter.spec.ts` | passed (local, 2026-11-27) | v1.3 |
+| BR-16 (rev. 4.0 note, F-08 cross-feature) | F-08, F-09 | 2 | AC-41 | COUNTER-012, COUNTER-017 | `server/tests/f09-multi-counter.test.ts`, `e2e/tests/f09-multi-counter.spec.ts` | passed (local, 2026-11-27) | v1.3 |
+| BR-14 (F-07 cross-feature) | F-07, F-09 | 2 | AC-41 | COUNTER-012 | `server/tests/f09-multi-counter.test.ts` | passed (local, 2026-11-27) | v1.3 |
+| BR-07, FR-03, NFR-02, NFR-08 | F-02, F-09 | 2 | AC-35, AC-37, AC-42, AC-43 | COUNTER-002, COUNTER-004, COUNTER-005, COUNTER-014, COUNTER-015 | `server/tests/f09-multi-counter.test.ts`, `client/src/test/f09-multiCounter.test.tsx` | passed (local, 2026-11-27) | v1.3 |
+| BR-12, NFR-03, NFR-05 | F-09 | 2 | AC-36, AC-40, AC-41 | COUNTER-003, COUNTER-010, COUNTER-011, COUNTER-013 | `server/tests/f09-multi-counter.test.ts` | passed (local, 2026-11-27) | v1.3 |
+| NFR-06 | F-09 | 2 | AC-42, AC-43 | COUNTER-014, COUNTER-015, COUNTER-018 | `client/src/test/f09-multiCounter.test.tsx`, `e2e/tests/f09-multi-counter.spec.ts` | passed (local, 2026-11-27) | v1.3 |
+| NFR-07 | F-01, F-09 | 2 | AC-44 | COUNTER-013 | `server/tests/f09-multi-counter.test.ts` | passed (local, 2026-11-27) | v1.3 |
+| NFR-04 | F-09 | 2 | AC-44 (operations of AC-35, AC-36, AC-38) | PERF-S2-003 | `server/tests/nfr/perf-s2-003-multi-counter.ts` | passed (local, 2026-11-27; worst read p95 `103.9 ms`, worst mutation p95 `94.6 ms`; `docs/sprints/sprint-2/evidence/perf-s2-003.txt`) | v1.3 |
+| FR-01–FR-16 (regression) | F-06 | 2 | AC-01–AC-34, AC-44 | REG-S2-003, COUNTER-019 | existing Sprint 1, F-07, and F-08 suites (202 server + 105 client unmodified; 6 E2E specs updated for `Counter 1` + `COUNTER-019` legacy fallback E2E) | passed (local, 2026-11-27; Server 236/236, Client 125/125, E2E 22/22) | v1.3 |
+
+### Acceptance criteria to tests
+
+| Acceptance Criteria | Test ID(s) | Result |
+|---|---|---|
+| AC-35 | COUNTER-002, COUNTER-016 | passed (local, 2026-11-27) |
+| AC-36 | COUNTER-003, COUNTER-016 | passed (local, 2026-11-27) |
+| AC-37 | COUNTER-001, COUNTER-004, COUNTER-005 | passed (local, 2026-11-27) |
+| AC-38 | COUNTER-006, COUNTER-008, COUNTER-016 | passed (local, 2026-11-27) |
+| AC-39 | COUNTER-001, COUNTER-007, COUNTER-008, COUNTER-009, COUNTER-016, COUNTER-017, COUNTER-019 | passed (local, 2026-11-27) |
+| AC-40 | COUNTER-010, COUNTER-011 | passed (local, 2026-11-27) |
+| AC-41 | COUNTER-012, COUNTER-013, COUNTER-017 | passed (local, 2026-11-27) |
+| AC-42 | COUNTER-014, COUNTER-016, COUNTER-017, COUNTER-018, COUNTER-019 | passed (local, 2026-11-27) |
+| AC-43 | COUNTER-015, COUNTER-016, COUNTER-017, COUNTER-018, COUNTER-019 | passed (local, 2026-11-27) |
+| AC-44 | COUNTER-013, COUNTER-019, PERF-S2-003, REG-S2-003 | passed (local, 2026-11-27) |
+
+## Sprint 2 — F-10 Priority Queue Policy Traceability
+
+Contract v1.1 (2026-11-28, issue #43, SRS v5.1, author `@Khwanklao`, approved and merged in PR #67 at `4b93e72` by `@TeekhathatTT`). *Rev. 2026-11-28 (results):* every test below was executed locally on `feature/sprint2/43-priority-queue-policy-impl` at GREEN commit `a286f9b` (TDD RED baseline `c99236b`; see [sprints/sprint-2/tests.md §9.5](./sprints/sprint-2/tests.md#95-execution-results-f-10), [evidence/perf-s2-004.txt](./sprints/sprint-2/evidence/perf-s2-004.txt), and [evidence/f10-evidence-notes.md](./sprints/sprint-2/evidence/f10-evidence-notes.md)). Release status: pending PR review into `sprint2-staging`, merge to `main`, and Cloud Run deployment. Authoritative test specification: [sprints/sprint-2/tests.md §9](./sprints/sprint-2/tests.md#9-f-10-priority-queue-policy). Design: [features/sprint-2-f10-priority-queue-policy.md](./features/sprint-2-f10-priority-queue-policy.md).
+
+### Requirements to tests
+
+| Requirement | Feature | Sprint | AC | Test ID(s) | Test file | Result (commit) | Contract version |
+|---|---|---|---|---|---|---|---|
+| FR-20 | F-10 | 2 | AC-46, AC-48, AC-49, AC-50 | PRIO-001, PRIO-002, PRIO-005–PRIO-009, PRIO-014, PRIO-016, PRIO-017 | `server/tests/f10-priority-rule.test.ts`, `server/tests/f10-priority-queue.test.ts`, `client/src/test/f10-priorityQueue.test.tsx`, `e2e/tests/f10-priority-queue.spec.ts` | passed (`a286f9b`) | v1.1 |
+| FR-21 | F-10 | 2 | AC-47, AC-51, AC-52, AC-53 | PRIO-001, PRIO-003, PRIO-004, PRIO-010–PRIO-013, PRIO-016, PRIO-017, PERF-S2-004 | `server/tests/f10-priority-rule.test.ts`, `server/tests/f10-priority-queue.test.ts`, `e2e/tests/f10-priority-queue.spec.ts`, `server/tests/nfr/perf-s2-004-priority.ts` | passed (`a286f9b`) | v1.1 |
+| FR-22 | F-10 | 2 | AC-46, AC-54, AC-55 | PRIO-002, PRIO-014–PRIO-018 | `server/tests/f10-priority-queue.test.ts`, `client/src/test/f10-priorityQueue.test.tsx`, `e2e/tests/f10-priority-queue.spec.ts` | passed (`a286f9b`) | v1.1 |
+| BR-01 (rev. 5.0) | F-05, F-10 | 2 | AC-47 | PRIO-001, PRIO-003, PRIO-004, PRIO-016 | `server/tests/f10-priority-rule.test.ts`, `server/tests/f10-priority-queue.test.ts`, `e2e/tests/f10-priority-queue.spec.ts` | passed (`a286f9b`) | v1.1 |
+| BR-21 (rev. 5.1) | F-04, F-10 | 2 | AC-46, AC-50 | PRIO-002, PRIO-008, PRIO-009 | `server/tests/f10-priority-queue.test.ts` | passed (`a286f9b`) | v1.1 |
+| BR-22 (rev. 5.1) | F-10 | 2 | AC-48, AC-49, AC-50 | PRIO-001, PRIO-005–PRIO-008 | `server/tests/f10-priority-rule.test.ts`, `server/tests/f10-priority-queue.test.ts` | passed (`a286f9b`) | v1.1 |
+| BR-23 (rev. 5.1) | F-07, F-08, F-09, F-10 | 2 | AC-46, AC-47, AC-51, AC-52, AC-53 | PRIO-002–PRIO-004, PRIO-010–PRIO-013 | `server/tests/f10-priority-queue.test.ts` | passed (`a286f9b`) | v1.1 |
+| BR-16 (rev. 5.0 note, F-08 cross-feature) | F-08, F-10 | 2 | AC-52 | PRIO-012, PRIO-017 | `server/tests/f10-priority-queue.test.ts`, `e2e/tests/f10-priority-queue.spec.ts` | passed (`a286f9b`) | v1.1 |
+| BR-19 (rev. 5.0 note, F-09 cross-feature) | F-09, F-10 | 2 | AC-47, AC-51 | PRIO-003, PRIO-010, PRIO-011 | `server/tests/f10-priority-queue.test.ts` | passed (`a286f9b`) | v1.1 |
+| BR-14 (F-07 cross-feature) | F-07, F-10 | 2 | AC-52 | PRIO-011, PRIO-012 | `server/tests/f10-priority-queue.test.ts` | passed (`a286f9b`) | v1.1 |
+| FR-03, BR-07, NFR-02, NFR-08 | F-02, F-10 | 2 | AC-50, AC-54, AC-55 | PRIO-008, PRIO-009, PRIO-014, PRIO-015 | `server/tests/f10-priority-queue.test.ts`, `client/src/test/f10-priorityQueue.test.tsx` | passed (`a286f9b`) | v1.1 |
+| BR-12, NFR-03, NFR-05 | F-10 | 2 | AC-48, AC-51, AC-53 | PRIO-005, PRIO-010, PRIO-011, PRIO-013 | `server/tests/f10-priority-queue.test.ts` | passed (`a286f9b`) | v1.1 |
+| NFR-06 | F-10 | 2 | AC-54, AC-55 | PRIO-014, PRIO-015, PRIO-018 | `client/src/test/f10-priorityQueue.test.tsx`, `e2e/tests/f10-priority-queue.spec.ts` | passed (`a286f9b`) | v1.1 |
+| NFR-04 | F-10 | 2 | AC-53 (operations of AC-47, AC-48) | PERF-S2-004 | `server/tests/nfr/perf-s2-004-priority.ts` | passed (`a286f9b`; `PATCH /priority` p95 `35.2 ms`, `POST call-next` p95 `60.4 ms`, `GET entries` p95 `136.2 ms`, `GET aheadCount` p95 `25.7 ms`; `docs/sprints/sprint-2/evidence/perf-s2-004.txt`) | v1.1 |
+| FR-01–FR-19 (regression) | F-06 | 2 | AC-01–AC-45, AC-55 | REG-S2-004 | existing Sprint 1, Lab 7 BR-06, F-07, F-08, and F-09 suites (245 server + 22 E2E unmodified; 1-line button-query scope adjustment in `client/src/test/f08-noShow.test.tsx`) | passed (`a286f9b`; Server 280/280, Client 138/138, E2E 25/25) | v1.1 |
+
+### Acceptance criteria to tests
+
+| Acceptance Criteria | Test ID(s) | Result |
+|---|---|---|
+| AC-46 | PRIO-002, PRIO-009, PRIO-016 | passed (`a286f9b`) |
+| AC-47 | PRIO-001, PRIO-003, PRIO-004, PRIO-016 | passed (`a286f9b`) |
+| AC-48 | PRIO-005, PRIO-016 | passed (`a286f9b`) |
+| AC-49 | PRIO-001, PRIO-006, PRIO-007, PRIO-017 | passed (`a286f9b`) |
+| AC-50 | PRIO-007, PRIO-008, PRIO-009 | passed (`a286f9b`) |
+| AC-51 | PRIO-010, PRIO-011 | passed (`a286f9b`) |
+| AC-52 | PRIO-012, PRIO-017 | passed (`a286f9b`) |
+| AC-53 | PRIO-013, PERF-S2-004 | passed (`a286f9b`) |
+| AC-54 | PRIO-014, PRIO-016, PRIO-017, PRIO-018 | passed (`a286f9b`) |
+| AC-55 | PRIO-015, PRIO-016, PRIO-018, REG-S2-004 | passed (`a286f9b`) |
