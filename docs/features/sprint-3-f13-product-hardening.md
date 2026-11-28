@@ -6,7 +6,7 @@
 | Sprint | 3. The contract is due at the 29 November 2026 checkpoint. Implementation and verification are due 13 December 2026. |
 | Issue | #44 (contract). The implementation issue will be created after 29 November. |
 | Depends on | F-01 – F-12 |
-| Contract version | v1.0 (2026-11-28) |
+| Contract version | v1.1 (2026-11-28) |
 | Status | Contract v1.0, pending review by `@Khwanklao`; not implemented |
 | Author / reviewer | `@TeekhathatTT` / `@Khwanklao` |
 | Governing documents | [SRS](../srs.md) v6.0 (FR-31, FR-32, BR-33, NFR-09–NFR-13, §10.6 AC-73–AC-82), [Sprint 3 API spec](../sprints/sprint-3/api-spec.md) §4, [tests.md](../sprints/sprint-3/tests.md) §4 |
@@ -25,7 +25,7 @@ Operations also lack written, rehearsed recovery steps. F-13 adds these as measu
 |---|---|---|
 | No security headers. Express sends `X-Powered-By`. | `server/src/app.ts` (no helmet or equivalent) | NFR-09, AC-73 |
 | Unlimited login attempts | `POST /api/auth/login` | FR-31, NFR-10, AC-75 |
-| No structured access log (only `requestId` on errors) | `server/src/middleware/requestId.ts`, `errorHandler.ts` | NFR-13, BR-33, AC-74 |
+| *(v1.1, corrected)* An access log exists (`server/src/middleware/requestLogger.ts`, one JSON line per request, off in tests), but `path` includes the query string (`req.originalUrl`), `durationMs` is a string such as `"12ms"`, and no test checks that secrets never appear | `server/src/middleware/requestLogger.ts` | NFR-13, BR-33, AC-74 |
 | No accessibility scan | E2E suite | NFR-11, AC-76 |
 | E2E evidence on Chromium only | `npm run test:e2e` | NFR-12, AC-77 |
 | Rollback and restore not rehearsed; backup settings not recorded | `docs/labs/lab-05/deployment.md` | NFR-13, AC-81, AC-82 |
@@ -83,3 +83,4 @@ DoD (13 December):
 | Version | Date | Author | Sections | Previous text | Change |
 |---|---|---|---|---|---|
 | v1.0 | 2026-11-28 | `@TeekhathatTT` | All | — | First contract (issue #44), aligned with SRS v6.0. Pending review by `@Khwanklao`. |
+| v1.1 | 2026-11-28 | `@TeekhathatTT` | §1 gap table | Gap row: "No structured access log (only `requestId` on errors)", files `server/src/middleware/requestId.ts`, `errorHandler.ts` | Corrected: `requestLogger.ts` already writes a JSON line per request. The real gaps are the query string in `path`, the string `durationMs`, and no secret-leak test. Found while implementing F-11. D-4 and BR-33 are unchanged. |

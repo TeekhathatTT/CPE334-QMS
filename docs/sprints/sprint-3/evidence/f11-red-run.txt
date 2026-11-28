@@ -1,0 +1,95 @@
+# F-11 red run at TDD red commit eb01c13 (branched from sprint2-staging fba2e2f, contract v1.0 merged in PR #73)
+# Date: 2026-11-28; local PostgreSQL 16 (Docker qms-postgres, qms_test_db), Node v22.20.0
+
+$ npm run test --workspace=server
+ ✓ tests/queue-registration.test.ts (32 tests) 5694ms
+ ✓ tests/f10-priority-queue.test.ts (12 tests) 5877ms
+ ✓ tests/integration-sprint1.test.ts (9 tests) 4561ms
+ ✓ tests/operator-workflow.test.ts (18 tests) 7208ms
+ ✓ tests/f09-multi-counter.test.ts (12 tests) 6763ms
+ ✓ tests/f08-no-show-recovery.test.ts (18 tests) 10309ms
+ ✓ tests/f07-customer-cancellation.test.ts (15 tests) 6627ms
+ ❯ tests/f11-analytics.test.ts (8 tests | 8 failed) 1798ms
+   × F-11: operational analytics API > ANALYTICS-002 (AC-56): DS-11 report matches the expected volumes, statistics and daily rows exactly 328ms
+     → expected 404 to be 200 // Object.is equality
+   × F-11: operational analytics API > ANALYTICS-003 (AC-57): empty ranges return zeros, null statistics and one zero row per day 230ms
+     → expected 404 to be 200 // Object.is equality
+   × F-11: operational analytics API > ANALYTICS-004 (AC-57): each row contributes only to the buckets its timestamps allow; X1–X3 never count 223ms
+     → Cannot read properties of undefined (reading 'analytics')
+   × F-11: operational analytics API > ANALYTICS-005 (AC-58): Asia/Bangkok day boundaries 219ms
+     → Cannot read properties of undefined (reading 'analytics')
+   × F-11: operational analytics API > ANALYTICS-006 (AC-59): malformed or out-of-bounds ranges and malformed queueId return 400 INVALID_ARGUMENT 169ms
+     → expected 404 to be 400 // Object.is equality
+   × F-11: operational analytics API > ANALYTICS-007 (AC-60): 401 without session, 403 for customer and unassigned operator, 404 for unknown queue 163ms
+     → expected 404 to be 401 // Object.is equality
+   × F-11: operational analytics API > ANALYTICS-008 (AC-60): reading the report changes no row 219ms
+     → expected 404 to be 200 // Object.is equality
+   × F-11: operational analytics API > ANALYTICS-009 (AC-56, AC-57): a live F-05 lifecycle today adds exactly one wait and one service sample 221ms
+     → Cannot read properties of undefined (reading 'analytics')
+ ✓ tests/foundation.test.ts (16 tests) 291ms
+ ✓ tests/auth.test.ts (18 tests) 1414ms
+ ✓ tests/seed.test.ts (7 tests) 560ms
+ ✓ tests/rbac-middleware.test.ts (9 tests) 1917ms
+ ✓ tests/csrf.test.ts (6 tests) 644ms
+ ✓ tests/join-csrf.test.ts (6 tests) 1216ms
+ ✓ tests/health.test.ts (7 tests) 87ms
+ ❯ tests/f11-analytics-rule.test.ts (0 test)
+ ✓ tests/static-client.test.ts (10 tests) 103ms
+ ✓ tests/f10-priority-rule.test.ts (23 tests) 6ms
+ ✓ tests/config.test.ts (9 tests) 5ms
+ ✓ tests/f09-counter-rule.test.ts (22 tests) 5ms
+ ✓ tests/f08-no-show-rule.test.ts (25 tests) 5ms
+ ✓ tests/f07-cancel-rule.test.ts (6 tests) 4ms
+ FAIL  tests/f11-analytics-rule.test.ts [ tests/f11-analytics-rule.test.ts ]
+Error: Failed to load url ../src/services/analyticsPolicy (resolved id: ../src/services/analyticsPolicy) in <repo>/server/tests/f11-analytics-rule.test.ts. Does the file exist?
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 8 ⎯⎯⎯⎯⎯⎯⎯
+ ❯ tests/f11-analytics.test.ts:175:24
+ ❯ tests/f11-analytics.test.ts:188:26
+ ❯ tests/f11-analytics.test.ts:202:64
+ ❯ tests/f11-analytics.test.ts:236:92
+ ❯ tests/f11-analytics.test.ts:266:29
+ ❯ tests/f11-analytics.test.ts:280:25
+ ❯ tests/f11-analytics.test.ts:300:58
+ ❯ tests/f11-analytics.test.ts:310:60
+ Test Files  2 failed | 20 passed (22)
+      Tests  8 failed | 280 passed (288)
+
+$ npm run test --workspace=client -- --no-file-parallelism
+ ✓ src/test/f09-multiCounter.test.tsx (20 tests) 1696ms
+ ✓ src/test/customer.test.tsx (27 tests) 2394ms
+ ✓ src/test/operator.test.tsx (13 tests) 1190ms
+ ✓ src/test/f08-noShow.test.tsx (15 tests) 1165ms
+ ✓ src/test/f10-priorityQueue.test.tsx (11 tests) 956ms
+ ✓ src/test/entryDetail.test.tsx (17 tests) 546ms
+ ✓ src/test/f07-leaveQueue.test.tsx (14 tests) 1434ms
+ ❯ src/test/f11-analytics.test.tsx (10 tests | 10 failed) 10157ms
+   × F-11 ANALYTICS-010: operator analytics page > is linked from the operator queue workspace 1050ms
+   × F-11 ANALYTICS-010: operator analytics page > loads the last 7 days by default and renders summary figures and the daily table 1008ms
+   × F-11 ANALYTICS-010: operator analytics page > refetches with the chosen range and announces the update 1011ms
+   × F-11 ANALYTICS-010: operator analytics page > shows — for null statistics and a note when no customers joined 1015ms
+   × F-11 ANALYTICS-011: analytics error, validation and busy states > maps 400 to a user-safe message 1012ms
+   × F-11 ANALYTICS-011: analytics error, validation and busy states > maps 403 to a user-safe message 1009ms
+   × F-11 ANALYTICS-011: analytics error, validation and busy states > maps 404 to a user-safe message 1012ms
+   × F-11 ANALYTICS-011: analytics error, validation and busy states > shows a retryable error for server or network failures 1013ms
+   × F-11 ANALYTICS-011: analytics error, validation and busy states > blocks reversed and over-long ranges on the client without a request 1012ms
+   × F-11 ANALYTICS-011: analytics error, validation and busy states > disables the button and shows a busy label while loading 1013ms
+ ✓ src/test/auth.test.tsx (15 tests) 3266ms
+ ✓ src/test/integration-guards.test.tsx (6 tests) 287ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 10 ⎯⎯⎯⎯⎯⎯⎯
+ ❯ src/test/f11-analytics.test.tsx:100:31
+ ❯ src/test/f11-analytics.test.tsx:110:25
+ ❯ src/test/f11-analytics.test.tsx:145:18
+ ❯ src/test/f11-analytics.test.tsx:161:25
+ ❯ src/test/f11-analytics.test.tsx:176:25
+ ❯ src/test/f11-analytics.test.tsx:176:25
+ ❯ src/test/f11-analytics.test.tsx:176:25
+ ❯ src/test/f11-analytics.test.tsx:189:25
+ ❯ src/test/f11-analytics.test.tsx:198:18
+ ❯ src/test/f11-analytics.test.tsx:220:33
+ Test Files  1 failed | 9 passed (10)
+      Tests  10 failed | 138 passed (148)
+
+$ npx playwright test --config e2e/playwright.config.ts --project=chromium e2e/tests/f11-analytics.spec.ts
+  ✘  1 [chromium] › e2e\tests\f11-analytics.spec.ts:29:7 › F-11 operational analytics › ANALYTICS-012: operator opens analytics from the queue, sees today’s completed journey, keyboard and 360/1280 layouts (1.0m)
+    Error: locator.click: Test timeout of 60000ms exceeded.
+  1 failed

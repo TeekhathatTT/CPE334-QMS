@@ -3,6 +3,7 @@
 | Version | Date | Author | Change |
 |---|---|---|---|
 | 1.0 | 2026-11-28 | @TeekhathatTT (review: @Khwanklao, pending) | First Sprint 3 contract (issue #44): F-11 operator analytics page, F-12 booking screens, and F-13 login throttling message. Aligned with SRS v6.0. |
+| 1.1 | 2026-11-28 | @TeekhathatTT | §2.2 item 3: below `sm` the daily breakdown is shown as cards (found by ANALYTICS-012). |
 
 ## 1. Conventions (unchanged)
 
@@ -41,6 +42,7 @@ These Sprint 1 and Sprint 2 rules still apply:
 
    Durations are shown as `Xm YYs` (for example `4m 05s`; `1h 02m 03s` when 1 hour or more), or `—` when the value is `null`. Each figure has a visible label.
 3. **Daily table**: a `<table>` with the `<caption>` "Daily breakdown, <from> to <to> (Asia/Bangkok)" and the columns Date, Joined, Completed, Cancelled, No-show, Avg wait and Avg service. On narrow screens the table sits in a horizontally scrollable container (`overflow-x-auto`, focusable with `tabindex="0"` and `aria-label`), so the page itself never scrolls sideways.
+   *Rev. 1.1:* below the Tailwind `sm` breakpoint (640 px), the daily breakdown is shown as a list (`<ul aria-label="Daily breakdown">`) with one card per day, holding the same seven values, and the table is hidden (`display: none`). The scroll container described above did not pass the UI-001 check: an element inside it still crossed the 360 px viewport edge (ANALYTICS-012).
 4. **Footnote**: "Counts include customers who joined in the selected dates. Times use Asia/Bangkok."
 
 ### 2.3 States
@@ -94,3 +96,4 @@ Acceptance mapping: AC-72.
 | Version | Date | Section | Previous text | Change |
 |---|---|---|---|---|
 | 1.0 | 2026-11-28 | All | — | First version. |
+| 1.1 | 2026-11-28 | §2.2 | Item 3 described only the table in a horizontally scrollable container (kept). | Adds the cards below `sm`. |

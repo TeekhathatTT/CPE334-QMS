@@ -6,8 +6,8 @@
 | Sprint | 3. Implemented for the 29 November 2026 checkpoint (Deliverable 2 Part C). |
 | Issue | #44 |
 | Depends on | F-01 (persistence), F-05 (operator lifecycle and timestamps); reads data written by F-07, F-08, F-09 and F-10 |
-| Contract version | v1.0 (2026-11-28) |
-| Status | Contract v1.0, pending review by `@Khwanklao` |
+| Contract version | v1.1 (2026-11-28) |
+| Status | Contract v1.0 merged (`fba2e2f`, PR #73). Implemented and verified locally (red `eb01c13`, green `e2ea189`); pending PR review and release. |
 | Author / reviewer | `@TeekhathatTT` / `@Khwanklao` |
 | Governing documents | [SRS](../srs.md) v6.0 (§1.5, FR-23, FR-24, BR-24–BR-26, §10.4 AC-56–AC-62), [Sprint 3 API spec](../sprints/sprint-3/api-spec.md) §2, [Sprint 3 UI spec](../sprints/sprint-3/ui-spec.md) §2, [Sprint 3 test spec](../sprints/sprint-3/tests.md) §2 (the canonical STS) |
 
@@ -63,6 +63,7 @@ sequenceDiagram
 | D-6 | Access: same middleware chain as `GET /api/operator/queues/{queueId}/entries`. A malformed `queueId` gets `400`, then the chain returns `401` for no session, `403` for a non-operator, `404` for an unknown queue and `403` for an unassigned operator. The range is validated after access, inside the handler. | One access rule for every operator queue read (BR-26, AD-08). A customer cannot learn whether a queue exists. |
 | D-7 | The report is a `GET` with no CSRF token and no writes. Unknown query parameters are rejected (`400`). | It is a safe method under AD-01. Strict parameters catch client bugs early. |
 | D-8 | The UI shows durations as `Xm YYs` (for example `4m 05s`), or `—` for `null`. The daily table uses a `<table>` with a `<caption>`; there is no chart. | It is readable and accessible without a chart library (NFR-11 later). |
+| D-9 (v1.1) | Below the Tailwind `sm` breakpoint, the daily breakdown is shown as one card per day, and the table is hidden. From `sm` upwards, the table is shown. | ANALYTICS-012 showed that the 7-column table, even inside a scroll container, crosses the 360 px viewport edge, which the shared UI-001 overflow check rejects (NFR-06). |
 
 ## 5. Data definitions
 
@@ -126,12 +127,12 @@ AC-56 to AC-62 are in [SRS §10.4](../srs.md#104-acceptance-criteria-sprint-3-f-
 
 ## 10. Definition of Done (F-11 part of issue #44)
 
-- [ ] Contract v1.0 (SRS v6.0, this SDS, Sprint 3 API/UI/test specs) reviewed by `@Khwanklao` and merged before any F-11 code
-- [ ] RED: F-11 tests committed first and failing for the missing feature, with the existing suites green (output and SHA saved to `docs/sprints/sprint-3/evidence/f11-red-run.txt`)
-- [ ] GREEN: server, client and E2E (Chromium) pass, including `ANALYTICS-001`–`ANALYTICS-012` (output and SHA in `f11-green-run.txt`)
-- [ ] `PERF-S3-001` executed (`perf-s3-001.txt`)
-- [ ] `REG-S3-001`: all Sprint 1 and Sprint 2 tests pass unmodified
-- [ ] `docs/sprints/sprint-3/completion.md` and `traceability.md` updated with the executed results
+- [x] Contract v1.0 (SRS v6.0, this SDS, Sprint 3 API/UI/test specs) reviewed by `@Khwanklao` and merged before any F-11 code
+- [x] RED: F-11 tests committed first and failing for the missing feature, with the existing suites green (output and SHA saved to `docs/sprints/sprint-3/evidence/f11-red-run.txt`)
+- [x] GREEN: server, client and E2E (Chromium) pass, including `ANALYTICS-001`–`ANALYTICS-012` (output and SHA in `f11-green-run.txt`)
+- [x] `PERF-S3-001` executed (`perf-s3-001.txt`)
+- [x] `REG-S3-001`: all Sprint 1 and Sprint 2 tests pass unmodified
+- [x] `docs/sprints/sprint-3/completion.md` and `traceability.md` updated with the executed results
 - [ ] PR into `sprint2-staging` (the current integration branch) reviewed by `@Khwanklao`, with CI green
 
 ## 11. Review questions
@@ -148,3 +149,4 @@ AC-56 to AC-62 are in [SRS §10.4](../srs.md#104-acceptance-criteria-sprint-3-f-
 | Version | Date | Author | Sections | Previous text | Change |
 |---|---|---|---|---|---|
 | v1.0 | 2026-11-28 | `@TeekhathatTT` | All | — | First contract for issue #44 (F-11), aligned with SRS v6.0. Pending review by `@Khwanklao`. Later revisions add rows here and do not rewrite earlier ones. |
+| v1.1 | 2026-11-28 | `@TeekhathatTT` | Header, §4 (D-9), §10 | D-8 alone described the daily table (D-8 is kept). The status said "pending review" and the DoD items were unchecked. | Records the merge (`fba2e2f`), red `eb01c13` and green `e2ea189`. Adds D-9 (daily cards below `sm`). Ticks the executed DoD items; the PR item stays open. |

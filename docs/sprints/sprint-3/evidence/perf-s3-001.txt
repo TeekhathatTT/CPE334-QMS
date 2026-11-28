@@ -1,0 +1,14 @@
+PERF-S3-001 / NFR-04 run (F-11): 2026-11-28T12:10:31.056Z
+Command: npm run test:perf:f11 --workspace=server   (tsx tests/nfr/perf-s3-001-analytics.ts)
+Host: Windows_NT 10.0.26200, 11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz x12, 16 GiB RAM, Node v22.20.0
+Database: PostgreSQL 16.15 on x86_64-pc-linux-musl, test database "qms_test_db" on 127.0.0.1:5433
+Method: same as PERF-001. Real Express app on a local ephemeral port, sequential HTTP requests (Node fetch,
+        real cookies), 5 untimed warm-ups then 100 timed requests.
+Dataset: 1000 entries in the OPEN queue over 2026-11-01..2026-12-01 (Asia/Bangkok), mixed statuses;
+         each response checked: joined=1000, daily rows=31, waitTime.count=800, serviceTime.count=600.
+Target: read p95 <= 500 ms.
+
+Operation                                            kind      n   p50 ms   p95 ms   max ms target  result
+GET /api/operator/queues/:id/analytics (31 days)     read    100     19.1     22.0     24.5    500  PASS
+
+Overall: PASSED
