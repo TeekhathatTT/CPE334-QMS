@@ -214,6 +214,7 @@ describe('F-11: operational analytics API', () => {
     ];
     for (const c of cases) {
       await resetAndSeed();
+      operator1 = await login(app, OPERATOR1.email); // resetAndSeed() deletes sessions
       await insertDs11([c.skip]);
       const a = (await analytics(operator1, RANGE)).body.data.analytics;
       const expectedVolumes = { ...full.volumes };
@@ -225,6 +226,7 @@ describe('F-11: operational analytics API', () => {
 
     // E6 (recovered) contributes its latest-call waiting time of 900 s, which is the maximum.
     await resetAndSeed();
+    operator1 = await login(app, OPERATOR1.email);
     await insertDs11(['E6']);
     const withoutE6 = (await analytics(operator1, RANGE)).body.data.analytics;
     expect(withoutE6.waitTime.maxSeconds).toBe(600);
@@ -304,7 +306,8 @@ describe('F-11: operational analytics API', () => {
   });
 
   it('ANALYTICS-009 (AC-56, AC-57): a live F-05 lifecycle today adds exactly one wait and one service sample', async () => {
-    await insertDs11();
+    // DS-11 without its WAITING rows (E8, X1): otherwise FIFO Call Next would call E8 before the new entry.
+    await insertDs11(['E8', 'X1']);
     const today = bangkokToday();
     const q = `?from=${today}&to=${today}`;
     const base = (await analytics(operator1, q)).body.data.analytics;
