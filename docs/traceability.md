@@ -280,3 +280,68 @@ Contract v1.1 (2026-11-28, issue #43, SRS v5.1, author `@Khwanklao`, approved an
 | AC-53 | PRIO-013, PERF-S2-004 | passed (`a286f9b`) |
 | AC-54 | PRIO-014, PRIO-016, PRIO-017, PRIO-018 | passed (`a286f9b`) |
 | AC-55 | PRIO-015, PRIO-016, PRIO-018, REG-S2-004 | passed (`a286f9b`) |
+
+## Sprint 3 — F-11, F-12, F-13 Traceability
+
+These rows are from the contracts v1.0 (2026-11-28, issue #44, SRS v6.0, author `@TeekhathatTT`, review by `@Khwanklao` pending). Every test is `planned` until it has been executed. The canonical STS is [sprints/sprint-3/tests.md](./sprints/sprint-3/tests.md).
+
+### Requirements to tests
+
+| Requirement | Feature | Sprint | AC | Test ID(s) | Result | Contract version |
+|---|---|---|---|---|---|---|
+| FR-23 | F-11 | 3 | AC-56–AC-61 | ANALYTICS-001–ANALYTICS-009, PERF-S3-001 | planned | v1.0 |
+| FR-24 | F-11 | 3 | AC-62 | ANALYTICS-010–ANALYTICS-012, REG-S3-001 | planned | v1.0 |
+| BR-24 | F-11 | 3 | AC-56, AC-57 | ANALYTICS-002–ANALYTICS-004, ANALYTICS-009 | planned | v1.0 |
+| BR-25 | F-11 | 3 | AC-56, AC-57 | ANALYTICS-001, ANALYTICS-002, ANALYTICS-004 | planned | v1.0 |
+| BR-26 | F-11 | 3 | AC-58–AC-60 | ANALYTICS-001, ANALYTICS-005–ANALYTICS-008 | planned | v1.0 |
+| NFR-04 (F-11) | F-11 | 3 | AC-61 | PERF-S3-001 | planned | v1.0 |
+| FR-25 | F-12 | 3 | AC-63, AC-64 | APPT-002–APPT-005 | planned | v1.0 |
+| FR-26 | F-12 | 3 | AC-65 | APPT-006 | planned | v1.0 |
+| FR-27 | F-12 | 3 | AC-66, AC-67, AC-71 | APPT-001, APPT-007–APPT-010, APPT-020 | planned | v1.0 |
+| FR-28 | F-12 | 3 | AC-68, AC-70 | APPT-001, APPT-011, APPT-015 | planned | v1.0 |
+| FR-29 | F-12 | 3 | AC-69, AC-71 | APPT-012–APPT-014, APPT-016, APPT-017 | planned | v1.0 |
+| FR-30 | F-12 | 3 | AC-72 | APPT-018, APPT-019 | planned | v1.0 |
+| BR-27 | F-12 | 3 | AC-63, AC-64 | APPT-002–APPT-005 | planned | v1.0 |
+| BR-28 | F-12 | 3 | AC-65, AC-66 | APPT-001, APPT-006, APPT-008 | planned | v1.0 |
+| BR-29 | F-12 | 3 | AC-66, AC-67 | APPT-008–APPT-010, APPT-020 | planned | v1.0 |
+| BR-30 | F-12 | 3 | AC-68 | APPT-011 | planned | v1.0 |
+| BR-31, BR-21 (rev. 6.0 note) | F-10, F-12 | 3 | AC-69, AC-71 | APPT-012–APPT-014, APPT-016, APPT-017 | planned | v1.0 |
+| BR-32 | F-12 | 3 | AC-70 | APPT-001, APPT-015 | planned | v1.0 |
+| FR-31, NFR-10, BR-33 | F-13 | 3 | AC-75 | HARD-004–HARD-006 | planned | v1.0 |
+| FR-32 | F-13 | 3 | AC-78–AC-82 | HARD-009–HARD-012 | planned | v1.0 |
+| NFR-09 | F-13 | 3 | AC-73 | HARD-001, HARD-002 | planned | v1.0 |
+| NFR-11 | F-13 | 3 | AC-76 | HARD-007 | planned | v1.0 |
+| NFR-12 | F-13 | 3 | AC-77 | HARD-008 | planned | v1.0 |
+| NFR-13, BR-33 | F-13 | 3 | AC-74, AC-81 | HARD-003, HARD-012 | planned | v1.0 |
+
+### Acceptance criteria to tests
+
+| Acceptance Criteria | Test ID(s) | Result |
+|---|---|---|
+| AC-56 | ANALYTICS-001, ANALYTICS-002, ANALYTICS-009 | planned |
+| AC-57 | ANALYTICS-003, ANALYTICS-004, ANALYTICS-009 | planned |
+| AC-58 | ANALYTICS-001, ANALYTICS-005 | planned |
+| AC-59 | ANALYTICS-001, ANALYTICS-006 | planned |
+| AC-60 | ANALYTICS-007, ANALYTICS-008 | planned |
+| AC-61 | PERF-S3-001 | planned |
+| AC-62 | ANALYTICS-010–ANALYTICS-012, REG-S3-001 | planned |
+| AC-63 | APPT-002–APPT-004 | planned |
+| AC-64 | APPT-005 | planned |
+| AC-65 | APPT-006 | planned |
+| AC-66 | APPT-001, APPT-007, APPT-008, APPT-020 | planned |
+| AC-67 | APPT-009, APPT-010, APPT-017, APPT-020 | planned |
+| AC-68 | APPT-001, APPT-011 | planned |
+| AC-69 | APPT-001, APPT-012–APPT-014 | planned |
+| AC-70 | APPT-001, APPT-015 | planned |
+| AC-71 | APPT-016, APPT-017 | planned |
+| AC-72 | APPT-018, APPT-019, HARD-007 | planned |
+| AC-73 | HARD-001, HARD-002 | planned |
+| AC-74 | HARD-003 | planned |
+| AC-75 | HARD-004–HARD-006 | planned |
+| AC-76 | HARD-007 | planned |
+| AC-77 | HARD-008 | planned |
+| AC-78 | HARD-009 | planned |
+| AC-79 | HARD-010 | planned |
+| AC-80 | HARD-011 | planned |
+| AC-81 | HARD-012 | planned |
+| AC-82 | HARD-012 | planned |
