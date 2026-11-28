@@ -9,6 +9,7 @@ import { CustomerHomePage } from './pages/CustomerHomePage';
 import { EntryDetailPage } from './pages/EntryDetailPage';
 import { LoginPage } from './pages/LoginPage';
 import { OperatorHomePage } from './pages/OperatorHomePage';
+import { OperatorAnalyticsPage } from './pages/OperatorAnalyticsPage';
 import { OperatorQueueDetailPage } from './pages/OperatorQueueDetailPage';
 
 /** Sends `/` and unknown paths to the signed-in user's home, or to `/login`. */
@@ -34,6 +35,8 @@ export function AppRoutes() {
         <Route element={<OperatorLayout />}>
           <Route index element={<OperatorHomePage />} />
           <Route path="queues/:id" element={<OperatorQueueDetailPage />} />
+          {/* F-11 (Sprint 3 ui-spec §2). */}
+          <Route path="queues/:id/analytics" element={<OperatorAnalyticsPage />} />
         </Route>
       </Route>
 

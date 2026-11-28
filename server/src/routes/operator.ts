@@ -19,6 +19,7 @@ import {
   callNextAtCounter,
   updateEntryPriority,
 } from '../services/operatorService';
+import { getQueueAnalytics } from '../services/analyticsService';
 
 export const operatorRouter = express.Router();
 
@@ -285,6 +286,37 @@ operatorRouter.patch(
       }
       const entry = await updateEntryPriority(req.user!.id, req.params.entryId, parsed.data.priority);
       res.status(200).json({ data: { entry } });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+const analyticsQuerySchema = z
+  .object({
+    from: z.string(),
+    to: z.string(),
+  })
+  .strict();
+
+/**
+ * GET /api/operator/queues/:queueId/analytics?from=YYYY-MM-DD&to=YYYY-MM-DD
+ * F-11: read-only operational analytics for an assigned queue (Sprint 3 api-spec §2.1, SRS FR-23, BR-24 – BR-26).
+ * Allowed role: assigned OPERATOR only. Safe read: no CSRF token, no writes.
+ */
+operatorRouter.get(
+  '/queues/:queueId/analytics',
+  requireAuth,
+  requireRole(Role.OPERATOR),
+  requireQueueAssignment,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = analyticsQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        return next(new AppError(400, 'INVALID_ARGUMENT', 'Query must contain exactly from and to (YYYY-MM-DD).'));
+      }
+      const analytics = await getQueueAnalytics(req.params.queueId, parsed.data.from, parsed.data.to);
+      res.status(200).json({ data: { analytics } });
     } catch (error) {
       next(error);
     }

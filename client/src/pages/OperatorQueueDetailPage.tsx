@@ -616,6 +616,14 @@ export function OperatorQueueDetailPage() {
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="break-words text-2xl font-bold text-slate-900">{queueTitle}</h1>
+                {/* F-11 (Sprint 3 ui-spec §2.1). */}
+                <Link
+                  to={`/operator/queues/${encodeURIComponent(id ?? '')}/analytics`}
+                  aria-label={`View analytics for ${queueTitle}`}
+                  className={linkClass}
+                >
+                  Analytics
+                </Link>
                 {queueMeta && (
                   <span
                     className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
