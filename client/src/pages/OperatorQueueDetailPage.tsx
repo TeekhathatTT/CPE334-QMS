@@ -12,6 +12,7 @@ import {
   recoverQueueEntry,
   startQueueEntry,
   updateCounterStatus,
+  updateEntryPriority,
   type Counter,
 } from '../api/operator';
 import {
@@ -22,6 +23,7 @@ import {
 } from '../api/queues';
 import { useAuth } from '../auth/AuthContext';
 import { EntryTimestamps } from '../components/customer/EntryTimestamps';
+import { PriorityBadge } from '../components/customer/PriorityBadge';
 import { STATUS_LABELS, StatusBadge } from '../components/customer/StatusBadge';
 import {
   EmptyNote,
@@ -61,6 +63,9 @@ export const OPERATOR_ACTION_ERROR_TEXT = {
   NO_WAITING_ENTRIES: 'There are no waiting customers in this queue right now.',
   COUNTER_INVALID: 'Invalid counter request. Please refresh and try again.',
   COUNTER_NOT_FOUND: "We couldn't find that counter.",
+  /** F-10 (Sprint 2 ui-spec §16.3). */
+  PRIORITY_NOT_WAITING: 'This entry is no longer waiting, so its priority cannot be changed.',
+  PRIORITY_INVALID: 'Invalid priority request. Please refresh and try again.',
 } as const;
 
 /** F-08 (Sprint 2 ui-spec §8.4). */
@@ -79,9 +84,12 @@ function isCsrfForbidden(err: ApiError): boolean {
   return false;
 }
 
-function describeActionFailure(err: unknown, target: 'queue' | 'entry' | 'counter'): ActionFailure {
+function describeActionFailure(err: unknown, target: 'queue' | 'entry' | 'counter' | 'priority'): ActionFailure {
   if (err instanceof ApiError) {
     if (err.status === 409) {
+      if (target === 'priority') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.PRIORITY_NOT_WAITING, refetchEntries: true };
+      }
       if (err.code === 'COUNTER_CLOSED') {
         return { text: OPERATOR_ACTION_ERROR_TEXT.COUNTER_CLOSED, refetchEntries: true, refetchCounters: true };
       }
@@ -99,8 +107,13 @@ function describeActionFailure(err: unknown, target: 'queue' | 'entry' | 'counte
       }
       return { text: OPERATOR_ACTION_ERROR_TEXT.CONFLICT, refetchEntries: true };
     }
-    if (err.status === 400 && target === 'counter') {
-      return { text: OPERATOR_ACTION_ERROR_TEXT.COUNTER_INVALID, refetchEntries: false };
+    if (err.status === 400) {
+      if (target === 'priority') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.PRIORITY_INVALID, refetchEntries: false };
+      }
+      if (target === 'counter') {
+        return { text: OPERATOR_ACTION_ERROR_TEXT.COUNTER_INVALID, refetchEntries: false };
+      }
     }
     if (err.status === 404) {
       if (target === 'counter') {
@@ -161,6 +174,7 @@ export function OperatorQueueDetailPage() {
   const [completingIds, setCompletingIds] = useState<ReadonlySet<string>>(new Set());
   const [noShowingIds, setNoShowingIds] = useState<ReadonlySet<string>>(new Set());
   const [recoveringIds, setRecoveringIds] = useState<ReadonlySet<string>>(new Set());
+  const [updatingPriorityIds, setUpdatingPriorityIds] = useState<ReadonlySet<string>>(new Set());
   const [feedback, setFeedback] = useState<FeedbackBanner | null>(null);
   const [announcement, setAnnouncement] = useState('');
 
@@ -454,6 +468,34 @@ export function OperatorQueueDetailPage() {
     void runNoShowAction(entry, recoverQueueEntry, setRecoveringIds, (u) => `Returned queue number ${u.queueNumber} to the queue.`);
   };
 
+  const handleTogglePriority = async (entry: QueueEntry) => {
+    if (entry.status !== 'WAITING') return;
+    if (entryActionInFlightRef.current.has(entry.id)) return;
+    entryActionInFlightRef.current.add(entry.id);
+    toggleIn(setUpdatingPriorityIds, entry.id, true);
+    setFeedback(null);
+
+    const nextPriority = entry.priority === 'PRIORITY' ? 'NORMAL' : 'PRIORITY';
+    try {
+      const updated = await updateEntryPriority(entry.id, nextPriority);
+      if (!mounted.current) return;
+      const label = updated.priority === 'PRIORITY' ? 'Priority' : 'Normal';
+      const msg = `Queue number ${updated.queueNumber} priority set to ${label}.`;
+      setFeedback({ kind: 'success', text: msg });
+      setAnnouncement(msg);
+      await loadEntries();
+    } catch (err) {
+      if (!mounted.current || isSessionExpiredError(err)) return;
+      const { text, refetchEntries } = describeActionFailure(err, 'priority');
+      setFeedback({ kind: 'error', text });
+      setAnnouncement(text);
+      if (refetchEntries) void loadEntries();
+    } finally {
+      entryActionInFlightRef.current.delete(entry.id);
+      if (mounted.current) toggleIn(setUpdatingPriorityIds, entry.id, false);
+    }
+  };
+
   const handleToggleCounterStatus = async (counter: Counter) => {
     if (isCounterOwnedByOther(counter, user?.id ?? null)) return;
     if (counterActionInFlightRef.current.has(counter.id)) return;
@@ -704,6 +746,7 @@ export function OperatorQueueDetailPage() {
                           <div className="min-w-0 space-y-1.5">
                             <div className="flex flex-wrap items-center gap-2">
                               <StatusBadge status={entry.status} />
+                              <PriorityBadge priority={entry.priority} />
                               {(entry.status === 'CALLED' || entry.status === 'SERVING') && entry.counterName && (
                                 <span
                                   data-testid={`active-entry-counter-${entry.queueNumber}`}
@@ -792,36 +835,69 @@ export function OperatorQueueDetailPage() {
               <EmptyNote>No customers are currently waiting in this queue.</EmptyNote>
             ) : (
               <ol className="space-y-2.5" aria-label="Waiting queue entries">
-                {waitingEntries.map((entry, index) => (
-                  <li
-                    key={entry.id}
-                    data-testid={`waiting-entry-${entry.queueNumber}`}
-                    className="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span
-                        aria-label={`Position ${index + 1}`}
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-900"
-                      >
-                        #{index + 1}
-                      </span>
-                      <div className="flex shrink-0 flex-col items-center justify-center rounded-lg bg-slate-800 px-4 py-1.5 text-white">
-                        <span className="text-[10px] uppercase tracking-wide">Queue #</span>
-                        <span className="text-xl font-bold">{entry.queueNumber}</span>
+                {waitingEntries.map((entry, index) => {
+                  const isPriority = entry.priority === 'PRIORITY';
+                  const isUpdatingPriority = updatingPriorityIds.has(entry.id);
+                  return (
+                    <li
+                      key={entry.id}
+                      data-testid={`waiting-entry-${entry.queueNumber}`}
+                      className="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span
+                          aria-label={`Position ${index + 1}`}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-900"
+                        >
+                          #{index + 1}
+                        </span>
+                        <div className="flex shrink-0 flex-col items-center justify-center rounded-lg bg-slate-800 px-4 py-1.5 text-white">
+                          <span className="text-[10px] uppercase tracking-wide">Queue #</span>
+                          <span className="text-xl font-bold">{entry.queueNumber}</span>
+                        </div>
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge status={entry.status} />
+                            <PriorityBadge priority={entry.priority} />
+                          </div>
+                          <p className="break-all text-xs text-slate-600">
+                            <span className="font-medium text-slate-700">Customer ID: </span>
+                            {entry.customerId}
+                          </p>
+                        </div>
                       </div>
-                      <div className="min-w-0 space-y-1">
-                        <StatusBadge status={entry.status} />
-                        <p className="break-all text-xs text-slate-600">
-                          <span className="font-medium text-slate-700">Customer ID: </span>
-                          {entry.customerId}
-                        </p>
+                      <div className="flex min-w-0 flex-col gap-2 sm:items-end">
+                        <button
+                          type="button"
+                          onClick={() => void handleTogglePriority(entry)}
+                          disabled={isUpdatingPriority}
+                          aria-label={
+                            isPriority
+                              ? `Set queue number ${entry.queueNumber} to normal priority`
+                              : `Set queue number ${entry.queueNumber} as priority`
+                          }
+                          className={`flex min-h-[44px] items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
+                            isPriority
+                              ? 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
+                              : 'border-amber-400 bg-amber-50 text-amber-950 hover:bg-amber-100'
+                          } ${focusRing}`}
+                        >
+                          {isUpdatingPriority ? (
+                            <>
+                              <Spinner />
+                              Updating priority...
+                            </>
+                          ) : isPriority ? (
+                            'Set Normal'
+                          ) : (
+                            'Set Priority'
+                          )}
+                        </button>
+                        <EntryTimestamps entry={entry} />
                       </div>
-                    </div>
-                    <div className="min-w-0">
-                      <EntryTimestamps entry={entry} />
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ol>
             )}
           </section>
@@ -849,7 +925,10 @@ export function OperatorQueueDetailPage() {
                           <span className="text-xl font-bold">{entry.queueNumber}</span>
                         </div>
                         <div className="min-w-0 space-y-1">
-                          <StatusBadge status={entry.status} />
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge status={entry.status} />
+                            <PriorityBadge priority={entry.priority} />
+                          </div>
                           <p className="break-all text-xs text-slate-600">
                             <span className="font-medium text-slate-700">Customer ID: </span>
                             {entry.customerId}
@@ -907,7 +986,10 @@ export function OperatorQueueDetailPage() {
                         <span className="text-lg font-bold">{entry.queueNumber}</span>
                       </div>
                       <div className="min-w-0 space-y-1">
-                        <StatusBadge status={entry.status} />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusBadge status={entry.status} />
+                          <PriorityBadge priority={entry.priority} />
+                        </div>
                         <p className="break-all text-xs text-slate-600">
                           <span className="font-medium text-slate-700">Customer ID: </span>
                           {entry.customerId}

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import type { QueueEntry } from '../../api/queues';
 import { REFRESH_INTERVAL_MS } from '../../hooks/usePolling';
 import { EntryTimestamps } from './EntryTimestamps';
+import { PriorityBadge } from './PriorityBadge';
 import { StatusBadge } from './StatusBadge';
 import { EmptyNote, ErrorNote, LoadingNote, REFRESH_FAILED_TEXT, RefreshButton, linkClass } from './ui';
 import type { Loadable } from './loadable';
@@ -57,6 +58,7 @@ export function MyTicketsList({ entries, refreshFailed, refreshing, onRefresh, o
                   <h3 className="break-words text-lg font-semibold text-slate-900">{queueName}</h3>
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge status={entry.status} />
+                    <PriorityBadge priority={entry.priority} />
                     {(entry.status === 'CALLED' || entry.status === 'SERVING') && entry.counterName && (
                       <span
                         data-testid="ticket-counter-badge"

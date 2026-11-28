@@ -1,4 +1,4 @@
-import { Prisma, QueueAvailability } from '@prisma/client';
+import { Prisma, QueueAvailability, QueuePriority } from '@prisma/client';
 import { prisma } from '../db';
 import { AppError } from '../errors/AppError';
 import { isCustomerCancellable } from './cancellationPolicy';
@@ -32,6 +32,8 @@ export interface SerializedQueueEntry {
   counterId: string | null;
   /** F-09: assigned counter display name, or `null`. */
   counterName: string | null;
+  /** F-10: queue priority tier (`NORMAL` or `PRIORITY`, Sprint 2 api-spec §17.2). */
+  priority: QueuePriority;
   aheadCount?: number;
 }
 
@@ -66,6 +68,7 @@ export function formatQueueEntry(
     noShowCount: number;
     counterId?: string | null;
     counter?: { name: string } | null;
+    priority?: QueuePriority;
   },
   aheadCount?: number
 ): SerializedQueueEntry {
@@ -85,6 +88,7 @@ export function formatQueueEntry(
     noShowCount: entry.noShowCount,
     counterId: entry.counterId ?? null,
     counterName: entry.counter?.name ?? null,
+    priority: entry.priority ?? QueuePriority.NORMAL,
     ...(typeof aheadCount === 'number' ? { aheadCount } : {}),
   };
 }
@@ -248,11 +252,27 @@ export async function listCustomerEntries(customerId: string): Promise<Serialize
 }
 
 export async function computeAheadCount(
-  entry: { id: string; serviceQueueId: string; joinedAt: Date; status: string },
+  entry: { id: string; serviceQueueId: string; joinedAt: Date; status: string; priority?: QueuePriority },
   client: Prisma.TransactionClient | typeof prisma = prisma
 ): Promise<number> {
   if (entry.status !== 'WAITING') {
     return 0;
+  }
+
+  const entryPriority = entry.priority ?? QueuePriority.NORMAL;
+
+  if (entryPriority === QueuePriority.PRIORITY) {
+    return await client.queueEntry.count({
+      where: {
+        serviceQueueId: entry.serviceQueueId,
+        status: 'WAITING',
+        priority: QueuePriority.PRIORITY,
+        OR: [
+          { joinedAt: { lt: entry.joinedAt } },
+          { joinedAt: entry.joinedAt, id: { lt: entry.id } },
+        ],
+      },
+    });
   }
 
   return await client.queueEntry.count({
@@ -260,8 +280,14 @@ export async function computeAheadCount(
       serviceQueueId: entry.serviceQueueId,
       status: 'WAITING',
       OR: [
-        { joinedAt: { lt: entry.joinedAt } },
-        { joinedAt: entry.joinedAt, id: { lt: entry.id } },
+        { priority: QueuePriority.PRIORITY },
+        {
+          priority: QueuePriority.NORMAL,
+          OR: [
+            { joinedAt: { lt: entry.joinedAt } },
+            { joinedAt: entry.joinedAt, id: { lt: entry.id } },
+          ],
+        },
       ],
     },
   });

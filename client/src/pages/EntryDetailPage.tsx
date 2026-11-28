@@ -11,6 +11,7 @@ import {
 } from '../api/queues';
 import { EntryTimestamps } from '../components/customer/EntryTimestamps';
 import { LEAVE_STATUS_CHANGED_TEXT, LeaveQueueControl } from '../components/customer/LeaveQueueControl';
+import { PriorityBadge } from '../components/customer/PriorityBadge';
 import { STATUS_LABELS, StatusBadge } from '../components/customer/StatusBadge';
 import { isFinalNoShow } from '../api/noShow';
 import {
@@ -24,6 +25,8 @@ import {
 import { REFRESH_INTERVAL_MS, usePolling } from '../hooks/usePolling';
 
 export const ENTRY_NOT_FOUND_TEXT = "We couldn't find that queue entry.";
+export const PRIORITY_POSITION_HELPER_TEXT =
+  'Queue position may adjust when priority customers are accommodated.';
 
 /** Issue #5 decision 5: queue-specific message for the detail page. */
 export function entryMessage(entry: QueueEntry): string {
@@ -210,6 +213,7 @@ export function EntryDetailPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-slate-700">Status:</span>
                 <StatusBadge status={detail.entry.status} />
+                <PriorityBadge priority={detail.entry.priority} />
                 {(detail.entry.status === 'CALLED' || detail.entry.status === 'SERVING') && detail.entry.counterName && (
                   <span
                     data-testid="entry-counter-badge"
@@ -222,6 +226,11 @@ export function EntryDetailPage() {
               <p className="text-lg font-medium text-slate-900" data-testid="entry-message">
                 {entryMessage(detail.entry)}
               </p>
+              {detail.entry.status === 'WAITING' && (
+                <p className="text-sm text-slate-600" data-testid="priority-position-note">
+                  {PRIORITY_POSITION_HELPER_TEXT}
+                </p>
+              )}
             </div>
           </div>
 
