@@ -1,0 +1,19 @@
+# M-2 source: pull requests merged or closed in TeekhathatTT/CPE334-QMS
+# Window: 2026-11-21T17:00:00Z to snapshot 2026-11-28T05:30:00Z
+# Command: gh pr list --state all --limit 100 --json number,title,state,mergedAt,closedAt,baseRefName,headRefName   (filtered to the window)
+# Columns: number | state | mergedAt/closedAt (UTC) | head -> base | title
+#33 | CLOSED | 2026-11-21T17:09:06Z | tmp/lab5-c02-failing-check -> lab5-staging | [C-02 DEMO, DO NOT MERGE] Failing test to prove the required check blocks merging
+#34 | MERGED | 2026-11-21T17:59:33Z | feature/lab5/6-wif-merge-gate -> lab5-staging | [Lab 5 - Ep.6] Connect GitHub to GCP via WIF and configure the required CI merge gate
+#35 | MERGED | 2026-11-21T19:41:18Z | lab5/7-auto-deploy-workflow -> lab5-staging | ci(deploy): add automated Cloud Run deploy workflow and v1.1 release footer
+#36 | MERGED | 2026-11-21T19:55:55Z | lab5-staging -> main | release(lab5): deploy QMS v1.1 to Cloud Run via automated GitHub Actions pipeline ( lab5-staging to main )
+#37 | MERGED | 2026-11-21T21:13:35Z | lab5/8-verify-persistence -> lab5-staging | docs(lab5): record Check C-06 and Check C-05 live verification evidence
+#38 | MERGED | 2026-11-21T21:20:58Z | lab5-staging -> main | release(lab5): merge C-06 and C-05 verification evidence to main
+#57 | MERGED | 2026-11-27T04:55:13Z | docs/lab7-part-a-contract -> lab7-staging | docs(lab7): update BR-06 contract and impact analysis (Part A, #51)
+#56 | MERGED | 2026-11-27T05:36:12Z | feature/sprint2/40-customer-cancellation-and-queue-withdrawal -> sprint2-staging | feat(f07): customer cancellation and queue withdrawal
+#58 | MERGED | 2026-11-27T06:52:55Z | maintenance/lab7/52-max-active-entries -> lab7-staging | Lab 7 Part B: enforce BR-06 cap of 2 active queue entries (#52)
+#59 | MERGED | 2026-11-27T08:33:25Z | lab7-staging -> main | Release Lab 7: BR-06 2-active-entry cap (lab7-staging → main, #52)
+#60 | MERGED | 2026-11-27T08:54:30Z | feature/sprint2/41-no-show-handling-and-recovery -> sprint2-staging | feat(f08): no-show handling and recovery
+#61 | MERGED | 2026-11-27T11:23:44Z | feature/sprint2/42-multi-counter-support -> sprint2-staging | docs(f09): add Contract v1 for multi-counter support (#42)
+#62 | MERGED | 2026-11-27T15:23:34Z | feature/sprint2/42-multi-counter-impl -> sprint2-staging | feat(f09): implement multi-counter support 
+#63 | MERGED | 2026-11-27T15:42:42Z | chore/sprint2/merge-main-lab7 -> sprint2-staging | merge Lab 7 BR-06 into sprint2-staging; F-08 return respects the BR-06 cap
+#64 | MERGED | 2026-11-27T15:42:52Z | docs/sprint2/42-f09-evidence -> sprint2-staging | docs(f09): raw red/green output and captioned screenshots (#42)

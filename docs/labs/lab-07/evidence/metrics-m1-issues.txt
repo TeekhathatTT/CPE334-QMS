@@ -1,0 +1,20 @@
+# M-1 source: issues closed in TeekhathatTT/CPE334-QMS
+# Window: 2026-11-21T17:00:00Z (2026-11-22 00:00 ICT) to snapshot 2026-11-28T05:30:00Z (2026-11-28 12:30 ICT)
+# Command: gh issue list --state closed --limit 100 --json number,title,closedAt,stateReason   (filtered to the window)
+# Columns: number | closedAt (UTC) | stateReason | title
+#20 | 2026-11-21T18:00:20Z | COMPLETED | [Lab 5 - Ep.6] Connect GitHub to GCP via WIF and configure required CI merge gate
+#21 | 2026-11-21T19:55:57Z | COMPLETED | [Lab 5 - Ep.7] Add automated deploy workflow and release a visible change to main
+#23 | 2026-11-21T21:14:38Z | COMPLETED | [Lab 5 - Ep.8] Verify data persistence across restarts and redeploys (Check C-05)
+#39 | 2026-11-22T05:09:49Z | COMPLETED | fix(test): flaky client test 'loading state, then a neutral empty state' blocks required CI
+#45 | 2026-11-22T08:00:26Z | NOT_PLANNED | [Sprint 3 - F-12] Advance appointment booking
+#46 | 2026-11-22T08:00:29Z | NOT_PLANNED | [Sprint 3 - F-13] Product hardening and launch readiness
+#47 | 2026-11-22T08:00:32Z | NOT_PLANNED | [Deliverable 2 - Part A] Sprint 1 continuity check and change/defect register
+#48 | 2026-11-22T08:00:35Z | NOT_PLANNED | [Deliverable 2 - Part D] Update SRS, feature inventory, System SDS and traceability matrix
+#54 | 2026-11-22T08:00:38Z | NOT_PLANNED | [Lab 7 - Part D] Release readiness checklist and retrospective
+#55 | 2026-11-22T08:00:41Z | NOT_PLANNED | [Lab 7] Assemble and submit the Lab 7 PDF (due 29 Nov)
+#51 | 2026-11-27T05:00:21Z | COMPLETED | [Lab 7 - Part A] Approved Sprint 1 change request, impact analysis and reviewed contract
+#40 | 2026-11-27T05:38:01Z | COMPLETED | [Sprint 2 - F-07] Customer cancellation and queue withdrawal
+#52 | 2026-11-27T08:34:07Z | COMPLETED | [Lab 7 - Part B] Test-first implementation, regression and deployed release of the change
+#41 | 2026-11-27T08:54:49Z | COMPLETED | [Sprint 2 - F-08] No-show handling and recovery
+#42 | 2026-11-27T15:43:05Z | COMPLETED | [Sprint 2 - F-09] Multi-counter support
+#26 | 2026-11-27T18:28:45Z | COMPLETED | [Lab 6 - Part B] Execute independent UAT on partner team's Sprint 1 release
