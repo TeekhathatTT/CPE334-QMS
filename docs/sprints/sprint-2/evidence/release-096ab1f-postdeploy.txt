@@ -1,0 +1,51 @@
+# Sprint 2 release post-deploy evidence (2026-11-28)
+# Release PR #71 (sprint2-staging 5709401 -> main), merge commit 096ab1f, approved by @Khwanklao
+# Release commit tree b6c3f23b = tested candidate 5709401 tree (git rev-parse <sha>^{tree})
+
+## Candidate tests at 5709401 (local PostgreSQL 16, Node v22.20.0)
+$ npm run test --workspace=server
+ Test Files  20 passed (20)
+      Tests  280 passed (280)
+$ npm run test --workspace=client -- --no-file-parallelism
+ Test Files  9 passed (9)
+      Tests  138 passed (138)
+$ npm run test:e2e
+  25 passed (1.4m)
+
+## Cloud SQL qms-pg / qms_db (before merge, via Cloud SQL Auth Proxy, checkout 5709401)
+Applying migration `20261127090000_f07_queue_entry_cancelled`
+Applying migration `20261127120000_f08_queue_entry_no_show`
+Applying migration `20261127150000_f09_multi_counter_support`
+Applying migration `20261128163000_f10_priority_queue_policy`
+All migrations have been successfully applied.
+Counter-only provisioning completed: { queuesScanned: 4, countersCreated: 8 }
+Database schema is up to date!
+
+## Deploy (deploy.yml run 46138389664, success)
+Latest revision: qms-00007-vf8
+Tagged image:    asia-southeast1-docker.pkg.dev/cpe334-2026-td-qms/qms/cpe334-qms:096ab1f3f8fa21a2bbff70ce5d2aee923bd5cb72
+Live image:      ...cpe334-qms@sha256:47fe2081616fe0e4cb17fdd6f765d92f7d8d805c57e7a2705303fb025685ee4d
+Health:          HTTP 200 {"status":"ok","database":"ok","version":"096ab1f"}
+
+## Post-deploy journeys on https://qms-1036193964355.asia-southeast1.run.app (General Inquiry Desk; customer1, customer2, operator1)
+PASS J1.1 customer1 joins OPEN queue :: 201 #8 WAITING prio=NORMAL counter=- noShow=0
+PASS J1.2 operator legacy Call Next calls that entry :: 200 #8 CALLED prio=NORMAL counter=- noShow=0
+PASS J1.3 start -> SERVING :: 200 #8 SERVING prio=NORMAL counter=- noShow=0
+PASS J1.4 complete -> COMPLETED :: 200 #8 COMPLETED prio=NORMAL counter=- noShow=0
+PASS J1.5 customer reads COMPLETED with timestamps :: 200 #8 COMPLETED prio=NORMAL counter=- noShow=0
+PASS J2.1 F-07 customer cancels WAITING entry :: 200 #9 CANCELLED prio=NORMAL counter=- noShow=0
+PASS J2.2 cancelled entry is never called (queue empty) :: 204
+PASS J3.1 F-08 mark CALLED as NO_SHOW :: 200 #10 NO_SHOW prio=NORMAL counter=- noShow=1
+PASS J3.2 F-08 recover -> WAITING :: 200 #10 WAITING prio=NORMAL counter=- noShow=1
+PASS J4.1 F-09 Call Next at Counter 1 calls recovered entry :: 200 #10 CALLED prio=NORMAL counter=Counter 1 noShow=1
+PASS J4.2 customer sees counter name :: 200 #10 CALLED prio=NORMAL counter=Counter 1 noShow=1
+PASS J4.3 recovered entry completes :: 200 #10 COMPLETED prio=NORMAL counter=Counter 1 noShow=1
+PASS J5.1 F-10 customer self-elevation rejected 403 :: 403 FORBIDDEN
+PASS J5.2 customer cannot call PATCH priority (403) :: 403
+PASS J5.3 operator sets later entry PRIORITY :: 200 #12 WAITING prio=PRIORITY counter=- noShow=0
+PASS J5.4 NORMAL customer aheadCount = 1 :: aheadCount=1
+PASS J5.5 Call Next serves PRIORITY entry first :: 200 #12 CALLED prio=PRIORITY counter=- noShow=0
+PASS J5.6 priority change on CALLED rejected 409 :: 409 INVALID_STATE_TRANSITION
+PASS J5.7 then the NORMAL entry is called :: 200 #11 CALLED prio=NORMAL counter=- noShow=0
+PASS END no active entries left; history kept :: operator list total=11 active=0
+SUMMARY 20/20 passed
