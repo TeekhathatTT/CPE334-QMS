@@ -10,6 +10,7 @@
 | 3.1 | 2026-11-27 | F-09 contract v1.1 (PR review fixes): disables controls with `"Assigned to another operator"` for non-owned counters, shows legacy Call Next fallback whenever the operator has zero usable counters, and standardizes counter badges strictly to `CALLED` and `SERVING` entries only (removing `"may appear"` ambiguity). |
 | 3.2 | 2026-11-27 | F-09 contract v1.3 (implementation PR review fixes): gates the legacy Call Next fallback strictly on `countersStatus === 'loaded' && !countersPollError`, adds loading/initial-error/poll-error Retry states (disabling counter controls on poll failure), adds counter refetch on non-CSRF `403` and `409 NO_WAITING_ENTRIES`, and adds `COUNTER-019` to §13 mapping. |
 | 3.3 | 2026-11-27 | F-08 follows BR-06 (SRS rev. 4.5): §8.3 adds the operator message for `409 MAX_ACTIVE_ENTRIES_REACHED` on Return to queue. (Numbered 3.3 because the F-09 implementation PR uses 3.2.) |
+| 4.0 | 2026-11-28 | F-10 contract v1.1 (issue #43, SRS v5.1): §14–§17 add the operator Priority badge & `WAITING`-only priority toggle (`Set Priority` / `Set Normal`), customer read-only Priority badge, and explicit non-monotonic `aheadCount` UI copy note for `WAITING` customers. §1–§13 unchanged. |
 
 This document extends the [Sprint 1 UI specification](../sprint-1/ui-spec.md). All Sprint 1 rules (accessibility, responsiveness, error states, session expiry) still apply. Requirements: [SRS](../../srs.md) FR-14, BR-13, BR-14, AC-24. API: [api-spec.md](./api-spec.md) §3.1. Design: [F-07 feature SDS](../../features/sprint-2-f07-customer-cancellation.md).
 
@@ -261,3 +262,82 @@ Server error messages are never rendered directly to users.
 | Customer counter prompt (`CALLED` / `SERVING`), `null` fallback, My Active Tickets counter badge | AC-43 | COUNTER-015, COUNTER-016, COUNTER-017 |
 | Zero-usable-counter legacy queue-level Call Next fallback (`204` neutral empty message and Sprint 1 customer prompt) | AC-39, AC-42, AC-43 | COUNTER-014, COUNTER-019 |
 | Keyboard-only operation; 360 px / 1280 px zero horizontal overflow | AC-42, AC-43 | COUNTER-018 |
+
+---
+
+# F-10 Priority queue policy (v4.0)
+
+Requirements: [SRS](../../srs.md) v5.1 §1.4, FR-20–FR-22, BR-01 (rev. 5.0), BR-21–BR-23, AC-54, AC-55. API: [api-spec.md](./api-spec.md) v4.0 (§17–§21). Design: [F-10 feature SDS](../../features/sprint-2-f10-priority-queue-policy.md) v1.1.
+
+## 14. Screens affected (F-10)
+
+| Screen | Component | Change |
+|---|---|---|
+| `/operator/queues/:id` | `client/src/pages/OperatorQueueDetailPage.tsx` | Display **Priority** badge (text + icon) on any entry with `priority === 'PRIORITY'`; render **Waiting Queue** in priority-aware FIFO order while keeping non-`WAITING` sections (`Active Service`, `No-show`, `Completed`) in chronological order; render **Set Priority** / **Set Normal** toggle button **only** on `WAITING` entries |
+| `/customer/entries/:id` | `client/src/pages/EntryDetailPage.tsx` | Display read-only **Priority** badge (text + icon) when `entry.priority === 'PRIORITY'`; no priority edit control; display updated priority-aware `aheadCount` plus non-monotonic position helper note while `WAITING` |
+| `/customer` → My Active Tickets | `client/src/components/customer/MyTicketsList.tsx` | Display read-only **Priority** badge (text + icon) next to the status badge on ticket cards where `entry.priority === 'PRIORITY'`; no edit control |
+| `/login`, `/operator`, `/customer` → Available Queues, `CounterPanel` | unchanged | **No change** |
+
+## 15. Priority badge, customer read-only view, and non-monotonic `aheadCount`
+
+### 15.1 Priority badge
+
+| `QueueEntry.priority` | UI badge | Icon | Meaning |
+|---|---|---|---|
+| `PRIORITY` | `Priority` | star / priority-up icon | Entry is prioritized ahead of `NORMAL` waiting entries |
+| `NORMAL` | *(no badge)* | — | Standard FIFO tier; omitting a badge keeps priority entries visually distinct |
+
+Priority is always communicated with both visible text (`"Priority"`) and an icon, never color alone.
+
+### 15.2 Customer read-only view & non-monotonic `aheadCount` behavior
+
+- Customer screens (`/customer` and `/customer/entries/:id`) are strictly **read-only** with respect to priority: no button, checkbox, or form input allows a customer to request or change priority.
+- **Non-monotonic `aheadCount` notice (v4.0):** With F-10, `aheadCount` for a `NORMAL` waiting customer is **no longer strictly monotonically decreasing**—if an operator promotes a later-arriving waiting entry to `PRIORITY`, a `NORMAL` customer's `aheadCount` increases by 1 on the next refresh/poll (for example, from `0` `"You are next"` to `1` `"Currently waiting. 1 person ahead of you."`).
+- To make this behavior clear and prevent users from mistaking an upward position adjustment for a defect, `/customer/entries/:id` displays the subtle informational helper line directly below the waiting message whenever `entry.status === 'WAITING'`:
+  - `"Queue position may adjust when priority customers are accommodated."`
+- Polling, status-change `aria-live="polite"` announcements, and terminal polling stop (`COMPLETED`, `CANCELLED`, final `NO_SHOW`) are unchanged.
+
+## 16. Operator priority controls
+
+### 16.1 Visibility and layout (`/operator/queues/:id`)
+
+- **Waiting Queue section:** displays `WAITING` entries in exact API order (`PRIORITY` first, then `joinedAt ASC, id ASC`).
+- **Non-`WAITING` sections (`Active Service`, `No-show`, `Completed`):** retain their existing chronological `joinedAt ASC, id ASC` order; entries with `priority === 'PRIORITY'` still display their read-only `Priority` badge for operational context.
+- **Priority toggle control (strictly `WAITING`-only):**
+  - Shown **only** on `WAITING` entries; **never** rendered on `CALLED`, `SERVING`, `NO_SHOW`, or `COMPLETED` entries.
+  - When `entry.priority === 'NORMAL'`: button label `"Set Priority"` (`aria-label="Set queue number N as priority"`).
+  - When `entry.priority === 'PRIORITY'`: button label `"Set Normal"` (`aria-label="Set queue number N to normal priority"`).
+
+### 16.2 States
+
+| State | Priority toggle (`PATCH /api/operator/queue-entries/{entryId}/priority`) |
+|---|---|
+| Idle | Native `<button>` labelled `"Set Priority"` (`NORMAL`) or `"Set Normal"` (`PRIORITY`) |
+| Busy | Spinner + `"Updating priority..."`; button disabled with per-entry in-flight ref guard so double-clicks send at most one request |
+| Success | Live region announces `"Queue number N priority set to Priority."` or `"Queue number N priority set to Normal."`; operator entry list refreshes immediately so the entry moves to its updated Waiting Queue position |
+| Error | Alert (`role="alert"`) with message from §16.3; entry list refreshes on `409` or `404` |
+
+### 16.3 Error messages (operator priority action)
+
+| API response | Message | Follow-up |
+|---|---|---|
+| `409 INVALID_STATE_TRANSITION` | `"This entry is no longer waiting, so its priority cannot be changed."` | Refresh entry list |
+| `404 RESOURCE_NOT_FOUND` | `"We couldn't find that queue entry."` | Refresh entry list |
+| `400 INVALID_ARGUMENT` | `"Invalid priority request. Please refresh and try again."` | None |
+| `403 FORBIDDEN` (CSRF / RBAC) | Existing CSRF or `"You do not have permission to perform this action."` | None |
+| `401 UNAUTHORIZED` | Existing global session-expired banner | Global handler |
+| Network or other | `"Something went wrong. Please try again."` | None |
+
+Server error messages are never rendered directly to users.
+
+## 17. Accessibility, responsiveness and acceptance mapping (F-10)
+
+- Every priority toggle is a native `<button>` with descriptive `aria-label` reachable via Tab/Shift+Tab in visual order and activated with Enter or Space.
+- Priority is communicated with text + icon (`"Priority"`), never color alone; updates announce via `aria-live="polite"`; errors render in `role="alert"`.
+- At `360 px` and `1280 px`, `/operator/queues/:id`, `/customer`, and `/customer/entries/:id` render without page-level horizontal overflow; action buttons wrap/stack cleanly below `640 px`.
+
+| UI behavior | AC | Planned tests |
+|---|---|---|
+| Operator Priority badge, priority-ordered Waiting Queue (chronological non-`WAITING` sections), `WAITING`-only toggle, busy/live/error states | AC-54 | PRIO-014, PRIO-016, PRIO-017 |
+| Customer read-only Priority badge (zero edit controls) & non-monotonic `aheadCount` helper note | AC-55 | PRIO-015, PRIO-016 |
+| Keyboard-only toggle operation; 360 px / 1280 px zero horizontal overflow | AC-54, AC-55 | PRIO-018 |
