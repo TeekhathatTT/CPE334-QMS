@@ -60,7 +60,7 @@ test.describe('F-11 operational analytics', () => {
 
     // Keyboard only: Tab forward from the To field until the button has focus (date inputs may
     // expose several segment tab stops depending on the browser), then press Enter.
-    await page.getByLabel('To').focus();
+    await page.getByLabel('To', { exact: true }).focus();
     const button = page.getByRole('button', { name: 'Show report' });
     for (let i = 0; i < 6 && !(await button.evaluate((el) => el === document.activeElement)); i++) {
       await page.keyboard.press('Tab');
