@@ -1,8 +1,9 @@
-import { CounterStatus, Prisma, QueueStatus } from '@prisma/client';
+import { CounterStatus, Prisma, QueuePriority, QueueStatus } from '@prisma/client';
 import { prisma } from '../db';
 import { AppError } from '../errors/AppError';
 import { canCallNextOnCounter, canOperatorUseCounter } from './counterPolicy';
 import { canMarkNoShow, recoveryDecision } from './noShowPolicy';
+import { canUpdateEntryPriority } from './priorityPolicy';
 import {
   MAX_ACTIVE_ENTRIES_PER_CUSTOMER,
   formatQueueEntry,
@@ -70,9 +71,10 @@ export async function listAssignedQueues(operatorId: string): Promise<QueueSumma
 }
 
 /**
- * Lists all queue entries for an assigned queue in deterministic FIFO order:
- * `joinedAt ASC, id ASC` (api-spec §8.2, QUEUE-007).
- * F-07 (BR-14, feature SDS D-7): `CANCELLED` entries are excluded; they stay in the database.
+ * Lists all queue entries for an assigned queue (api-spec §8.2, QUEUE-007; F-10 api-spec §20.3):
+ * - F-07 (BR-14, feature SDS D-7): `CANCELLED` entries are excluded; they stay in the database.
+ * - F-10 (BR-01 rev. 5.0): priority rank applies ONLY to `WAITING` entries (`PRIORITY` before `NORMAL`,
+ *   ties by `joinedAt ASC, id ASC`); non-`WAITING` entries keep chronological `joinedAt ASC, id ASC` order.
  */
 export async function listOperatorQueueEntries(queueId: string): Promise<SerializedQueueEntry[]> {
   const entries = await prisma.queueEntry.findMany({
@@ -84,14 +86,25 @@ export async function listOperatorQueueEntries(queueId: string): Promise<Seriali
     ],
   });
 
-  return entries.map((entry) => formatQueueEntry(entry));
+  const waitingPriority: typeof entries = [];
+  const rest: typeof entries = [];
+  for (const entry of entries) {
+    if (entry.status === QueueStatus.WAITING && entry.priority === QueuePriority.PRIORITY) {
+      waitingPriority.push(entry);
+    } else {
+      rest.push(entry);
+    }
+  }
+
+  return [...waitingPriority, ...rest].map((entry) => formatQueueEntry(entry));
 }
 
 /**
- * Selects the oldest eligible WAITING entry in FIFO order (`joinedAt ASC, id ASC`)
+ * Selects the next eligible WAITING entry in priority-aware FIFO order
+ * (`PRIORITY` before `NORMAL`, ties by `joinedAt ASC, id ASC`)
  * and transitions it to `CALLED` atomically inside a row-locked transaction
  * (`FOR UPDATE SKIP LOCKED`) so concurrent call-next requests never claim the same entry
- * (api-spec §8.3, FLOW-001, FLOW-002, FLOW-003, CONCURRENCY-003).
+ * (api-spec §8.3, §20.1, FLOW-001, FLOW-002, FLOW-003, CONCURRENCY-003, PRIO-003).
  *
  * Returns `null` when no eligible WAITING entry exists (caller responds with 204 No Content).
  */
@@ -103,7 +116,9 @@ export async function callNextEntry(queueId: string): Promise<SerializedQueueEnt
         FROM "QueueEntry"
         WHERE "serviceQueueId" = ${queueId}::uuid
           AND "status" = 'WAITING'::"QueueStatus"
-        ORDER BY "joinedAt" ASC, "id" ASC
+        ORDER BY (CASE WHEN "priority" = 'PRIORITY'::"QueuePriority" THEN 0 ELSE 1 END) ASC,
+                 "joinedAt" ASC,
+                 "id" ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       `;
@@ -552,7 +567,9 @@ export async function callNextAtCounter(
         FROM "QueueEntry"
         WHERE "serviceQueueId" = ${counter.serviceQueueId}::uuid
           AND "status" = 'WAITING'::"QueueStatus"
-        ORDER BY "joinedAt" ASC, "id" ASC
+        ORDER BY (CASE WHEN "priority" = 'PRIORITY'::"QueuePriority" THEN 0 ELSE 1 END) ASC,
+                 "joinedAt" ASC,
+                 "id" ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       `;
@@ -571,6 +588,62 @@ export async function callNextAtCounter(
           calledAt,
           counterId: counter.id,
         },
+        include: INCLUDE_COUNTER_NAME,
+      });
+
+      return formatQueueEntry(updated);
+    },
+    { maxWait: 15000, timeout: 15000 }
+  );
+}
+
+/**
+ * F-10: sets a WAITING queue entry's priority to `NORMAL` or `PRIORITY` inside a row-locked
+ * transaction (FR-21, BR-21, BR-22; Sprint 2 api-spec §19; feature SDS §7).
+ *
+ * Lock order (deadlock-free): locks only the target `QueueEntry` row `FOR UPDATE`, matching
+ * `startServiceEntry`, `completeServiceEntry`, and `markNoShowEntry`.
+ *
+ * - Missing entry: 404 RESOURCE_NOT_FOUND
+ * - Operator not assigned to the entry's queue: 403 FORBIDDEN
+ * - Entry status is not WAITING: 409 INVALID_STATE_TRANSITION
+ * - Setting the same priority again is idempotent (200 OK).
+ * - Allowed even when parent ServiceQueue is CLOSED (AD-05).
+ */
+export async function updateEntryPriority(
+  operatorId: string,
+  entryId: string,
+  priority: QueuePriority
+): Promise<SerializedQueueEntry> {
+  return await prisma.$transaction(
+    async (tx) => {
+      const rows = await tx.$queryRaw<
+        Array<{ id: string; serviceQueueId: string; status: QueueStatus; priority: QueuePriority }>
+      >`
+        SELECT "id", "serviceQueueId", "status", "priority"
+        FROM "QueueEntry"
+        WHERE "id" = ${entryId}::uuid
+        FOR UPDATE
+      `;
+
+      if (!rows || rows.length === 0) {
+        throw new AppError(404, 'RESOURCE_NOT_FOUND', 'Queue entry not found.');
+      }
+
+      const entry = rows[0];
+      await assertAssigned(tx, operatorId, entry.serviceQueueId);
+
+      if (!canUpdateEntryPriority(entry.status)) {
+        throw new AppError(
+          409,
+          'INVALID_STATE_TRANSITION',
+          'Only a WAITING queue entry may have its priority updated.'
+        );
+      }
+
+      const updated = await tx.queueEntry.update({
+        where: { id: entryId },
+        data: { priority },
         include: INCLUDE_COUNTER_NAME,
       });
 

@@ -4,7 +4,7 @@
  * session-expired handler.
  */
 import { ApiError, apiRequest } from './client';
-import type { QueueEntry, QueueSummary } from './queues';
+import type { QueueEntry, QueuePriority, QueueSummary } from './queues';
 
 function required<T>(value: T | undefined): T {
   if (value === undefined || value === null) {
@@ -114,6 +114,15 @@ export async function callNextAtCounter(counterId: string): Promise<QueueEntry> 
   const data = await apiRequest<{ entry: QueueEntry }>(
     `/api/operator/counters/${encodeURIComponent(counterId)}/call-next`,
     { method: 'POST' }
+  );
+  return required(data?.entry);
+}
+
+/** F-10: `PATCH /api/operator/queue-entries/{entryId}/priority` (Sprint 2 api-spec §19). */
+export async function updateEntryPriority(entryId: string, priority: QueuePriority): Promise<QueueEntry> {
+  const data = await apiRequest<{ entry: QueueEntry }>(
+    `/api/operator/queue-entries/${encodeURIComponent(entryId)}/priority`,
+    { method: 'PATCH', body: { priority } }
   );
   return required(data?.entry);
 }

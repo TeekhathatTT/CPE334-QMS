@@ -6,6 +6,7 @@ import { ApiError, apiRequest } from './client';
 
 export type QueueAvailability = 'OPEN' | 'CLOSED';
 export type QueueEntryStatus = 'WAITING' | 'CALLED' | 'SERVING' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+export type QueuePriority = 'NORMAL' | 'PRIORITY';
 
 /** api-spec §3.2 */
 export interface QueueSummary {
@@ -37,6 +38,8 @@ export interface QueueEntry {
   /** F-09 (Sprint 2 api-spec §12.2): assigned counter id/name, or null. Optional so older fixtures stay valid. */
   counterId?: string | null;
   counterName?: string | null;
+  /** F-10 (Sprint 2 api-spec §17.2): queue priority tier. Optional so older fixtures stay valid. */
+  priority?: QueuePriority;
   aheadCount?: number;
 }
 

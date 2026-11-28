@@ -6,8 +6,8 @@
 | Sprint | 2 (Deliverable 2, Part B) |
 | Issue | #43 |
 | Depends on | F-03 (queues & number allocation), F-05 (operator lifecycle); interacts with F-04 (customer join & reads), F-07 (cancellation), F-08 (no-show recovery), and F-09 (multi-counter support) |
-| Contract version | v1.1 (2026-11-28) |
-| Status | Contract v1.1 — Pending Final Re-review (`@TeekhathatTT`) |
+| Contract version | v1.2 (2026-11-28; Contract v1.1 merged at `4b93e72`, PR #67) |
+| Status | Implemented and verified locally on `feature/sprint2/43-priority-queue-policy-impl` (RED `c99236b`, GREEN `a286f9b`; pending PR review by `@TeekhathatTT` and release) |
 | Author / reviewer | `@Khwanklao` / `@TeekhathatTT` |
 | Governing documents | [SRS](../srs.md) v5.1 (§1.4, FR-20–FR-22, BR-01 rev. 5.0, BR-21–BR-23, §10.3 AC-46–AC-55), [System SDS](../system-sds.md) §15.1, [Sprint 2 API spec](../sprints/sprint-2/api-spec.md) v4.0 (§17–§21), [Sprint 2 UI spec](../sprints/sprint-2/ui-spec.md) v4.0 (§14–§17), [Sprint 2 test spec](../sprints/sprint-2/tests.md) v4.0 (§9, canonical STS) |
 
@@ -139,7 +139,7 @@ stateDiagram-v2
 | New enum | `enum QueuePriority { NORMAL PRIORITY }` (PostgreSQL `CREATE TYPE "QueuePriority" AS ENUM ('NORMAL', 'PRIORITY')`) |
 | New column on `QueueEntry` | `priority QueuePriority @default(NORMAL)` (`ALTER TABLE "QueueEntry" ADD COLUMN "priority" "QueuePriority" NOT NULL DEFAULT 'NORMAL'`) |
 | New PostgreSQL index | Partial expression index in migration SQL (supports exact `ORDER BY` index scan for Call Next and `aheadCount`, independent of enum declaration order):<br>`CREATE INDEX "QueueEntry_waiting_priority_fifo_idx" ON "QueueEntry" ("serviceQueueId", (CASE WHEN "priority" = 'PRIORITY'::"QueuePriority" THEN 0 ELSE 1 END) ASC, "joinedAt" ASC, "id" ASC) WHERE "status" = 'WAITING'::"QueueStatus";` |
-| Migration | Planned additive migration `server/prisma/migrations/<timestamp>_f10_priority_queue_policy/migration.sql` |
+| Migration | Additive migration `server/prisma/migrations/20261128163000_f10_priority_queue_policy/migration.sql` (applied to `qms_db` and `qms_test_db` at `a286f9b`) |
 | Existing indexes & constraints | `QueueEntry_active_customer_queue_uidx`, `QueueEntry_serviceQueueId_queueNumber_key`, `QueueEntry_fifo_idx`, `QueueEntry_customer_joinedAt_idx`, `QueueEntry_counterId_idx`, `QueueEntry_noShowCount_range_check`, `QueueEntry_counterId_serviceQueueId_fkey` (`ON DELETE RESTRICT ON UPDATE RESTRICT`), and all `Counter` constraints are **unchanged** |
 | Seed (`server/prisma/seed.ts`) & `provision-counters.ts` | **No change** (seed creates users, queues, operator assignments, and counters; no queue entries are pre-seeded, and any created entry defaults to `NORMAL`) |
 | Row invariants (asserted by tests) | (1) `priority IN ('NORMAL', 'PRIORITY')` and never `NULL`; (2) `PATCH .../priority` never mutates `joinedAt`, `queueNumber`, `status`, `counterId`, or any lifecycle timestamp; (3) all Sprint 1, Lab 7 BR-06, F-07, F-08, and F-09 row invariants continue to hold |
@@ -351,7 +351,7 @@ Full normative acceptance criteria are defined in [SRS §10.3](../srs.md#103-acc
 
 ## 9. System Test Specification (STS)
 
-The **authoritative / canonical System Test Specification** for F-10 (`PRIO-001` – `PRIO-018`, `REG-S2-004`, `PERF-S2-004`, AC coverage matrix, and SQL row invariants) lives in **[Sprint 2 Test Specification §9](../sprints/sprint-2/tests.md#9-f-10-priority-queue-policy)** (following the same single-source-of-truth convention used by F-07, F-08, and F-09; all tests remain `planned` until implementation begins).
+The **authoritative / canonical System Test Specification** for F-10 (`PRIO-001` – `PRIO-018`, `REG-S2-004`, `PERF-S2-004`, AC coverage matrix, SQL row invariants, and §9.5 execution results) lives in **[Sprint 2 Test Specification §9](../sprints/sprint-2/tests.md#9-f-10-priority-queue-policy)** (following the same single-source-of-truth convention used by F-07, F-08, and F-09; executed and passing at GREEN commit `a286f9b` with RED baseline `c99236b`).
 
 Quick test-group index (see `tests.md §9` for exact setups, inputs, and expected outcomes):
 - **Unit (`server/tests/f10-priority-rule.test.ts`):** `PRIO-001` (priority validation, mutability, rank & tie-breaking helpers).
@@ -364,17 +364,17 @@ Quick test-group index (see `tests.md §9` for exact setups, inputs, and expecte
 
 ## 10. Definition of Done & evidence checklist (Issue #43)
 
-- [ ] Contract v1.1 (`docs/srs.md` v5.1, `docs/features/sprint-2-f10-priority-queue-policy.md` v1.1, and synced Sprint 2 specs) reviewed and approved by `@TeekhathatTT`
+- [x] Contract v1.1 (`docs/srs.md` v5.1, `docs/features/sprint-2-f10-priority-queue-policy.md` v1.1, and synced Sprint 2 specs) reviewed and approved by `@TeekhathatTT` (PR #67, merged to `sprint2-staging` at `4b93e72`)
 - [x] Sprint 2 supporting specs (`docs/sprints/sprint-2/api-spec.md` v4.0, `ui-spec.md` v4.0, `tests.md` v4.0, `docs/features.md`, `docs/system-sds.md`, `docs/traceability.md`) synced with Contract v1.1
-- [ ] Red tests (`PRIO-001` – `PRIO-018`) committed first; existing regression tests stay green while F-10 tests fail red
-- [ ] Prisma schema & additive SQL migration (`QueuePriority`, `QueueEntry.priority`, `QueueEntry_waiting_priority_fifo_idx`) applied to `qms_db` and `qms_test_db` and verified (`PRIO-013`)
-- [ ] Backend priority policy, `PATCH /api/operator/queue-entries/:entryId/priority`, anti-self-elevation guard on join (before DB lookups), priority-aware Call Next (F-09 + legacy F-05), `aheadCount`, and `WAITING`-only priority ordering in `listOperatorQueueEntries` implemented
-- [ ] Frontend operator Priority badge + `WAITING`-only toggle and customer read-only Priority badge + non-monotonic `aheadCount` note implemented
-- [ ] All `PRIO-001` – `PRIO-018` tests executed and passing locally (Unit, API+DB, Concurrency, Cross-feature F-07/F-08/F-09, Client, E2E Chromium)
-- [ ] Full regression (`REG-S2-004`: Sprint 1, Lab 7 BR-06, F-07, F-08, F-09) passing locally
-- [ ] NFR-04 measured for F-10 (`PERF-S2-004`, evidence saved to `docs/sprints/sprint-2/evidence/perf-s2-004.txt`) and F-10 E2E screenshots saved under `docs/sprints/sprint-2/evidence/f10-*.png`
-- [ ] Server typecheck, server build, client build (`tsc && vite build`), and `docker build` pass
-- [ ] `docs/sprints/sprint-2/completion.md`, `tests.md`, and `traceability.md` updated with actual verified results
+- [x] Red tests (`PRIO-001` – `PRIO-018`) committed first (`c99236b`); existing client tests stayed green (127/127) while F-10 tests failed red ([f10-red-run.txt](../sprints/sprint-2/evidence/f10-red-run.txt))
+- [x] Prisma schema & additive SQL migration (`20261128163000_f10_priority_queue_policy`: `QueuePriority`, `QueueEntry.priority`, `QueueEntry_waiting_priority_fifo_idx`) applied to `qms_db` and `qms_test_db` and verified (`PRIO-013`, `a286f9b`)
+- [x] Backend priority policy, `PATCH /api/operator/queue-entries/:entryId/priority`, anti-self-elevation guard on join (before DB lookups), priority-aware Call Next (F-09 + legacy F-05), `aheadCount`, and `WAITING`-only priority ordering in `listOperatorQueueEntries` implemented (`a286f9b`)
+- [x] Frontend operator Priority badge + `WAITING`-only toggle and customer read-only Priority badge + non-monotonic `aheadCount` note implemented (`a286f9b`)
+- [x] All `PRIO-001` – `PRIO-018` tests executed and passing locally (Unit, API+DB, Concurrency, Cross-feature F-07/F-08/F-09, Client, E2E Chromium at `a286f9b`; [f10-green-run.txt](../sprints/sprint-2/evidence/f10-green-run.txt))
+- [x] Full regression (`REG-S2-004`: Sprint 1, Lab 7 BR-06, F-07, F-08, F-09) passing locally (Server 20/20 / 280 tests, Client 9/9 / 138 tests, E2E 25/25 Chromium at `a286f9b`; 1-line button-query scope note in `tests.md §9.5`)
+- [x] NFR-04 measured for F-10 (`PERF-S2-004`, evidence saved to `docs/sprints/sprint-2/evidence/perf-s2-004.txt`) and F-10 E2E screenshots saved under `docs/sprints/sprint-2/evidence/f10-*.png` (captioned in [f10-evidence-notes.md](../sprints/sprint-2/evidence/f10-evidence-notes.md))
+- [ ] Server typecheck, server build, client build (`tsc && vite build`), and `docker build` pass *(server typecheck, server build, and client `tsc && vite build` passed at `a286f9b`; `docker build` not run locally on this branch)*
+- [x] `docs/sprints/sprint-2/completion.md`, `tests.md`, and `traceability.md` updated with actual verified results
 - [ ] PR into `sprint2-staging` reviewed by `@TeekhathatTT`, CI green
 - [ ] Release DoD (at release): Cloud SQL migration applied before deploy and production verification recorded
 
@@ -399,3 +399,4 @@ Quick test-group index (see `tests.md §9` for exact setups, inputs, and expecte
 |---|---|---|---|---|---|
 | v1.0 | 2026-11-28 | `@Khwanklao` | All | — | Initial Contract v1.0 authored for Issue #43 (`F-10 Priority queue policy`), aligned with SRS v5.0, F-07, F-08 (v1.1 + BR-06), and F-09 (v1.3). Pending review by `@TeekhathatTT`. Future revisions will append rows here without rewriting prior history. |
 | v1.1 | 2026-11-28 | `@Khwanklao` | Header, §4 (`D-4`, `D-6`, `D-9`), §5.2–§5.3, §6.1, §7.1, §7.4, §8, §9, §10, §11 | v1.0 had inline STS duplicating `tests.md`, omitted `SKIP LOCKED` race outcome (c) from AC-51(b)/PRIO-011, did not state join body validation runs before DB `404`/`409` lookups, applied priority sort to all statuses in `GET .../entries`, lacked explicit starvation risk and non-monotonic `aheadCount` UI notes, and had R-1–R-6 open. | Contract v1.1 addressing `@TeekhathatTT`'s PR review: aligns AC-51(b)/§7.3/PRIO-011 on `SKIP LOCKED` race outcome (c); mandates request-body validation before DB lookups on customer join; scopes `listOperatorQueueEntries` priority sort strictly to `WAITING` entries; adds §7.4 Known Limitations (starvation risk, `SKIP LOCKED` skip, non-monotonic `aheadCount`); adds customer UI non-monotonic position note; syncs Sprint 2 `tests.md` (designated canonical STS), `api-spec.md`, `ui-spec.md`, `traceability.md`, `features.md`, and `system-sds.md`; records R-1–R-6 as resolved. |
+| v1.2 | 2026-11-28 | `@Khwanklao` | Header, §5.1, §9, §10 | Status was `Contract v1.1 — Pending Final Re-review`, migration path was `<timestamp>` placeholder, and implementation/verification DoD items were unchecked. | Post-GREEN documentation update recording Contract v1.1 approval & merge (`4b93e72`, PR #67), TDD RED (`c99236b`), TDD GREEN (`a286f9b`), concrete migration `20261128163000_f10_priority_queue_policy`, full local test/perf/E2E verification results, and Deliverable 2 evidence artifacts (`f10-red-run.txt`, `f10-green-run.txt`, `perf-s2-004.txt`, `f10-evidence-notes.md`, `f10-*.png`). PR merge, `docker build`, and release/deploy items remain unchecked until executed. |

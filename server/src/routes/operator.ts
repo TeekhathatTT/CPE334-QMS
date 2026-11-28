@@ -1,5 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
-import { CounterStatus, Role } from '@prisma/client';
+import { CounterStatus, QueuePriority, Role } from '@prisma/client';
 import { z } from 'zod';
 import { AppError } from '../errors/AppError';
 import { requireAuth, requireRole } from '../middleware/auth';
@@ -17,6 +17,7 @@ import {
   listQueueCounters,
   updateCounterStatus,
   callNextAtCounter,
+  updateEntryPriority,
 } from '../services/operatorService';
 
 export const operatorRouter = express.Router();
@@ -28,6 +29,12 @@ operatorRouter.param('counterId', validateUuidParam('counterId'));
 const updateCounterStatusBodySchema = z
   .object({
     status: z.enum([CounterStatus.OPEN, CounterStatus.CLOSED]),
+  })
+  .strict();
+
+const updateEntryPriorityBodySchema = z
+  .object({
+    priority: z.enum([QueuePriority.NORMAL, QueuePriority.PRIORITY]),
   })
   .strict();
 
@@ -253,6 +260,30 @@ operatorRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const entry = await callNextAtCounter(req.params.counterId, req.user!.id);
+      res.status(200).json({ data: { entry } });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * PATCH /api/operator/queue-entries/:entryId/priority
+ * F-10: updates a WAITING entry's priority between NORMAL and PRIORITY (Sprint 2 api-spec §19).
+ * Allowed role: assigned OPERATOR only. Requires CSRF protection.
+ */
+operatorRouter.patch(
+  '/queue-entries/:entryId/priority',
+  requireAuth,
+  requireCsrf,
+  requireRole(Role.OPERATOR),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const parsed = updateEntryPriorityBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return next(new AppError(400, 'INVALID_ARGUMENT', 'Priority must be NORMAL or PRIORITY.'));
+      }
+      const entry = await updateEntryPriority(req.user!.id, req.params.entryId, parsed.data.priority);
       res.status(200).json({ data: { entry } });
     } catch (error) {
       next(error);

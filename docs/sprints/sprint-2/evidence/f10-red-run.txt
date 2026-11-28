@@ -1,0 +1,48 @@
+# F-10 red run at TDD red commit c99236b (branched from sprint2-staging 4b93e72, Contract v1.1 / PR #67)
+# Date: 2026-11-28; local PostgreSQL 16.15 (Docker qms-postgres, qms_test_db), Node v24.14.0
+# Note: E2E (e2e/tests/f10-priority-queue.spec.ts) was committed in c99236b and executed at GREEN commit a286f9b.
+
+$ npm run test --workspace=server -- tests/f10-priority-rule.test.ts tests/f10-priority-queue.test.ts
+ ❯ tests/f10-priority-queue.test.ts (12 tests | 12 failed) 12430ms
+   × F-10: priority queue policy > PRIO-002 (AC-46): join defaults to NORMAL and every QueueEntry payload includes additive priority 1529ms
+     → expected undefined to be 'NORMAL' // Object.is equality
+   × F-10: priority queue policy > PRIO-003 (AC-47): counter and legacy Call Next serve PRIORITY before NORMAL with FIFO tie-breaking and preserve pure FIFO for all-NORMAL 1344ms
+     → expected 404 to be 200 // Object.is equality
+   × F-10: priority queue policy > PRIO-004 (AC-47): GET operator entries applies priority rank ONLY to WAITING entries and aheadCount reflects priority order 2508ms
+     → expected 404 to be 200 // Object.is equality
+   × F-10: priority queue policy > PRIO-005 (AC-48): assigned operator updates WAITING entry priority idempotently, preserves joinedAt/queueNumber, and works on CLOSED queue 862ms
+     → expected 404 to be 200 // Object.is equality
+   × F-10: priority queue policy > PRIO-006 (AC-49): rejects priority update on non-WAITING entries (CALLED, SERVING, COMPLETED, CANCELLED, NO_SHOW) with 409 INVALID_STATE_TRANSITION 499ms
+     → expected 404 to be 409 // Object.is equality
+   × F-10: priority queue policy > PRIO-007 (AC-49, AC-50): rejects malformed bodies/UUID with 400 INVALID_ARGUMENT and unknown UUID with 404 RESOURCE_NOT_FOUND 464ms
+     → body=undefined: expected 404 to be 400 // Object.is equality
+   × F-10: priority queue policy > PRIO-008 (AC-50): enforces auth, CSRF, OPERATOR role, and queue assignment on PATCH .../priority 532ms
+     → expected 404 to be 401 // Object.is equality
+   × F-10: priority queue policy > PRIO-009 (AC-46, AC-50): customer join rejects self-elevation (403) and malformed priority (400) BEFORE DB lookups, and allows literal NORMAL 698ms
+     → self-elevation on aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa: expected 201 to be 403 // Object.is equality
+   × F-10: priority queue policy > PRIO-010 (AC-51): parallel multi-counter Call Next across C1 and C2 claims distinct PRIORITY entries ahead of NORMAL (15 rounds) 1276ms
+     → expected 404 to be 200 // Object.is equality
+   × F-10: priority queue policy > PRIO-011 (AC-51): parallel PATCH /priority vs Call Next (all 3 SKIP LOCKED outcomes) and vs F-07 cancel (15 rounds each) 489ms
+     → Raw query failed. Code: `42703`. Message: `column "priority" does not exist`
+   × F-10: priority queue policy > PRIO-012 (AC-52): F-08 recovery preserves PRIORITY and NORMAL; F-07 cancel retains PRIORITY in history and skips Call Next 1158ms
+     → expected 404 to be 200 // Object.is equality
+   × F-10: priority queue policy > PRIO-013 (AC-53): PostgreSQL enforces QueuePriority enum, default NORMAL, partial expression index, and keeps existing constraints 864ms
+     → expected [] to deeply equal [ 'NORMAL', 'PRIORITY' ]
+ ❯ tests/f10-priority-rule.test.ts (0 test)
+ FAIL  tests/f10-priority-rule.test.ts [ tests/f10-priority-rule.test.ts ]
+ Error: Failed to load url ../src/services/priorityPolicy (resolved id: ../src/services/priorityPolicy) in server/tests/f10-priority-rule.test.ts. Does the file exist?
+ Test Files  2 failed (2)
+      Tests  12 failed (12)
+
+$ npm run test --workspace=client -- --no-file-parallelism
+ ✓ src/test/f09-multiCounter.test.tsx (20 tests) 4451ms
+ ✓ src/test/customer.test.tsx (27 tests) 8738ms
+ ✓ src/test/operator.test.tsx (13 tests) 5720ms
+ ✓ src/test/f08-noShow.test.tsx (15 tests) 2804ms
+ ❯ src/test/f10-priorityQueue.test.tsx (11 tests | 11 failed) 9382ms
+ ✓ src/test/entryDetail.test.tsx (17 tests) 2685ms
+ ✓ src/test/f07-leaveQueue.test.tsx (14 tests) 3314ms
+ ✓ src/test/auth.test.tsx (15 tests) 5067ms
+ ✓ src/test/integration-guards.test.tsx (6 tests) 897ms
+ Test Files  1 failed | 8 passed (9)
+      Tests  11 failed | 127 passed (138)

@@ -1,0 +1,17 @@
+PERF-S2-004 / NFR-04 run (F-10): 2026-11-28T09:47:11.030Z
+Command: npm run test:perf:f10 --workspace=server   (tsx tests/nfr/perf-s2-004-priority.ts)
+Host: Windows_NT 10.0.26300, Intel(R) Core(TM) Ultra 7 155H x22, 16 GiB RAM, Node v24.14.0
+Database: PostgreSQL 16.15 on x86_64-pc-linux-musl, test database "qms_test_db" on localhost:5432
+Method: same as PERF-001. Real Express app on a local ephemeral port, sequential HTTP requests (Node fetch,
+        real cookies + CSRF), 5 untimed warm-ups (6 for Step 1 even toggle count) then 100 timed requests per operation.
+Dataset: 1000 WAITING entries in the OPEN queue (800 earlier NORMAL + 200 later PRIORITY, 2 OPEN counters).
+         Step 1 ran 106 alternating toggles ending NORMAL; Step 2 claimed 105 distinct PRIORITY entries ahead of NORMAL.
+Targets: read p95 <= 500 ms, mutation p95 <= 1000 ms.
+
+Operation                                                kind         n   p50 ms   p95 ms   max ms target  result
+PATCH /api/operator/queue-entries/:id/priority           mutation   100     19.3     35.2     48.9   1000  PASS
+POST /api/operator/counters/:id/call-next (priority)     mutation   100     31.1     60.4     98.0   1000  PASS
+GET /api/operator/queues/:id/entries (priority sort)     read       100     78.3    136.2    207.4    500  PASS
+GET /api/me/queue-entries/:id (priority aheadCount)      read       100     18.6     25.7     33.9    500  PASS
+
+Overall: PASSED

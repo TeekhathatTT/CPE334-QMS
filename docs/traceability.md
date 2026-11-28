@@ -88,7 +88,7 @@ F-06 is the cross-cutting verification responsibility for this entire baseline; 
 | F-07 | Customer cancellation and queue withdrawal | 2 (specified, contract v1) |
 | F-08 | No-show handling and recovery | 2 (specified, contract v1) |
 | F-09 | Multi-counter support | 2 (implemented and verified locally; pending review) |
-| F-10 | Priority queue policy | 2 (specified, contract v1.1, pending final re-review) |
+| F-10 | Priority queue policy | 2 (implemented and verified locally at `a286f9b`; pending PR review and release) |
 | F-11 | Operational analytics | 3 |
 | F-12 | Advance appointment booking | 3 |
 | F-13 | Product hardening and launch readiness | 3 |
@@ -125,7 +125,7 @@ These features are intentionally deferred from Sprint 1. Their future-specific r
 | F-09 multi-counter support (SRS v4.2, contract v1.2) | 2026-11-27 | aligns AC-37 / COUNTER-004 unknown `queueId` to `404 RESOURCE_NOT_FOUND` (matching existing `requireQueueAssignment` middleware) | superseded by v4.3 (implementation PR review fixes) |
 | F-09 multi-counter support (SRS v4.3, contract v1.3) | 2026-11-27 | adds `ON UPDATE RESTRICT` to BR-20/AC-41(c), strict counter loading/error/poll-error fallback gate + `403`/`409` refetch to AC-42, `(serviceQueueId, name)` seed upsert + honest E2E regression wording + `COUNTER-019` legacy fallback E2E to AC-44 | implemented locally, PR re-review pending (@TeekhathatTT) |
 | F-10 priority queue policy (SRS v5.0, contract v1.0) | 2026-11-28 | extends BR-01 (priority-aware FIFO), adds FR-20–FR-22, BR-21–BR-23, AC-46–AC-55, updates BR-16 & BR-19 notes | superseded by v5.1 (review fixes) |
-| F-10 priority queue policy (SRS v5.1, contract v1.1) | 2026-11-28 | aligns AC-51(b)/PRIO-011 on `SKIP LOCKED` race outcome (c), mandates body-before-DB join validation (BR-21/AC-50), scopes operator list priority sort to `WAITING`-only (BR-23/AC-47), documents starvation risk & non-monotonic `aheadCount` UI note, syncs all Sprint 2 docs with canonical STS in `tests.md` §9 | proposed, pending final re-review (@TeekhathatTT) |
+| F-10 priority queue policy (SRS v5.1, contract v1.1) | 2026-11-28 | aligns AC-51(b)/PRIO-011 on `SKIP LOCKED` race outcome (c), mandates body-before-DB join validation (BR-21/AC-50), scopes operator list priority sort to `WAITING`-only (BR-23/AC-47), documents starvation risk & non-monotonic `aheadCount` UI note, syncs all Sprint 2 docs with canonical STS in `tests.md` §9 | approved and merged to `sprint2-staging` (PR #67, `4b93e72`, `@TeekhathatTT`); implemented and verified locally (RED `c99236b`, GREEN `a286f9b`; PR review & release pending) |
 
 ## Sprint 2 — F-07 Customer Cancellation Traceability
 
@@ -244,39 +244,39 @@ Contract v1.3 (2026-11-27, issue #42, SRS v4.3, author @Khwanklao). *Rev. 2026-1
 
 ## Sprint 2 — F-10 Priority Queue Policy Traceability
 
-Contract v1.1 (2026-11-28, issue #43, SRS v5.1, author `@Khwanklao`, pending final re-review by `@TeekhathatTT`). Every result below is `planned` until implementation and verification run. Authoritative test specification: [sprints/sprint-2/tests.md §9](./sprints/sprint-2/tests.md#9-f-10-priority-queue-policy). Design: [features/sprint-2-f10-priority-queue-policy.md](./features/sprint-2-f10-priority-queue-policy.md).
+Contract v1.1 (2026-11-28, issue #43, SRS v5.1, author `@Khwanklao`, approved and merged in PR #67 at `4b93e72` by `@TeekhathatTT`). *Rev. 2026-11-28 (results):* every test below was executed locally on `feature/sprint2/43-priority-queue-policy-impl` at GREEN commit `a286f9b` (TDD RED baseline `c99236b`; see [sprints/sprint-2/tests.md §9.5](./sprints/sprint-2/tests.md#95-execution-results-f-10), [evidence/perf-s2-004.txt](./sprints/sprint-2/evidence/perf-s2-004.txt), and [evidence/f10-evidence-notes.md](./sprints/sprint-2/evidence/f10-evidence-notes.md)). Release status: pending PR review into `sprint2-staging`, merge to `main`, and Cloud Run deployment. Authoritative test specification: [sprints/sprint-2/tests.md §9](./sprints/sprint-2/tests.md#9-f-10-priority-queue-policy). Design: [features/sprint-2-f10-priority-queue-policy.md](./features/sprint-2-f10-priority-queue-policy.md).
 
 ### Requirements to tests
 
-| Requirement | Feature | Sprint | AC | Test ID(s) | Planned test file | Result | Contract version |
+| Requirement | Feature | Sprint | AC | Test ID(s) | Test file | Result (commit) | Contract version |
 |---|---|---|---|---|---|---|---|
-| FR-20 | F-10 | 2 | AC-46, AC-48, AC-49, AC-50 | PRIO-001, PRIO-002, PRIO-005–PRIO-009, PRIO-014, PRIO-016, PRIO-017 | `server/tests/f10-priority-rule.test.ts`, `server/tests/f10-priority-queue.test.ts`, `client/src/test/f10-priorityQueue.test.tsx`, `e2e/tests/f10-priority-queue.spec.ts` | planned | v1.1 |
-| FR-21 | F-10 | 2 | AC-47, AC-51, AC-52, AC-53 | PRIO-001, PRIO-003, PRIO-004, PRIO-010–PRIO-013, PRIO-016, PRIO-017, PERF-S2-004 | `server/tests/f10-priority-rule.test.ts`, `server/tests/f10-priority-queue.test.ts`, `e2e/tests/f10-priority-queue.spec.ts`, `server/tests/nfr/perf-s2-004-priority.ts` | planned | v1.1 |
-| FR-22 | F-10 | 2 | AC-46, AC-54, AC-55 | PRIO-002, PRIO-014–PRIO-018 | `server/tests/f10-priority-queue.test.ts`, `client/src/test/f10-priorityQueue.test.tsx`, `e2e/tests/f10-priority-queue.spec.ts` | planned | v1.1 |
-| BR-01 (rev. 5.0) | F-05, F-10 | 2 | AC-47 | PRIO-001, PRIO-003, PRIO-004, PRIO-016 | `server/tests/f10-priority-rule.test.ts`, `server/tests/f10-priority-queue.test.ts`, `e2e/tests/f10-priority-queue.spec.ts` | planned | v1.1 |
-| BR-21 (rev. 5.1) | F-04, F-10 | 2 | AC-46, AC-50 | PRIO-002, PRIO-008, PRIO-009 | `server/tests/f10-priority-queue.test.ts` | planned | v1.1 |
-| BR-22 (rev. 5.1) | F-10 | 2 | AC-48, AC-49, AC-50 | PRIO-001, PRIO-005–PRIO-008 | `server/tests/f10-priority-rule.test.ts`, `server/tests/f10-priority-queue.test.ts` | planned | v1.1 |
-| BR-23 (rev. 5.1) | F-07, F-08, F-09, F-10 | 2 | AC-46, AC-47, AC-51, AC-52, AC-53 | PRIO-002–PRIO-004, PRIO-010–PRIO-013 | `server/tests/f10-priority-queue.test.ts` | planned | v1.1 |
-| BR-16 (rev. 5.0 note, F-08 cross-feature) | F-08, F-10 | 2 | AC-52 | PRIO-012, PRIO-017 | `server/tests/f10-priority-queue.test.ts`, `e2e/tests/f10-priority-queue.spec.ts` | planned | v1.1 |
-| BR-19 (rev. 5.0 note, F-09 cross-feature) | F-09, F-10 | 2 | AC-47, AC-51 | PRIO-003, PRIO-010, PRIO-011 | `server/tests/f10-priority-queue.test.ts` | planned | v1.1 |
-| BR-14 (F-07 cross-feature) | F-07, F-10 | 2 | AC-52 | PRIO-011, PRIO-012 | `server/tests/f10-priority-queue.test.ts` | planned | v1.1 |
-| FR-03, BR-07, NFR-02, NFR-08 | F-02, F-10 | 2 | AC-50, AC-54, AC-55 | PRIO-008, PRIO-009, PRIO-014, PRIO-015 | `server/tests/f10-priority-queue.test.ts`, `client/src/test/f10-priorityQueue.test.tsx` | planned | v1.1 |
-| BR-12, NFR-03, NFR-05 | F-10 | 2 | AC-48, AC-51, AC-53 | PRIO-005, PRIO-010, PRIO-011, PRIO-013 | `server/tests/f10-priority-queue.test.ts` | planned | v1.1 |
-| NFR-06 | F-10 | 2 | AC-54, AC-55 | PRIO-014, PRIO-015, PRIO-018 | `client/src/test/f10-priorityQueue.test.tsx`, `e2e/tests/f10-priority-queue.spec.ts` | planned | v1.1 |
-| NFR-04 | F-10 | 2 | AC-53 (operations of AC-47, AC-48) | PERF-S2-004 | `server/tests/nfr/perf-s2-004-priority.ts` | planned | v1.1 |
-| FR-01–FR-19 (regression) | F-06 | 2 | AC-01–AC-45, AC-55 | REG-S2-004 | existing Sprint 1, Lab 7 BR-06, F-07, F-08, and F-09 suites | planned | v1.1 |
+| FR-20 | F-10 | 2 | AC-46, AC-48, AC-49, AC-50 | PRIO-001, PRIO-002, PRIO-005–PRIO-009, PRIO-014, PRIO-016, PRIO-017 | `server/tests/f10-priority-rule.test.ts`, `server/tests/f10-priority-queue.test.ts`, `client/src/test/f10-priorityQueue.test.tsx`, `e2e/tests/f10-priority-queue.spec.ts` | passed (`a286f9b`) | v1.1 |
+| FR-21 | F-10 | 2 | AC-47, AC-51, AC-52, AC-53 | PRIO-001, PRIO-003, PRIO-004, PRIO-010–PRIO-013, PRIO-016, PRIO-017, PERF-S2-004 | `server/tests/f10-priority-rule.test.ts`, `server/tests/f10-priority-queue.test.ts`, `e2e/tests/f10-priority-queue.spec.ts`, `server/tests/nfr/perf-s2-004-priority.ts` | passed (`a286f9b`) | v1.1 |
+| FR-22 | F-10 | 2 | AC-46, AC-54, AC-55 | PRIO-002, PRIO-014–PRIO-018 | `server/tests/f10-priority-queue.test.ts`, `client/src/test/f10-priorityQueue.test.tsx`, `e2e/tests/f10-priority-queue.spec.ts` | passed (`a286f9b`) | v1.1 |
+| BR-01 (rev. 5.0) | F-05, F-10 | 2 | AC-47 | PRIO-001, PRIO-003, PRIO-004, PRIO-016 | `server/tests/f10-priority-rule.test.ts`, `server/tests/f10-priority-queue.test.ts`, `e2e/tests/f10-priority-queue.spec.ts` | passed (`a286f9b`) | v1.1 |
+| BR-21 (rev. 5.1) | F-04, F-10 | 2 | AC-46, AC-50 | PRIO-002, PRIO-008, PRIO-009 | `server/tests/f10-priority-queue.test.ts` | passed (`a286f9b`) | v1.1 |
+| BR-22 (rev. 5.1) | F-10 | 2 | AC-48, AC-49, AC-50 | PRIO-001, PRIO-005–PRIO-008 | `server/tests/f10-priority-rule.test.ts`, `server/tests/f10-priority-queue.test.ts` | passed (`a286f9b`) | v1.1 |
+| BR-23 (rev. 5.1) | F-07, F-08, F-09, F-10 | 2 | AC-46, AC-47, AC-51, AC-52, AC-53 | PRIO-002–PRIO-004, PRIO-010–PRIO-013 | `server/tests/f10-priority-queue.test.ts` | passed (`a286f9b`) | v1.1 |
+| BR-16 (rev. 5.0 note, F-08 cross-feature) | F-08, F-10 | 2 | AC-52 | PRIO-012, PRIO-017 | `server/tests/f10-priority-queue.test.ts`, `e2e/tests/f10-priority-queue.spec.ts` | passed (`a286f9b`) | v1.1 |
+| BR-19 (rev. 5.0 note, F-09 cross-feature) | F-09, F-10 | 2 | AC-47, AC-51 | PRIO-003, PRIO-010, PRIO-011 | `server/tests/f10-priority-queue.test.ts` | passed (`a286f9b`) | v1.1 |
+| BR-14 (F-07 cross-feature) | F-07, F-10 | 2 | AC-52 | PRIO-011, PRIO-012 | `server/tests/f10-priority-queue.test.ts` | passed (`a286f9b`) | v1.1 |
+| FR-03, BR-07, NFR-02, NFR-08 | F-02, F-10 | 2 | AC-50, AC-54, AC-55 | PRIO-008, PRIO-009, PRIO-014, PRIO-015 | `server/tests/f10-priority-queue.test.ts`, `client/src/test/f10-priorityQueue.test.tsx` | passed (`a286f9b`) | v1.1 |
+| BR-12, NFR-03, NFR-05 | F-10 | 2 | AC-48, AC-51, AC-53 | PRIO-005, PRIO-010, PRIO-011, PRIO-013 | `server/tests/f10-priority-queue.test.ts` | passed (`a286f9b`) | v1.1 |
+| NFR-06 | F-10 | 2 | AC-54, AC-55 | PRIO-014, PRIO-015, PRIO-018 | `client/src/test/f10-priorityQueue.test.tsx`, `e2e/tests/f10-priority-queue.spec.ts` | passed (`a286f9b`) | v1.1 |
+| NFR-04 | F-10 | 2 | AC-53 (operations of AC-47, AC-48) | PERF-S2-004 | `server/tests/nfr/perf-s2-004-priority.ts` | passed (`a286f9b`; `PATCH /priority` p95 `35.2 ms`, `POST call-next` p95 `60.4 ms`, `GET entries` p95 `136.2 ms`, `GET aheadCount` p95 `25.7 ms`; `docs/sprints/sprint-2/evidence/perf-s2-004.txt`) | v1.1 |
+| FR-01–FR-19 (regression) | F-06 | 2 | AC-01–AC-45, AC-55 | REG-S2-004 | existing Sprint 1, Lab 7 BR-06, F-07, F-08, and F-09 suites (245 server + 22 E2E unmodified; 1-line button-query scope adjustment in `client/src/test/f08-noShow.test.tsx`) | passed (`a286f9b`; Server 280/280, Client 138/138, E2E 25/25) | v1.1 |
 
 ### Acceptance criteria to tests
 
 | Acceptance Criteria | Test ID(s) | Result |
 |---|---|---|
-| AC-46 | PRIO-002, PRIO-009, PRIO-016 | planned |
-| AC-47 | PRIO-001, PRIO-003, PRIO-004, PRIO-016 | planned |
-| AC-48 | PRIO-005, PRIO-016 | planned |
-| AC-49 | PRIO-001, PRIO-006, PRIO-007, PRIO-017 | planned |
-| AC-50 | PRIO-007, PRIO-008, PRIO-009 | planned |
-| AC-51 | PRIO-010, PRIO-011 | planned |
-| AC-52 | PRIO-012, PRIO-017 | planned |
-| AC-53 | PRIO-013, PERF-S2-004 | planned |
-| AC-54 | PRIO-014, PRIO-016, PRIO-017, PRIO-018 | planned |
-| AC-55 | PRIO-015, PRIO-016, PRIO-018, REG-S2-004 | planned |
+| AC-46 | PRIO-002, PRIO-009, PRIO-016 | passed (`a286f9b`) |
+| AC-47 | PRIO-001, PRIO-003, PRIO-004, PRIO-016 | passed (`a286f9b`) |
+| AC-48 | PRIO-005, PRIO-016 | passed (`a286f9b`) |
+| AC-49 | PRIO-001, PRIO-006, PRIO-007, PRIO-017 | passed (`a286f9b`) |
+| AC-50 | PRIO-007, PRIO-008, PRIO-009 | passed (`a286f9b`) |
+| AC-51 | PRIO-010, PRIO-011 | passed (`a286f9b`) |
+| AC-52 | PRIO-012, PRIO-017 | passed (`a286f9b`) |
+| AC-53 | PRIO-013, PERF-S2-004 | passed (`a286f9b`) |
+| AC-54 | PRIO-014, PRIO-016, PRIO-017, PRIO-018 | passed (`a286f9b`) |
+| AC-55 | PRIO-015, PRIO-016, PRIO-018, REG-S2-004 | passed (`a286f9b`) |

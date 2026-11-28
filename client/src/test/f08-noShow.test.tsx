@@ -103,7 +103,7 @@ describe('F-08 NOSHOW-015: operator no-show controls', () => {
     expect(await screen.findByRole('heading', { name: 'General Inquiry Desk' })).toBeInTheDocument();
     expect(within(screen.getByTestId('active-entry-1')).getByRole('button', { name: 'Mark queue number 1 as no-show' })).toBeEnabled();
     expect(within(screen.getByTestId('active-entry-5')).queryByRole('button', { name: /no-show/i })).not.toBeInTheDocument();
-    expect(within(screen.getByTestId('waiting-entry-3')).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('waiting-entry-3')).queryByRole('button', { name: /no-show|return/i })).not.toBeInTheDocument();
 
     expect(screen.getByRole('heading', { name: 'No-show (2)' })).toBeInTheDocument();
     expect(screen.getByTestId('no-show-count')).toHaveTextContent('2');
