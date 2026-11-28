@@ -1,0 +1,63 @@
+# M-3 source: automated test results of CI run 45961454874 (workflow ci-docker.yml, job "Build, Migrate, Seed, Test & Docker Image")
+# Trigger: pull_request PR #59 (lab7-staging -> main) at commit 63dfcf4, 2026-11-27T07:52Z, conclusion: success
+# 63dfcf4 and the main release merge commit 1f34952 have identical trees: `git diff --stat 63dfcf4 1f34952` prints nothing.
+# Lines below are copied from `gh run view 45961454874 --log` (ANSI colours removed). Steps: migrate, migrate:test, seed, typecheck, then tests and build.
+
+2026-11-27T07:52:55.2050959Z ##[group]Run npm test
+2026-11-27T07:52:55.4642751Z > qms-server@1.0.0 test
+2026-11-27T07:52:55.4643216Z > vitest run
+2026-11-27T07:53:01.0051311Z  ✓ tests/queue-registration.test.ts (32 tests) 4609ms
+2026-11-27T07:53:05.3225746Z  ✓ tests/integration-sprint1.test.ts (9 tests) 3898ms
+2026-11-27T07:53:05.3241249Z    ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 1. Authorization matrix over every protected endpoint (NFR-02, RBAC-001..005
+2026-11-27T07:53:05.3263123Z    ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 1. Authorization matrix over every protected endpoint (NFR-02, RBAC-001..005
+2026-11-27T07:53:05.3280489Z    ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 1. Authorization matrix over every protected endpoint (NFR-02, RBAC-001..005
+2026-11-27T07:53:05.3286166Z    ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 2. CSRF matrix on every mutation (SEC-002): missing, wrong, and another sess
+2026-11-27T07:53:05.3352355Z    ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 4. Mixed concurrency with SQL invariants (NFR-03, CONCURRENCY-001..004 exten
+2026-11-27T07:53:05.3357237Z    ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 4. Mixed concurrency with SQL invariants (NFR-03, CONCURRENCY-001..004 exten
+2026-11-27T07:53:05.3363621Z    ✓ Issue #7: Sprint 1 integration, authorization and consistency (real API + PostgreSQL) > 4. Mixed concurrency with SQL invariants (NFR-03, CONCURRENCY-001..004 exten
+2026-11-27T07:53:12.0849731Z  ✓ tests/operator-workflow.test.ts (18 tests) 6325ms
+2026-11-27T07:53:12.0862395Z    ✓ Issue #6: Operator Queue Management Workflow > 1. Operator Assigned Queues (GET /api/operator/queues) > returns only service queues assigned to the authenticated op
+2026-11-27T07:53:12.0865787Z    ✓ Issue #6: Operator Queue Management Workflow > 1. Operator Assigned Queues (GET /api/operator/queues) > includes CLOSED queues if assigned to the operator 328ms
+2026-11-27T07:53:12.0869609Z    ✓ Issue #6: Operator Queue Management Workflow > 1. Operator Assigned Queues (GET /api/operator/queues) > rejects CUSTOMER role with 403 FORBIDDEN and anonymous with 
+2026-11-27T07:53:12.0884324Z    ✓ Issue #6: Operator Queue Management Workflow > 2. FIFO Operator Queue Entries Listing (GET /api/operator/queues/:queueId/entries, QUEUE-007) > returns queue entries
+2026-11-27T07:53:12.0888879Z    ✓ Issue #6: Operator Queue Management Workflow > 2. FIFO Operator Queue Entries Listing (GET /api/operator/queues/:queueId/entries, QUEUE-007) > returns 404 RESOURCE_
+2026-11-27T07:53:12.0893339Z    ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > FLOW-001 & FLOW-002: selects oldest WAI
+2026-11-27T07:53:12.0899756Z    ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > FLOW-003: returns 204 No Content with e
+2026-11-27T07:53:12.0915091Z    ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > FLOW-004, FLOW-006, FLOW-010: full oper
+2026-11-27T07:53:12.0919314Z    ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > FLOW-005 & FLOW-007: rejects invalid an
+2026-11-27T07:53:12.0921900Z    ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > returns 404 RESOURCE_NOT_FOUND for unkn
+2026-11-27T07:53:12.0926967Z    ✓ Issue #6: Operator Queue Management Workflow > 3. Call Next Queue & Lifecycle Transitions (FLOW-001 to FLOW-007, FLOW-010) > returns 404 RESOURCE_NOT_FOUND for unkn
+2026-11-27T07:53:12.0931241Z    ✓ Issue #6: Operator Queue Management Workflow > 4. Authorization, RBAC & CSRF Enforcement (RBAC-001 to RBAC-004, SEC-002) > RBAC-001: customer cannot call next (403 
+2026-11-27T07:53:12.0934319Z    ✓ Issue #6: Operator Queue Management Workflow > 4. Authorization, RBAC & CSRF Enforcement (RBAC-001 to RBAC-004, SEC-002) > RBAC-002: customer cannot start service (
+2026-11-27T07:53:12.0936344Z    ✓ Issue #6: Operator Queue Management Workflow > 4. Authorization, RBAC & CSRF Enforcement (RBAC-001 to RBAC-004, SEC-002) > RBAC-003: customer cannot complete servic
+2026-11-27T07:53:12.0938910Z    ✓ Issue #6: Operator Queue Management Workflow > 4. Authorization, RBAC & CSRF Enforcement (RBAC-001 to RBAC-004, SEC-002) > RBAC-004: operator cannot view entries, c
+2026-11-27T07:53:12.0941132Z    ✓ Issue #6: Operator Queue Management Workflow > 4. Authorization, RBAC & CSRF Enforcement (RBAC-001 to RBAC-004, SEC-002) > SEC-002: rejects operator mutations witho
+2026-11-27T07:53:12.0943225Z    ✓ Issue #6: Operator Queue Management Workflow > 5. Concurrency Safety (CONCURRENCY-003, CONCURRENCY-004) > CONCURRENCY-003: concurrent call-next requests claim disti
+2026-11-27T07:53:12.0945752Z    ✓ Issue #6: Operator Queue Management Workflow > 5. Concurrency Safety (CONCURRENCY-003, CONCURRENCY-004) > CONCURRENCY-004: concurrent start and complete requests on
+2026-11-27T07:53:12.6439664Z  ✓ tests/foundation.test.ts (16 tests) 190ms
+2026-11-27T07:53:14.3526198Z  ✓ tests/auth.test.ts (18 tests) 1331ms
+2026-11-27T07:53:15.1062132Z  ✓ tests/seed.test.ts (7 tests) 502ms
+2026-11-27T07:53:17.3628294Z  ✓ tests/rbac-middleware.test.ts (9 tests) 1881ms
+2026-11-27T07:53:18.2952199Z  ✓ tests/csrf.test.ts (6 tests) 559ms
+2026-11-27T07:53:19.7110506Z  ✓ tests/join-csrf.test.ts (6 tests) 1018ms
+2026-11-27T07:53:20.1583637Z  ✓ tests/health.test.ts (7 tests) 67ms
+2026-11-27T07:53:20.5957674Z  ✓ tests/static-client.test.ts (10 tests) 66ms
+2026-11-27T07:53:20.8183500Z  ✓ tests/config.test.ts (9 tests) 7ms
+2026-11-27T07:53:20.8297686Z  Test Files  12 passed (12)
+2026-11-27T07:53:20.8299334Z       Tests  147 passed (147)
+2026-11-27T07:53:20.8302756Z    Duration  25.06s (transform 337ms, setup 0ms, collect 2.61s, tests 20.45s, environment 2ms, prepare 679ms)
+2026-11-27T07:53:20.8613364Z ##[group]Run npm run test:client
+2026-11-27T07:53:21.1122399Z > qms-client@1.0.0 test
+2026-11-27T07:53:21.1122989Z > vitest run
+2026-11-27T07:53:23.8539504Z  ✓ src/test/entryDetail.test.tsx (17 tests) 771ms
+2026-11-27T07:53:24.3739695Z  ✓ src/test/operator.test.tsx (13 tests) 1290ms
+2026-11-27T07:53:25.1027817Z  ✓ src/test/customer.test.tsx (27 tests) 2017ms
+2026-11-27T07:53:25.8038340Z  ✓ src/test/integration-guards.test.tsx (6 tests) 297ms
+2026-11-27T07:53:26.1153470Z  ✓ src/test/auth.test.tsx (15 tests) 1004ms
+2026-11-27T07:53:26.1341155Z  Test Files  5 passed (5)
+2026-11-27T07:53:26.1342611Z       Tests  78 passed (78)
+2026-11-27T07:53:26.1346258Z    Duration  4.72s (transform 429ms, setup 1.27s, collect 1.37s, tests 5.38s, environment 2.96s, prepare 799ms)
+2026-11-27T07:53:33.1292181Z ✓ 56 modules transformed.
+2026-11-27T07:53:33.2998514Z ✓ built in 1.55s
+2026-11-27T07:53:58.3401645Z #28 6.433 ✓ 56 modules transformed.
+2026-11-27T07:53:58.7166284Z #28 6.610 ✓ built in 1.58s

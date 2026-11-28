@@ -1,0 +1,43 @@
+# M-5 source: GitHub Actions runs of workflow ci-docker.yml ("Build, Migrate, Seed, Test & Docker Image") and deploy.yml, all branches
+# Window: 2026-11-21T17:00:00Z to snapshot 2026-11-28T05:30:00Z
+# Command: gh run list --workflow <file> --limit 100 --created ">=2026-11-21T17:00:00Z" --json databaseId,event,headBranch,headSha,conclusion,createdAt
+# Columns: run ID | created (UTC) | event | branch | commit | conclusion
+
+## ci-docker.yml
+44927871890 | 2026-11-21T17:02:50Z | pull_request | tmp/lab5-c02-failing-check | 36c0783 | failure
+44928604399 | 2026-11-21T17:10:43Z | pull_request | feature/lab5/6-wif-merge-gate | 2591804 | success
+44932490977 | 2026-11-21T17:53:25Z | pull_request | feature/lab5/6-wif-merge-gate | 51b6924 | success
+44933025820 | 2026-11-21T17:59:35Z | push | lab5-staging | 0247e46 | failure
+44936136736 | 2026-11-21T18:33:00Z | pull_request | lab5/7-auto-deploy-workflow | 1877fec | success
+44941040861 | 2026-11-21T19:27:35Z | pull_request | lab5/7-auto-deploy-workflow | 75f1401 | success
+44942263622 | 2026-11-21T19:41:20Z | push | lab5-staging | 70bdeeb | success
+44943076202 | 2026-11-21T19:50:27Z | pull_request | lab5-staging | 70bdeeb | success
+44947280003 | 2026-11-21T20:37:42Z | pull_request | lab5/8-verify-persistence | 57794bf | success
+44949372656 | 2026-11-21T21:01:51Z | pull_request | lab5/8-verify-persistence | 87c59aa | success
+44950162304 | 2026-11-21T21:10:41Z | pull_request | lab5/8-verify-persistence | 7d3a40f | success
+44950426602 | 2026-11-21T21:13:37Z | push | lab5-staging | 7e1dd62 | success
+44950541367 | 2026-11-21T21:15:01Z | pull_request | lab5-staging | 7e1dd62 | success
+45931027435 | 2026-11-27T02:54:09Z | pull_request | feature/sprint2/40-customer-cancellation-and-queue-withdrawal | f98c296 | success
+45931289671 | 2026-11-27T02:56:58Z | pull_request | docs/lab7-part-a-contract | 05fb34a | success
+45932462678 | 2026-11-27T03:08:59Z | pull_request | feature/sprint2/40-customer-cancellation-and-queue-withdrawal | 477febb | failure
+45933331723 | 2026-11-27T03:17:46Z | pull_request | feature/sprint2/40-customer-cancellation-and-queue-withdrawal | 3e90e86 | success
+45938143437 | 2026-11-27T04:08:07Z | pull_request | docs/lab7-part-a-contract | fe29255 | success
+45942027789 | 2026-11-27T04:48:00Z | pull_request | feature/sprint2/40-customer-cancellation-and-queue-withdrawal | cc8e65a | success
+45944166956 | 2026-11-27T05:10:11Z | pull_request | maintenance/lab7/52-max-active-entries | d0f3c5d | success
+45961454874 | 2026-11-27T07:52:19Z | pull_request | lab7-staging | 63dfcf4 | success
+45965789822 | 2026-11-27T08:27:22Z | pull_request | feature/sprint2/41-no-show-handling-and-recovery | 97bf1ca | success
+45980973138 | 2026-11-27T10:18:25Z | pull_request | feature/sprint2/42-multi-counter-support | 016616e | success
+45987674858 | 2026-11-27T11:06:19Z | pull_request | feature/sprint2/42-multi-counter-support | e185b6a | success
+46000125935 | 2026-11-27T12:37:01Z | pull_request | feature/sprint2/42-multi-counter-impl | 4914dfa | success
+46018311335 | 2026-11-27T14:42:23Z | pull_request | chore/sprint2/merge-main-lab7 | 9e6bdd0 | success
+46021046443 | 2026-11-27T15:00:51Z | pull_request | feature/sprint2/42-multi-counter-impl | adc567d | success
+46022578564 | 2026-11-27T15:10:56Z | pull_request | chore/sprint2/merge-main-lab7 | b03a88b | failure
+46024286526 | 2026-11-27T15:22:11Z | pull_request | chore/sprint2/merge-main-lab7 | 57143a8 | success
+46025404213 | 2026-11-27T15:29:46Z | pull_request | chore/sprint2/merge-main-lab7 | 82b8478 | success
+46026984575 | 2026-11-27T15:40:25Z | pull_request | docs/sprint2/42-f09-evidence | b06eb6b | success
+
+## deploy.yml
+44943558046 | 2026-11-21T19:55:58Z | push | main | ab5ab9d | success
+44945131409 | 2026-11-21T20:13:27Z | workflow_dispatch | main | ab5ab9d | success
+44951072710 | 2026-11-21T21:21:00Z | push | main | e304cd9 | success
+45966592373 | 2026-11-27T08:33:28Z | push | main | 1f34952 | success

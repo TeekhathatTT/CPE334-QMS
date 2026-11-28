@@ -12,9 +12,9 @@
 | Pre-change commit | `aa1c0fa` (`lab7-staging`, merge of PR #57) | Contract v1.1 only; `server/` and `client/` are byte-identical to `e304cd9` (`git diff --quiet e304cd9 aa1c0fa -- server client`) |
 | Test commit | `2664740` | Failing BR-06 tests + red evidence |
 | Implementation commit | `bfa2464` | Service, error code and UI mapping |
-| `lab7-staging` merge | _pending (PR review)_ | |
-| `main` release | _pending_ | |
-| Deployed Cloud Run revision | _pending_ | |
+| `lab7-staging` merge | `63dfcf4` (PR #58, reviewed by @Khwanklao, CI run `45944166956` success) | |
+| `main` release | `1f34952` (PR #59, merged 2026-11-27 08:33 UTC; CI run `45961454874` on `63dfcf4` success) | Merge commit; same tree as `63dfcf4` (`git diff --stat 63dfcf4 1f34952` is empty). No Sprint 2 commit included |
+| Deployed Cloud Run revision | `qms-00006-6bj` (deploy run `45966592373`, 100% traffic, created 2026-11-27 08:34 UTC) | `/api/health` → `{"status":"ok","database":"ok","version":"1f34952"}` |
 
 Commit order: contract (`05fb34a`, `fe29255`, merged as `aa1c0fa`) → tests (`2664740`) → implementation (`bfa2464`).
 
@@ -90,8 +90,18 @@ No existing test was weakened, deleted or disabled. The only changed expectation
 
 Note: `npm run test:e2e` rewrites the Sprint 1 screenshots and `e2e-run.txt` under `docs/sprints/sprint-1/evidence/`; those were restored with `git restore` so the Sprint 1 record is unchanged.
 
-## 5. Still To Do (tracked in #52)
+## 5. Release, Deployment and Post-Deployment Checks (done 2026-11-27)
 
-- PR into `lab7-staging` with review by @Khwanklao and passing CI.
-- Release PR into `main`, deploy via the Lab 5 pipeline (start Cloud SQL first), record the release commit and Cloud Run revision in §1.
-- Post-deployment checks: 3rd-queue join returns `409 MAX_ACTIVE_ENTRIES_REACHED` on the deployed URL, plus one preserved Sprint 1 path (e.g. cross-customer entry lookup returns `404`).
+- PR #58 into `lab7-staging` was reviewed by @Khwanklao, CI passed, and it merged as `63dfcf4`.
+- Release PR #59 into `main` merged as `1f34952`, and the Lab 5 pipeline deployed revision `qms-00006-6bj` (run `45966592373`). Cloud SQL was RUNNABLE beforehand. No migration was needed.
+- Post-deployment checks on https://qms-1036193964355.asia-southeast1.run.app at 2026-11-27 08:44 UTC (manual, API; raw output in the #52 comment):
+
+| # | Check | Expected | Actual |
+|---|---|---|---|
+| 1 | customer1 joins A (General Inquiry Desk) | 201 | 201, `queueNumber 7`, `WAITING` |
+| 2 | customer1 joins B | 201 | 201, `queueNumber 1`, `WAITING` |
+| 3 | customer1 joins C (3rd active, CR51-AC2) | 409 `MAX_ACTIVE_ENTRIES_REACHED` | 409 `MAX_ACTIVE_ENTRIES_REACHED`; C `lastQueueNumber` stays 0; customer1 has exactly 2 active |
+| 4 | customer1 re-joins A at the cap (CR51-AC4) | 409 `DUPLICATE_ACTIVE_ENTRY` | 409 `DUPLICATE_ACTIVE_ENTRY` |
+| 5 | Preserved Sprint 1 path (RBAC-005 / QUEUE-006): customer2 reads customer1's entry | 404 `RESOURCE_NOT_FOUND` | 404 `RESOURCE_NOT_FOUND` (owner control: 200) |
+
+Queues B and C were temporary OPEN queues inserted through the Cloud SQL Auth Proxy, because production has one OPEN queue. Afterwards they were CLOSED, and customer1's check entries were set to COMPLETED.
