@@ -9,6 +9,7 @@
 | 3.2 | 2026-11-27 | F-09 contract v1.2 alignment: §14.1 `GET /api/operator/queues/{queueId}/counters` returns `404 RESOURCE_NOT_FOUND` for an unknown valid UUIDv4 `queueId` (matching existing `requireQueueAssignment` middleware and `GET /api/operator/queues/{queueId}/entries`). |
 | 3.3 | 2026-11-27 | F-09 contract v1.3 (implementation PR review fixes): upgrades §16 composite FK to `ON DELETE RESTRICT ON UPDATE RESTRICT` (`confdeltype = 'r'`, `confupdtype = 'r'`) and clarifies §13 legacy Call Next wording (unmodified server/client regression suites + zero-usable-counter UI fallback `COUNTER-019`). |
 | 3.4 | 2026-11-27 | F-08 follows BR-06 (SRS rev. 4.5): §9.2 recover also locks the customer's `User` row first and returns `409 MAX_ACTIVE_ENTRIES_REACHED` when the customer already holds 2 active entries across all queues; §10 updated. (Numbered 3.4 because the F-09 implementation PR uses 3.2 and 3.3.) |
+| 4.0 | 2026-11-28 | F-10 contract v1.1 (issue #43, SRS v5.1): §17–§21 add additive `priority` (`"NORMAL" \| "PRIORITY"`) on every `QueueEntry` payload, new `PATCH /api/operator/queue-entries/{entryId}/priority`, explicit body-before-DB validation precedence on `POST /api/queues/{queueId}/entries` (`400`/`403` before `404`/`409`), priority-aware FIFO ordering on counter & legacy Call Next and `aheadCount`, and `WAITING`-only priority ranking on `GET /api/operator/queues/{queueId}/entries`. §1–§16 (F-07, F-08, F-09) unchanged except where §17–§21 extend them. |
 
 This document extends the [Sprint 1 API specification](../sprint-1/api-spec.md). Everything in that document still applies unless a section below says otherwise. Base path, envelopes, timestamps, CSRF and UUID rules are unchanged (Sprint 1 §1, §2, §4, §5). Requirements: [SRS](../../srs.md) v2.0, FR-14, BR-13, BR-14. Design: [F-07 feature SDS](../../features/sprint-2-f07-customer-cancellation.md).
 
@@ -521,3 +522,122 @@ curl -i -X POST "http://localhost:3000/api/operator/counters/<counterId>/call-ne
 - Counter lock precedes entry lock (`Counter` `FOR UPDATE` → `QueueEntry` `FOR UPDATE SKIP LOCKED`), preserving a deadlock-free lock order across all endpoints.
 
 Traceability: FR-17–FR-19, FR-03, FR-07–FR-13, FR-16; BR-01, BR-07, BR-10 (rev. 4.0), BR-11, BR-12, BR-16 (rev. 4.0), BR-18–BR-20; AC-35–AC-44. Tests: [tests.md §8](./tests.md#8-f-09-multi-counter-support).
+
+---
+
+# F-10 Priority queue policy (v4.0)
+
+Requirements: [SRS](../../srs.md) v5.1 §1.4, FR-20–FR-22, BR-01 (rev. 5.0), BR-16 (rev. 5.0), BR-19 (rev. 5.0), BR-21–BR-23, §10.3 (AC-46–AC-55). Design: [F-10 feature SDS](../../features/sprint-2-f10-priority-queue-policy.md) v1.1.
+
+## 17. Changes to standard objects (F-10)
+
+### 17.1 `QueueEntry` (extends §12.2)
+
+```json
+{
+  "id": "f4d56583-5d7d-4fef-bb21-5e6a5a7a9a68",
+  "serviceQueueId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "customerId": "11111111-1111-4111-8111-111111111111",
+  "queueNumber": 7,
+  "status": "WAITING",
+  "priority": "PRIORITY",
+  "joinedAt": "2026-11-28T09:00:00.000Z",
+  "calledAt": null,
+  "serviceStartedAt": null,
+  "completedAt": null,
+  "cancelledAt": null,
+  "noShowAt": null,
+  "recoveredAt": null,
+  "noShowCount": 0,
+  "counterId": null,
+  "counterName": null,
+  "aheadCount": 0
+}
+```
+
+Rules added:
+- `priority` (`"NORMAL" | "PRIORITY"`) is present on **every** serialized `QueueEntry` payload (join, own list, own detail, cancel, operator list, legacy call-next, counter call-next, start, complete, no-show, recover, and priority update).
+- Defaults to `"NORMAL"` on every newly created entry (`POST /api/queues/{queueId}/entries`).
+- Additive field; clients that ignore unknown fields are unaffected.
+
+## 18. Changes to existing endpoints (F-10)
+
+| Endpoint | Change |
+|---|---|
+| `POST /api/queues/{queueId}/entries` | Always creates `WAITING` entries with `priority: "NORMAL"`. **Deterministic validation order (body validation runs BEFORE DB lookups):**<br>1. `validateUuidParam('queueId')` (`400 INVALID_ARGUMENT`)<br>2. `requireAuth` (`401 UNAUTHORIZED`)<br>3. `requireRole(CUSTOMER)` (`403 FORBIDDEN`)<br>4. `requireCsrf` (`403 FORBIDDEN`)<br>5. **Request-body `priority` check (before DB lookup):** malformed JSON or any `priority` value other than `"NORMAL"` or `"PRIORITY"` (e.g., `"HIGH"`, `123`, `null`, `""`) → `400 INVALID_ARGUMENT`; literal `{"priority":"PRIORITY"}` → `403 FORBIDDEN` (customer self-elevation blocked server-side, even if `:queueId` does not exist or is `CLOSED`); omitted/empty body or literal `{"priority":"NORMAL"}` proceeds.<br>6. DB transaction checks: `404 RESOURCE_NOT_FOUND` → `409 QUEUE_NOT_AVAILABLE` → `409 DUPLICATE_ACTIVE_ENTRY` (BR-05) → `409 MAX_ACTIVE_ENTRIES_REACHED` (BR-06) → `201 Created` (`priority: "NORMAL"`). |
+| `POST /api/operator/counters/{counterId}/call-next` (F-09) | Ordering updated to explicit priority-aware FIFO: `ORDER BY (CASE WHEN "priority" = 'PRIORITY'::"QueuePriority" THEN 0 ELSE 1 END) ASC, "joinedAt" ASC, "id" ASC LIMIT 1 FOR UPDATE SKIP LOCKED`. Response includes `priority`. |
+| `POST /api/operator/queues/{queueId}/call-next` (legacy F-05) | Ordering updated identically to `(CASE WHEN "priority" = 'PRIORITY'::"QueuePriority" THEN 0 ELSE 1 END) ASC, "joinedAt" ASC, "id" ASC LIMIT 1 FOR UPDATE SKIP LOCKED`; keeps `counterId: null` and `204 No Content` when empty. Response includes `priority`. |
+| `GET /api/operator/queues/{queueId}/entries` | Priority ranking applies **only to `WAITING` entries**: `ORDER BY (CASE WHEN "status" = 'WAITING'::"QueueStatus" AND "priority" = 'PRIORITY'::"QueuePriority" THEN 0 ELSE 1 END) ASC, "joinedAt" ASC, "id" ASC`. Non-`WAITING` entries (`CALLED`, `SERVING`, `NO_SHOW`, `COMPLETED`) retain strict chronological `joinedAt ASC, id ASC` ordering; `CANCELLED` exclusion unchanged. Response includes `priority`. |
+| `GET /api/me/queue-entries/{entryId}` | `computeAheadCount` counts only `WAITING` entries in the same queue strictly ahead under `(priority_rank ASC, joinedAt ASC, id ASC)` (non-monotonic for `NORMAL` entries when another waiting entry is promoted). Response includes `priority`. |
+| `GET /api/me/queue-entries`, `POST /api/me/queue-entries/{entryId}/cancel`, `POST /api/operator/queue-entries/{entryId}/{start,complete,no-show,recover}` | Transition logic unchanged; `recoverNoShowEntry` (F-08) **preserves** `priority` when returning `NO_SHOW -> WAITING`; every returned `QueueEntry` includes additive `priority`. |
+
+## 19. New endpoint (F-10)
+
+### 19.1 `PATCH /api/operator/queue-entries/{entryId}/priority`
+
+Purpose: update the priority (`NORMAL` ↔ `PRIORITY`) of a `WAITING` queue entry in an assigned queue (FR-20).
+
+Request headers:
+- `Cookie: <session-cookie>`
+- `X-CSRF-Token: <token-from-session>`
+- `Content-Type: application/json`
+
+Request body (strictly validated; unknown/missing/invalid fields rejected with `400 INVALID_ARGUMENT`):
+
+```json
+{
+  "priority": "PRIORITY"
+}
+```
+
+Allowed values for `priority`: `"NORMAL"` | `"PRIORITY"`.
+
+Validation and processing order:
+1. `entryId` must be a valid UUIDv4 (`400 INVALID_ARGUMENT`).
+2. Valid session required (`401 UNAUTHORIZED`).
+3. `X-CSRF-Token` must match the session (`403 FORBIDDEN`).
+4. Role must be `OPERATOR` (`403 FORBIDDEN` for `CUSTOMER`, including the entry's owner; no `ADMIN` role exists).
+5. Validate JSON body (`z.object({ priority: z.enum(['NORMAL', 'PRIORITY']) }).strict()`; `400 INVALID_ARGUMENT` otherwise).
+6. In one transaction:
+   a. Lock entry row `SELECT "id", "serviceQueueId", "status", "priority" FROM "QueueEntry" WHERE "id" = $1::uuid FOR UPDATE`; missing → `404 RESOURCE_NOT_FOUND`.
+   b. Verify `OperatorAssignment` for `(caller, entry.serviceQueueId)`; missing → `403 FORBIDDEN`.
+   c. Verify `entry.status === 'WAITING'`; otherwise (`CALLED`, `SERVING`, `COMPLETED`, `CANCELLED`, `NO_SHOW`) → `409 INVALID_STATE_TRANSITION`.
+   d. Update `priority = body.priority` (idempotent if already equal; `joinedAt`, `queueNumber`, `status`, and all timestamps unchanged).
+7. Commit before responding. Parent queue availability (`OPEN`/`CLOSED`) is not checked (AD-05).
+
+Success response: `200 OK`, `{ "data": { "entry": <QueueEntry> } }`.
+
+Error responses:
+
+| HTTP | Code | Condition | Database change |
+|---|---|---|---|
+| 400 | `INVALID_ARGUMENT` | `entryId` is not a UUIDv4, or request body fails strict schema validation | none |
+| 401 | `UNAUTHORIZED` | missing, invalid or expired session | none |
+| 403 | `FORBIDDEN` | CSRF missing/wrong; role not `OPERATOR`; or operator not assigned to entry's queue | none |
+| 404 | `RESOURCE_NOT_FOUND` | no queue entry with that id | none |
+| 409 | `INVALID_STATE_TRANSITION` | entry status is not `WAITING` | none |
+| 500 | `INTERNAL_ERROR` | unexpected failure; rolled back | none |
+
+Example (curl, local development, synthetic account):
+
+```bash
+curl -i -X PATCH "http://localhost:3000/api/operator/queue-entries/<entryId>/priority" \
+  -b cookies.txt -H "X-CSRF-Token: <csrf-from-cookie>" -H "Content-Type: application/json" \
+  -d '{"priority":"PRIORITY"}'
+```
+
+## 20. Permission matrix additions (F-10)
+
+| Action / endpoint | Anonymous | CUSTOMER | OPERATOR not assigned | OPERATOR assigned |
+|---|---|---|---|---|
+| `PATCH /api/operator/queue-entries/{entryId}/priority` | `401` | `403` | `403` | `200` (`WAITING` + valid body); `400` (invalid body); `409 INVALID_STATE_TRANSITION` (non-`WAITING`) |
+| `POST /api/queues/{queueId}/entries` with `{"priority":"PRIORITY"}` | `401` | `403` (before DB lookups) | `403` (role) | `403` (role) |
+| `POST /api/queues/{queueId}/entries` with malformed `priority` | `401` | `400` (before DB lookups) | `403` (role) | `403` (role) |
+
+## 21. Lifecycle, ordering and integrity rules (extends §16)
+
+- `QueueStatus` values and transitions are unchanged; F-10 adds `QueuePriority` (`NORMAL`, `PRIORITY`) with `NOT NULL DEFAULT 'NORMAL'` on `QueueEntry.priority`.
+- Explicit SQL sort key `(CASE WHEN "priority" = 'PRIORITY'::"QueuePriority" THEN 0 ELSE 1 END) ASC, "joinedAt" ASC, "id" ASC` guarantees `PRIORITY` precedes `NORMAL` regardless of PostgreSQL enum declaration order, backed by partial expression index `QueueEntry_waiting_priority_fifo_idx` on `WAITING` entries.
+- `PATCH .../priority` acquires only a single `QueueEntry` `FOR UPDATE` row lock (matching Start/Complete/No-show), preserving the acyclic lock order across all endpoints. Under `FOR UPDATE SKIP LOCKED`, a concurrent Call Next skips a row locked by `PATCH .../priority` (returning `409 NO_WAITING_ENTRIES` / `204` if it is the sole `WAITING` entry).
+
+Traceability: FR-20–FR-22, FR-03, FR-05, FR-07–FR-16, FR-18–FR-19; BR-01 (rev. 5.0), BR-16 (rev. 5.0), BR-19 (rev. 5.0), BR-21–BR-23; AC-46–AC-55. Tests: [tests.md §9](./tests.md#9-f-10-priority-queue-policy).

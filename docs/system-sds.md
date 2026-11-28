@@ -127,6 +127,7 @@ The composite primary key is `(operatorId, serviceQueueId)`. Only OPERATOR users
 | `recoveredAt` (Sprint 2, F-08) | `timestamptz` | Nullable; time the entry was returned to the queue |
 | `noShowCount` (Sprint 2, F-08) | `INTEGER` | Required, default 0, `CHECK ("noShowCount" >= 0 AND "noShowCount" <= 2)` |
 | `counterId` (Sprint 2, F-09) | UUID | Nullable; composite FK `("counterId", "serviceQueueId") -> Counter("id", "serviceQueueId")` (`MATCH SIMPLE`, `ON DELETE RESTRICT ON UPDATE RESTRICT`); `NULL` for `WAITING`/`CANCELLED` and legacy calls |
+| `priority` (Sprint 2, F-10) | enum `QueuePriority` (`NORMAL`, `PRIORITY`) | Required, default `'NORMAL'`; mutable only while `status = WAITING` by an assigned `OPERATOR`; preserved on F-08 `NO_SHOW` recovery |
 
 The lifecycle and active-state definitions match the SRS: active states are `WAITING`, `CALLED`, and `SERVING`; `COMPLETED` is terminal. Completed entries remain for historical review.
 
@@ -416,10 +417,24 @@ Contract v1.3 (2026-11-27), implemented and verified locally on `feature/sprint2
 | 5 | Provisioning & seed | `server/prisma/seed.ts` (**local dev/test only**) idempotently upserts `Counter 1` and `Counter 2` (`OPEN`, `assignedOperatorId: null`) for each seeded queue by `(serviceQueueId, name)` (`update: {}`) using deterministic UUIDv4s on `create`, so re-seeding preserves existing IDs and operational counter state and running `provision:counters` followed by `seed` never throws `P2002`. Production / Cloud SQL uses `server/prisma/provision-counters.ts`, a dedicated idempotent **counter-only** provisioning script that inserts missing default counters without touching users, passwords, queues, or assignments. |
 | 6 | Unchanged | Queue catalog, customer join and queue-number allocation, `aheadCount`, Start/Complete/No-show transitions, F-07 cancel, authentication/session/CSRF middleware, Docker build. (Legacy `callNextEntry` has a one-line `UPDATE` addition setting `"counterId" = NULL`, keeping `204`/`200`, FIFO, and locking unchanged.) |
 | 7 | Deployment & rollback | Additive schema migration applied before serving the new revision, followed by the dedicated idempotent counter-only Cloud SQL provisioning step (never run demo `seed.ts` in production). **Rollback/roll-forward risk:** a pre-F-09 revision's `recoverNoShowEntry` does not clear `counterId`, which can leave `WAITING` rows with stale non-null `counterId`; run `UPDATE "QueueEntry" SET "counterId" = NULL WHERE "status" = 'WAITING' AND "counterId" IS NOT NULL;` after any rollback and before rolling forward again. |
+
+### 15.1 Sprint 2 design changes (F-10 Priority queue policy, rev. 2026-11-28)
+
+Contract v1.1 (2026-11-28, issue #43), pending final re-review by `@TeekhathatTT`. The full design is in [features/sprint-2-f10-priority-queue-policy.md](./features/sprint-2-f10-priority-queue-policy.md); this subsection records only what F-10 changes in this system design.
+
+| # | Area | Change |
+|---|---|---|
+| 1 | Status & priority model | `QueueStatus` is unchanged. Adds `QueuePriority` enum (`NORMAL`, `PRIORITY`) on `QueueEntry` (`NOT NULL DEFAULT 'NORMAL'`). Priority is mutable only while `status = WAITING` by an assigned `OPERATOR` (no `ADMIN` role exists). |
+| 2 | Data model & indexing | Adds `QueueEntry.priority "QueuePriority" NOT NULL DEFAULT 'NORMAL'` and partial expression index `QueueEntry_waiting_priority_fifo_idx` on `("serviceQueueId", (CASE WHEN "priority" = 'PRIORITY'::"QueuePriority" THEN 0 ELSE 1 END) ASC, "joinedAt" ASC, "id" ASC) WHERE "status" = 'WAITING'::"QueueStatus"`. Existing constraints and indexes are unchanged. |
+| 3 | API list & ordering | New `PATCH /api/operator/queue-entries/{entryId}/priority` (assigned `OPERATOR`, CSRF, `{ "priority": "NORMAL" \| "PRIORITY" }`, `409 INVALID_STATE_TRANSITION` if not `WAITING`). `POST /api/queues/{queueId}/entries` validates `priority` **before** DB `404`/`409` lookups (empty/`"NORMAL"` allowed, `"PRIORITY"` → `403 FORBIDDEN`, malformed → `400 INVALID_ARGUMENT`). Both counter-scoped (F-09) and legacy (F-05) Call Next order `WAITING` rows by `(CASE WHEN "priority" = 'PRIORITY' THEN 0 ELSE 1 END) ASC, "joinedAt" ASC, "id" ASC`. `GET /api/operator/queues/{queueId}/entries` applies priority ranking **only to `WAITING` entries** (non-`WAITING` sections retain chronological `joinedAt ASC, id ASC`). `computeAheadCount` reflects priority-aware ordering (non-monotonic for `NORMAL` customers). `recoverNoShowEntry` (F-08) preserves `priority`. Additive `priority` field included on every serialized `QueueEntry`. Details: [sprints/sprint-2/api-spec.md](./sprints/sprint-2/api-spec.md) §17–§21. |
+| 4 | Concurrency & known limitations | `updateEntryPriority` acquires a single `QueueEntry` `FOR UPDATE` row lock (acyclic lock order preserved, zero deadlocks). Under `FOR UPDATE SKIP LOCKED`, a concurrent Call Next skips a row locked by `PATCH .../priority` (returning `409 NO_WAITING_ENTRIES` or `204` if it is the sole `WAITING` entry). Anti-starvation is manual operator adjustment only in Sprint 2 (starvation risk for `NORMAL` entries documented as a known limitation; automatic aging deferred to Sprint 3+). |
+| 5 | Unchanged | Authentication, sessions, CSRF, queue catalog, queue-number allocation, BR-05/BR-06 caps, F-07 cancel logic, F-08 recovery limits, F-09 counter management & provisioning, seed data, Docker build. |
+
 ## 16. Revision History
 
 | Version | Date | Ref | Summary of Changes |
 |---|---|---|---|
 | 1.0 | 2026-11-11 | Sprint 1 Baseline | Initial System-Level SDS and verified Sprint 1 implementation decisions §§10–12 (accepted at `main` commit `e304cd9`, Cloud Run revision `qms-00005-5kz`). |
 | 1.1 | 2026-11-27 | Issue #51 (Lab 7 Part A) | Updated §2 Role Matrix, §4.1 transaction locking & active-entry cap enforcement (`User` `FOR NO KEY UPDATE` → `ServiceQueue` `FOR UPDATE` lock order, `BR-05` precedence before `BR-06`, max 2 active entries across all queues; `CR51-AC1`–`CR51-AC4`), and §§5.3–5.4 error contract (`409 MAX_ACTIVE_ENTRIES_REACHED`). Confirmed no DB migration is required. |
+| 1.2 | 2026-11-28 | Issue #43 (Sprint 2 F-10 Contract v1.1) | Added `QueueEntry.priority` to §3.4 and added §15.1 documenting F-10 priority queue policy changes (`QueuePriority`, partial expression index, `PATCH /api/operator/queue-entries/{entryId}/priority`, body-before-DB join validation, `WAITING`-only operator list priority sort, concurrency, and known limitations). |
 
