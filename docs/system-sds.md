@@ -430,6 +430,24 @@ Contract v1.1 (2026-11-28, issue #43), pending final re-review by `@TeekhathatTT
 | 4 | Concurrency & known limitations | `updateEntryPriority` acquires a single `QueueEntry` `FOR UPDATE` row lock (acyclic lock order preserved, zero deadlocks). Under `FOR UPDATE SKIP LOCKED`, a concurrent Call Next skips a row locked by `PATCH .../priority` (returning `409 NO_WAITING_ENTRIES` or `204` if it is the sole `WAITING` entry). Anti-starvation is manual operator adjustment only in Sprint 2 (starvation risk for `NORMAL` entries documented as a known limitation; automatic aging deferred to Sprint 3+). |
 | 5 | Unchanged | Authentication, sessions, CSRF, queue catalog, queue-number allocation, BR-05/BR-06 caps, F-07 cancel logic, F-08 recovery limits, F-09 counter management & provisioning, seed data, Docker build. |
 
+### 15.2 Sprint 3 design changes (F-11, F-12, F-13, contracts v1.0, rev. 2026-11-28)
+
+- **F-11 Operational analytics** ([feature SDS](./features/sprint-3-f11-operational-analytics.md)):
+  - Adds the read-only route `GET /api/operator/queues/{queueId}/analytics`, protected by the existing `validateUuidParam` → `requireAuth` → `requireRole(OPERATOR)` → `requireQueueAssignment` chain.
+  - Adds a pure `analyticsPolicy.ts` for range parsing, Bangkok day bucketing and statistics, and `analyticsService.ts`, which runs one indexed `SELECT` on `QueueEntry_fifo_idx`.
+  - No schema change, no locks and no writes.
+  - Client: `OperatorAnalyticsPage` at `/operator/queues/:id/analytics`.
+- **F-12 Advance appointment booking** (contract only; [feature SDS](./features/sprint-3-f12-appointment-booking.md)):
+  - Planned additive migration with the enums `SlotStatus` and `AppointmentStatus`, the tables `AppointmentSlot` and `Appointment`, the partial unique index `Appointment_active_customer_slot_uidx`, and `CHECK`s on capacity and check-in consistency.
+  - Global lock order extended to `User → ServiceQueue → AppointmentSlot → Appointment → QueueEntry`.
+  - Check-in reuses the `joinQueue` transaction steps and sets `priority = PRIORITY`.
+- **F-13 Product hardening** (contract only; [feature SDS](./features/sprint-3-f13-product-hardening.md)):
+  - A security-header middleware before all routes, with `X-Powered-By` disabled.
+  - A `LoginThrottle` table and throttle check in `POST /api/auth/login` (`429 RATE_LIMITED`).
+  - A JSON access log with allow-listed fields.
+  - axe and three-browser E2E.
+  - Rollback and backup procedures in `deployment.md`.
+
 ## 16. Revision History
 
 | Version | Date | Ref | Summary of Changes |
@@ -437,4 +455,5 @@ Contract v1.1 (2026-11-28, issue #43), pending final re-review by `@TeekhathatTT
 | 1.0 | 2026-11-11 | Sprint 1 Baseline | Initial System-Level SDS and verified Sprint 1 implementation decisions §§10–12 (accepted at `main` commit `e304cd9`, Cloud Run revision `qms-00005-5kz`). |
 | 1.1 | 2026-11-27 | Issue #51 (Lab 7 Part A) | Updated §2 Role Matrix, §4.1 transaction locking & active-entry cap enforcement (`User` `FOR NO KEY UPDATE` → `ServiceQueue` `FOR UPDATE` lock order, `BR-05` precedence before `BR-06`, max 2 active entries across all queues; `CR51-AC1`–`CR51-AC4`), and §§5.3–5.4 error contract (`409 MAX_ACTIVE_ENTRIES_REACHED`). Confirmed no DB migration is required. |
 | 1.2 | 2026-11-28 | Issue #43 (Sprint 2 F-10 Contract v1.1) | Added `QueueEntry.priority` to §3.4 and added §15.1 documenting F-10 priority queue policy changes (`QueuePriority`, partial expression index, `PATCH /api/operator/queue-entries/{entryId}/priority`, body-before-DB join validation, `WAITING`-only operator list priority sort, concurrency, and known limitations). |
+| 1.3 | 2026-11-28 | Issue #44 (Sprint 3 contracts v1.0) | Added §15.2: Sprint 3 design changes for F-11 (read-only analytics route, no schema change), F-12 (planned appointment tables and the extended lock order) and F-13 (security headers, login throttle table, access log). No earlier section changed. |
 
