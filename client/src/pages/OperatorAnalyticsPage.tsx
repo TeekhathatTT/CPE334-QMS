@@ -235,12 +235,30 @@ export function OperatorAnalyticsPage() {
             </div>
           </div>
 
-          <div
-            className="overflow-x-auto rounded-xl border border-slate-200 bg-white"
-            tabIndex={0}
-            role="region"
-            aria-label="Daily breakdown table"
-          >
+          {/* Narrow screens (< sm): one card per day, so nothing crosses the 360 px viewport (NFR-06). */}
+          <ul aria-label="Daily breakdown" className="space-y-2 sm:hidden">
+            {report.daily.map((d) => (
+              <li key={d.date} className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
+                <p className="font-semibold text-slate-900">{d.date}</p>
+                <dl className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-slate-700">
+                  <dt>Joined</dt>
+                  <dd>{d.joined}</dd>
+                  <dt>Completed</dt>
+                  <dd>{d.completed}</dd>
+                  <dt>Cancelled</dt>
+                  <dd>{d.cancelled}</dd>
+                  <dt>No-show</dt>
+                  <dd>{d.noShow}</dd>
+                  <dt>Avg wait</dt>
+                  <dd>{formatDuration(d.averageWaitSeconds)}</dd>
+                  <dt>Avg service</dt>
+                  <dd>{formatDuration(d.averageServiceSeconds)}</dd>
+                </dl>
+              </li>
+            ))}
+          </ul>
+
+          <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white sm:block">
             <table className="min-w-full text-left text-sm">
               <caption className="p-3 text-left font-semibold text-slate-900">
                 Daily breakdown, {report.from} to {report.to} ({report.timezone})
