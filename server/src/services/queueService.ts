@@ -99,6 +99,9 @@ export async function joinQueue(customerId: string, queueId: string): Promise<Se
         }
 
         const queue = queues[0];
+        if (queue.availability !== QueueAvailability.OPEN) {
+          throw new AppError(409, 'QUEUE_NOT_AVAILABLE', 'The requested service queue is not open.');
+        }
 
         // Check for an existing active entry (WAITING, CALLED, SERVING) in the same queue
         const existingActive = await tx.queueEntry.findFirst({
