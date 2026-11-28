@@ -4,15 +4,19 @@ One row per acceptance criterion. Status is one of `planned`, `in progress`, `im
 
 ## F-11 Operational analytics (issue #44)
 
+Contract v1.0 merged `fba2e2f` (PR #73) · red `eb01c13` · implementation `b289de3` · green `e2ea189` · raw output: [evidence/f11-red-run.txt](./evidence/f11-red-run.txt), [evidence/f11-green-run.txt](./evidence/f11-green-run.txt), [evidence/perf-s3-001.txt](./evidence/perf-s3-001.txt) · captions: [evidence/f11-evidence-notes.md](./evidence/f11-evidence-notes.md)
+
+Not verified for F-11: Firefox/WebKit E2E (F-13); the Cloud Run deployment; latency on Cloud Run.
+
 | AC | Status | Implementation | Executed verification | Result | Accepted release |
 |---|---|---|---|---|---|
-| AC-56 | planned (contract v1.0 pending review) | — | — | — | — |
-| AC-57 | planned (contract v1.0 pending review) | — | — | — | — |
-| AC-58 | planned (contract v1.0 pending review) | — | — | — | — |
-| AC-59 | planned (contract v1.0 pending review) | — | — | — | — |
-| AC-60 | planned (contract v1.0 pending review) | — | — | — | — |
-| AC-61 | planned (contract v1.0 pending review) | — | — | — | — |
-| AC-62 | planned (contract v1.0 pending review) | — | — | — | — |
+| AC-56 | tested | `analyticsPolicy.summarizeCohort`/`summarizeDurations`, `analyticsService.getQueueAnalytics`, route `GET /api/operator/queues/:queueId/analytics` | ANALYTICS-001, 002, 009 | passed at `e2ea189` | pending release |
+| AC-57 | tested | `summarizeCohort` (status buckets; wait only with `calledAt`; service only for `COMPLETED`) | ANALYTICS-003, 004, 009 | passed at `e2ea189` | pending release |
+| AC-58 | tested | `bangkokDate`, `parseAnalyticsRange` (UTC+07:00 half-open interval) | ANALYTICS-001, 005 | passed at `e2ea189` | pending release |
+| AC-59 | tested | `parseAnalyticsRange` and the strict zod query schema in `routes/operator.ts` | ANALYTICS-001, 006 | passed at `e2ea189` | pending release |
+| AC-60 | tested | `requireAuth` → `requireRole(OPERATOR)` → `requireQueueAssignment`; read-only `findMany` | ANALYTICS-007, 008 | passed at `e2ea189` | pending release |
+| AC-61 | tested | one indexed read on `QueueEntry_fifo_idx` | PERF-S3-001 (p95 22.0 ms) | passed at `e2ea189` | pending release |
+| AC-62 | tested | `client/src/pages/OperatorAnalyticsPage.tsx`, `client/src/api/analytics.ts`, link in `OperatorQueueDetailPage.tsx`, route in `App.tsx` | ANALYTICS-010, 011 (client), ANALYTICS-012 (E2E 1280/360, keyboard), REG-S3-001 | passed at `e2ea189` | pending release |
 
 ## F-12 Advance appointment booking
 
@@ -49,3 +53,4 @@ One row per acceptance criterion. Status is one of `planned`, `in progress`, `im
 | Date | Change |
 |---|---|
 | 2026-11-28 | First version (issue #44). Every Sprint 3 AC is `planned`. |
+| 2026-11-28 | F-11 rows AC-56 to AC-62 changed from "planned (contract v1.0 pending review)" to "tested", with the executed verification at `e2ea189`. |

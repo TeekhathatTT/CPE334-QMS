@@ -3,6 +3,7 @@
 | Version | Date | Author | Change |
 |---|---|---|---|
 | 1.0 | 2026-11-28 | @TeekhathatTT (review: @Khwanklao, pending) | First Sprint 3 STS (issue #44): F-11 (`ANALYTICS-001`–`ANALYTICS-012`, `PERF-S3-001`, `REG-S3-001`), F-12 (`APPT-001`–`APPT-020`, `PERF-S3-002`) and F-13 (`HARD-001`–`HARD-012`). All tests are `planned`. |
+| 1.1 | 2026-11-28 | @TeekhathatTT | F-11 executed: results in §5.1. ANALYTICS-009 setup note added. ANALYTICS-012 at 360 px checks the daily cards (UI spec v1.1). |
 
 ## 1. Conventions
 
@@ -143,8 +144,34 @@ All `planned`. Due 13 December.
 
 No Sprint 3 test has been executed yet. Results will be added here with commit SHAs: F-11 RED, F-11 GREEN, then F-12 and F-13.
 
+*Rev. 1.1 (2026-11-28):* F-11 was executed. See §5.1. F-12 and F-13 are still `planned`.
+
+### 5.1 Execution results (F-11)
+
+| Run | Commit | Server | Client | E2E (Chromium) | Raw output |
+|---|---|---|---|---|---|
+| RED | `eb01c13` | F-11: 0/18 (8 API tests failed with `404`; the unit file failed to load because `analyticsPolicy` did not exist). Existing tests: 280/280. | F-11: 0/10. Existing tests: 138/138. | ANALYTICS-012 failed (no Analytics link) | [evidence/f11-red-run.txt](./evidence/f11-red-run.txt) |
+| GREEN | `e2ea189` | 298/298 (22 files) | 148/148 (10 files) | 26/26 | [evidence/f11-green-run.txt](./evidence/f11-green-run.txt) |
+| PERF-S3-001 | `e2ea189` | p50 19.1 ms, **p95 22.0 ms**, max 24.5 ms (target ≤ 500 ms). PASS. | — | — | [evidence/perf-s3-001.txt](./evidence/perf-s3-001.txt) |
+
+| ID | Result |
+|---|---|
+| ANALYTICS-001 – ANALYTICS-009 | passed (`e2ea189`) |
+| ANALYTICS-010, ANALYTICS-011 | passed (`e2ea189`) |
+| ANALYTICS-012 | passed (`e2ea189`) |
+| PERF-S3-001 | passed (`e2ea189`) |
+| REG-S3-001 | passed (`e2ea189`). No Sprint 1 or Sprint 2 test file was changed. |
+
+Disclosures:
+- Two setup bugs in the new F-11 API tests were found at the first green run and fixed in `5e30d5a`. No assertion changed.
+  - ANALYTICS-004 now logs operator1 in again after each `resetAndSeed()`, which deletes sessions.
+  - ANALYTICS-009 loads DS-11 without its `WAITING` rows E8 and X1. Otherwise FIFO Call Next calls E8 before the new entry, which is correct product behavior, not a bug.
+- `543e36c`: the E2E test now uses an exact label match for From/To (`getByLabel('To')` also matched the summary section).
+- ANALYTICS-012 found a real layout defect at 360 px: the 7-column table crossed the viewport edge. It was fixed in the UI (`94b214b`; UI spec v1.1). The shared overflow helper was not changed.
+
 ## 6. Revision history
 
 | Version | Date | Section | Previous text | Change |
 |---|---|---|---|---|
 | 1.0 | 2026-11-28 | All | — | First version. |
+| 1.1 | 2026-11-28 | §5, header | §5 said "No Sprint 3 test has been executed yet …" (kept). | Adds §5.1 with the F-11 results and disclosures. |

@@ -1,0 +1,77 @@
+# F-11 green run at e2ea189 (branch feature/sprint3/44-f11-analytics-impl; implementation b289de3, fixes 5e30d5a, 543e36c, 94b214b)
+# Date: 2026-11-28; local PostgreSQL 16 (Docker qms-postgres, qms_test_db), Node v22.20.0
+
+$ npx tsc --noEmit (server, client), npm run build (server, client): all passed
+
+$ npm run test --workspace=server
+ ✓ tests/queue-registration.test.ts (32 tests) 5905ms
+ ✓ tests/f10-priority-queue.test.ts (12 tests) 6176ms
+ ✓ tests/integration-sprint1.test.ts (9 tests) 4669ms
+ ✓ tests/operator-workflow.test.ts (18 tests) 6667ms
+ ✓ tests/f09-multi-counter.test.ts (12 tests) 6802ms
+ ✓ tests/f08-no-show-recovery.test.ts (18 tests) 10653ms
+ ✓ tests/f07-customer-cancellation.test.ts (15 tests) 6704ms
+ ✓ tests/f11-analytics.test.ts (8 tests) 4020ms
+ ✓ tests/foundation.test.ts (16 tests) 278ms
+ ✓ tests/auth.test.ts (18 tests) 1493ms
+ ✓ tests/seed.test.ts (7 tests) 571ms
+ ✓ tests/rbac-middleware.test.ts (9 tests) 1950ms
+ ✓ tests/csrf.test.ts (6 tests) 707ms
+ ✓ tests/join-csrf.test.ts (6 tests) 1313ms
+ ✓ tests/health.test.ts (7 tests) 95ms
+ ✓ tests/f11-analytics-rule.test.ts (10 tests) 8ms
+ ✓ tests/static-client.test.ts (10 tests) 118ms
+ ✓ tests/f10-priority-rule.test.ts (23 tests) 6ms
+ ✓ tests/config.test.ts (9 tests) 5ms
+ ✓ tests/f09-counter-rule.test.ts (22 tests) 8ms
+ ✓ tests/f08-no-show-rule.test.ts (25 tests) 6ms
+ ✓ tests/f07-cancel-rule.test.ts (6 tests) 3ms
+ Test Files  22 passed (22)
+      Tests  298 passed (298)
+
+$ npm run test --workspace=client -- --no-file-parallelism
+ ✓ src/test/f09-multiCounter.test.tsx (20 tests) 1622ms
+ ✓ src/test/customer.test.tsx (27 tests) 2318ms
+ ✓ src/test/operator.test.tsx (13 tests) 1174ms
+ ✓ src/test/f08-noShow.test.tsx (15 tests) 1203ms
+ ✓ src/test/f10-priorityQueue.test.tsx (11 tests) 1013ms
+ ✓ src/test/entryDetail.test.tsx (17 tests) 574ms
+ ✓ src/test/f07-leaveQueue.test.tsx (14 tests) 1486ms
+ ✓ src/test/f11-analytics.test.tsx (10 tests) 707ms
+ ✓ src/test/auth.test.tsx (15 tests) 3131ms
+ ✓ src/test/integration-guards.test.tsx (6 tests) 322ms
+ Test Files  10 passed (10)
+      Tests  148 passed (148)
+
+$ npm run test:e2e   (Chromium)
+  ✓   1 [chromium] › e2e\tests\authorization.spec.ts:38:7 › Authorization in the browser › S6: a customer cannot reach operator screens, and an operator cannot reach customer screens (2.0s)
+  ✓   2 [chromium] › e2e\tests\authorization.spec.ts:70:7 › Authorization in the browser › S7: protected routes send anonymous visitors to /login; a session invalidated mid-use shows the session-expired banner (2.0s)
+  ✓   3 [chromium] › e2e\tests\authorization.spec.ts:115:7 › Authorization in the browser › S8: customer 2 opening customer 1's entry URL sees the not-found state and none of customer 1's data (780ms)
+  ✓   4 [chromium] › e2e\tests\customer-flow.spec.ts:17:7 › Customer workflow › S1 / FLOW-009: customer logs in, sees available queues, joins, gets a number, and views own WAITING entry (931ms)
+  ✓   5 [chromium] › e2e\tests\customer-flow.spec.ts:59:7 › Customer workflow › S2: joining the same queue again shows the duplicate error and creates no second entry (765ms)
+  ✓   6 [chromium] › e2e\tests\customer-flow.spec.ts:84:7 › Customer workflow › S5: customer detail page shows each operator change through real 10 s polling, without a reload (31.3s)
+  ✓   7 [chromium] › e2e\tests\f07-cancellation.spec.ts:41:7 › F-07 customer cancellation › CANCEL-017: customer joins, cancels with confirmation, sees Cancelled after reload, and rejoins with a new number (1.5s)
+  ✓   8 [chromium] › e2e\tests\f07-cancellation.spec.ts:94:7 › F-07 customer cancellation › CANCEL-018: after the operator calls the entry, Leave queue is gone and an API cancel is rejected with 409 (953ms)
+  ✓   9 [chromium] › e2e\tests\f07-cancellation.spec.ts:120:7 › F-07 customer cancellation › CANCEL-019: cancel with the keyboard only; no horizontal overflow at 360 px and 1280 px with the confirmation open (1.4s)
+  ✓  10 [chromium] › e2e\tests\f08-no-show.spec.ts:44:7 › F-08 no-show handling and recovery › NOSHOW-017: operator marks no-show, returns the entry to its place, then a second no-show is final (1.7s)
+  ✓  11 [chromium] › e2e\tests\f08-no-show.spec.ts:111:7 › F-08 no-show handling and recovery › NOSHOW-018: the customer sees No-show, then Waiting after the operator returns the entry (1.0s)
+  ✓  12 [chromium] › e2e\tests\f08-no-show.spec.ts:141:7 › F-08 no-show handling and recovery › NOSHOW-019: both actions with the keyboard only; no horizontal overflow at 360 px and 1280 px (1.6s)
+  ✓  13 [chromium] › e2e\tests\f09-multi-counter.spec.ts:70:7 › F-09 multi-counter support › COUNTER-016: multi-counter Call Next, counter close, in-flight finish, and customer destination view (2.1s)
+  ✓  14 [chromium] › e2e\tests\f09-multi-counter.spec.ts:136:7 › F-09 multi-counter support › COUNTER-017: operator 409 error feedback and F-08 recovery re-call at Counter 2 (1.9s)
+  ✓  15 [chromium] › e2e\tests\f09-multi-counter.spec.ts:189:7 › F-09 multi-counter support › COUNTER-018: keyboard-only counter toggle and Call Next; zero horizontal overflow at 360 px and 1280 px (2.6s)
+  ✓  16 [chromium] › e2e\tests\f09-multi-counter.spec.ts:253:7 › F-09 multi-counter support › COUNTER-019: zero-usable-counter legacy fallback (204 neutral empty message and Sprint 1 customer prompt) (1.5s)
+  ✓  17 [chromium] › e2e\tests\f10-priority-queue.spec.ts:46:7 › F-10 priority queue policy › PRIO-016: operator promotes entry, persists across reload, calls next ahead of NORMAL, and customer views reflect priority (2.4s)
+  ✓  18 [chromium] › e2e\tests\f10-priority-queue.spec.ts:112:7 › F-10 priority queue policy › PRIO-017: F-08 recovery preserves PRIORITY, non-WAITING has no priority toggle, and stale 409 refreshes (1.4s)
+  ✓  19 [chromium] › e2e\tests\f10-priority-queue.spec.ts:165:7 › F-10 priority queue policy › PRIO-018: keyboard-only priority toggle and zero horizontal overflow at 360 px and 1280 px (1.7s)
+  ✓  20 [chromium] › e2e\tests\f11-analytics.spec.ts:29:7 › F-11 operational analytics › ANALYTICS-012: operator opens analytics from the queue, sees today’s completed journey, keyboard and 360/1280 layouts (1.3s)
+  ✓  21 [chromium] › e2e\tests\keyboard.spec.ts:88:7 › Keyboard-only operation › customer: sign in, switch tabs, join, open details and go back using only the keyboard (1.3s)
+  ✓  22 [chromium] › e2e\tests\keyboard.spec.ts:144:7 › Keyboard-only operation › operator: sign in, open the queue, call, start and complete using only the keyboard (1.3s)
+  ✓  23 [chromium] › e2e\tests\operator-flow.spec.ts:33:7 › Operator workflow › S3: operator sees only assigned queues and the FIFO waiting list; an unassigned operator sees none (1.6s)
+  ✓  24 [chromium] › e2e\tests\operator-flow.spec.ts:73:7 › Operator workflow › S4 / FLOW-010: Call Next -> CALLED, Start -> SERVING, Complete -> COMPLETED, with the UI updating after each step (1.2s)
+  ✓  25 [chromium] › e2e\tests\responsive.spec.ts:46:7 › S9 / UI-001 at 360 x 800: login, customer and operator screens have no horizontal overflow and usable primary actions (2.7s)
+  ✓  26 [chromium] › e2e\tests\responsive.spec.ts:46:7 › S9 / UI-001 at 1280 x 800: login, customer and operator screens have no horizontal overflow and usable primary actions (2.7s)
+  26 passed (1.3m)
+
+$ npm run test:perf:f11 --workspace=server
+GET /api/operator/queues/:id/analytics (31 days)     read    100     19.1     22.0     24.5    500  PASS
+Overall: PASSED

@@ -283,18 +283,18 @@ Contract v1.1 (2026-11-28, issue #43, SRS v5.1, author `@Khwanklao`, approved an
 
 ## Sprint 3 — F-11, F-12, F-13 Traceability
 
-These rows are from the contracts v1.0 (2026-11-28, issue #44, SRS v6.0, author `@TeekhathatTT`, review by `@Khwanklao` pending). Every test is `planned` until it has been executed. The canonical STS is [sprints/sprint-3/tests.md](./sprints/sprint-3/tests.md).
+These rows are from the contracts v1.0 (2026-11-28, issue #44, SRS v6.0, author `@TeekhathatTT`, review by `@Khwanklao` pending). Every test is `planned` until it has been executed. The canonical STS is [sprints/sprint-3/tests.md](./sprints/sprint-3/tests.md). *Rev. 2026-11-28 (F-11 results):* the F-11 rows were executed at `e2ea189` and now show `passed` (red `eb01c13`; see tests.md §5.1). F-12 and F-13 rows stay `planned`.
 
 ### Requirements to tests
 
 | Requirement | Feature | Sprint | AC | Test ID(s) | Result | Contract version |
 |---|---|---|---|---|---|---|
-| FR-23 | F-11 | 3 | AC-56–AC-61 | ANALYTICS-001–ANALYTICS-009, PERF-S3-001 | planned | v1.0 |
-| FR-24 | F-11 | 3 | AC-62 | ANALYTICS-010–ANALYTICS-012, REG-S3-001 | planned | v1.0 |
-| BR-24 | F-11 | 3 | AC-56, AC-57 | ANALYTICS-002–ANALYTICS-004, ANALYTICS-009 | planned | v1.0 |
-| BR-25 | F-11 | 3 | AC-56, AC-57 | ANALYTICS-001, ANALYTICS-002, ANALYTICS-004 | planned | v1.0 |
-| BR-26 | F-11 | 3 | AC-58–AC-60 | ANALYTICS-001, ANALYTICS-005–ANALYTICS-008 | planned | v1.0 |
-| NFR-04 (F-11) | F-11 | 3 | AC-61 | PERF-S3-001 | planned | v1.0 |
+| FR-23 | F-11 | 3 | AC-56–AC-61 | ANALYTICS-001–ANALYTICS-009, PERF-S3-001 | passed (`e2ea189`) | v1.0 |
+| FR-24 | F-11 | 3 | AC-62 | ANALYTICS-010–ANALYTICS-012, REG-S3-001 | passed (`e2ea189`) | v1.0 |
+| BR-24 | F-11 | 3 | AC-56, AC-57 | ANALYTICS-002–ANALYTICS-004, ANALYTICS-009 | passed (`e2ea189`) | v1.0 |
+| BR-25 | F-11 | 3 | AC-56, AC-57 | ANALYTICS-001, ANALYTICS-002, ANALYTICS-004 | passed (`e2ea189`) | v1.0 |
+| BR-26 | F-11 | 3 | AC-58–AC-60 | ANALYTICS-001, ANALYTICS-005–ANALYTICS-008 | passed (`e2ea189`) | v1.0 |
+| NFR-04 (F-11) | F-11 | 3 | AC-61 | PERF-S3-001 | passed (`e2ea189`) | v1.0 |
 | FR-25 | F-12 | 3 | AC-63, AC-64 | APPT-002–APPT-005 | planned | v1.0 |
 | FR-26 | F-12 | 3 | AC-65 | APPT-006 | planned | v1.0 |
 | FR-27 | F-12 | 3 | AC-66, AC-67, AC-71 | APPT-001, APPT-007–APPT-010, APPT-020 | planned | v1.0 |
@@ -318,13 +318,13 @@ These rows are from the contracts v1.0 (2026-11-28, issue #44, SRS v6.0, author 
 
 | Acceptance Criteria | Test ID(s) | Result |
 |---|---|---|
-| AC-56 | ANALYTICS-001, ANALYTICS-002, ANALYTICS-009 | planned |
-| AC-57 | ANALYTICS-003, ANALYTICS-004, ANALYTICS-009 | planned |
-| AC-58 | ANALYTICS-001, ANALYTICS-005 | planned |
-| AC-59 | ANALYTICS-001, ANALYTICS-006 | planned |
-| AC-60 | ANALYTICS-007, ANALYTICS-008 | planned |
-| AC-61 | PERF-S3-001 | planned |
-| AC-62 | ANALYTICS-010–ANALYTICS-012, REG-S3-001 | planned |
+| AC-56 | ANALYTICS-001, ANALYTICS-002, ANALYTICS-009 | passed (`e2ea189`) |
+| AC-57 | ANALYTICS-003, ANALYTICS-004, ANALYTICS-009 | passed (`e2ea189`) |
+| AC-58 | ANALYTICS-001, ANALYTICS-005 | passed (`e2ea189`) |
+| AC-59 | ANALYTICS-001, ANALYTICS-006 | passed (`e2ea189`) |
+| AC-60 | ANALYTICS-007, ANALYTICS-008 | passed (`e2ea189`) |
+| AC-61 | PERF-S3-001 | passed (`e2ea189`) |
+| AC-62 | ANALYTICS-010–ANALYTICS-012, REG-S3-001 | passed (`e2ea189`) |
 | AC-63 | APPT-002–APPT-004 | planned |
 | AC-64 | APPT-005 | planned |
 | AC-65 | APPT-006 | planned |
